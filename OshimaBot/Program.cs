@@ -1,4 +1,7 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OshimaBot.Data;
 using OshimaBot.Game.Services;
 using OshimaBot.Models;
 using OshimaBot.Security;
@@ -31,6 +34,20 @@ builder.Services.AddOptions<DatabaseOptions>()
     .ValidateOnStart();
 
 builder.Services.AddSingleton<WebhookSignatureVerifier>();
+
+builder.Services.AddDbContext<BotDbContext>(options =>
+{
+    string connectionString = builder.Configuration.GetValue<string>(
+        $"{DatabaseOptions.SectionName}:ConnectionString") ?? "Data Source=oshimobot.db";
+    SqliteConnectionStringBuilder sqlite = new(connectionString);
+    if (!Path.IsPathRooted(sqlite.DataSource))
+    {
+        // 相对路径统一基于 ContentRootPath，保证应用运行时与 EF CLI 指向同一个库文件。
+        sqlite.DataSource = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, sqlite.DataSource));
+    }
+    options.UseSqlite(sqlite.ToString());
+});
+builder.Services.AddHostedService<DatabaseInitializer>();
 
 builder.Services.AddHttpClient(QQBotService.HttpClientName, client =>
 {
