@@ -32,3 +32,14 @@ public sealed record ActionResult(
     public static ActionResult Fail(string what, string notHappened, string next, string? action = null)
         => new(false, what, notHappened, [next], action is null ? ["/帮助"] : [action]);
 }
+
+/// <summary>P2 经济与排行视图。</summary>
+public sealed record StoreEntry(int Index, long Id, string Name, long Price, int Stock);
+
+public sealed record MarketEntry(
+    int Index, long Id, string ItemName, int Quality, long Price, long Fee, string SellerHandle, bool IsMine);
+
+public sealed record OfferEntry(
+    int Index, long Id, string ItemName, long Price, string SellerHandle, bool IsMine);
+
+public sealed record RankEntry(int Index, string Handle, long Value);

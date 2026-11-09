@@ -179,6 +179,7 @@ public sealed class GameplayCommandTests
                 null!, null!, null!,
                 Provider.GetRequiredService<IUserSessionService>(),
                 Provider.GetRequiredService<IPlayerService>(),
+                null!,
                 NullLogger.Instance);
         }
 

@@ -24,6 +24,7 @@ public sealed record CommandDependencies(
     IBindCodeService BindCodes,
     IUserSessionService Sessions,
     IPlayerService Players,
+    IEconomyService Economy,
     ILogger Logger);
 
 public interface ICommand

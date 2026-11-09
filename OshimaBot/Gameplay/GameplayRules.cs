@@ -120,5 +120,57 @@ public static class GameplayRules
         return FortuneTexts[hash[0] % FortuneTexts.Count];
     }
 
+    // ---- P2：经济与战斗 ----
+
+    public const long MarketFeeRatePercent = 5;
+    public const long MarketMinPrice = 1;
+    public const long MarketMaxPrice = 1_000_000;
+    public const int MarketMaxListingsPerUser = 5;
+
+    public const int ForgeCostCredits = 200;
+    public const int ForgeMaterialQuantity = 2;
+    public const int ForgeDefaultMinutes = 5;
+    public const int ForgeOutputQuality = 3;
+    public const int ForgeMaxMinutes = 120;
+
+    public const int InstanceCostCredits = 80;
+    public const int InstanceDefaultMinutes = 3;
+    public const int InstanceRewardExp = 200;
+    public const int InstanceRewardCredits = 60;
+    public const int InstanceMaxMinutes = 120;
+
+    public const int DuelCostCredits = 30;
+    public const int DuelRewardCredits = 80;
+    public const int DuelWinPoints = 10;
+    public const int DuelLosePoints = 2;
+
+    public const int BossCostCredits = 100;
+    public const int BossRewardCredits = 300;
+    public const int BossRewardDiamonds = 3;
+    public const int BossWinPoints = 25;
+    public const int RankingTop = 10;
+
+    /// <summary>托管用户 id：市场上架 / 报价单在成交前的物品归属，不会出现在任何玩家背包。</summary>
+    public const long EscrowUserId = -1;
+
+    public static long MarketFee(long price)
+        => Math.Max(1, price * MarketFeeRatePercent / 100);
+
+    /// <summary>系统商店的默认货架（懒建，不进 Migration）。</summary>
+    public static readonly IReadOnlyList<(string Name, long Price, int Stock)> SeedStoreGoods =
+    [
+        ("补给包", 120, -1),
+        ("精良装备箱", 260, -1),
+        ("史诗遗物匣", 500, 20)
+    ];
+
+    public static string RankingBoardName(string board) => board switch
+    {
+        "credits" => "金币榜",
+        "level" => "等级榜",
+        "points" => "战绩榜",
+        _ => "金币榜"
+    };
+
     public static string CatalogVersion => "core-v3";
 }

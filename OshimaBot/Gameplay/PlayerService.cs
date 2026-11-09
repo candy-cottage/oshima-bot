@@ -40,7 +40,7 @@ public interface IPlayerService
 /// </summary>
 public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<PlayerService> logger) : IPlayerService
 {
-    private static ActionResult NoIdentity => ActionResult.Fail(
+    internal static ActionResult NoIdentity => ActionResult.Fail(
         "身份尚未就绪", "没有读写任何存档", "请通过 QQ 消息触发注册，或稍后重试", "/状态");
 
     // ---------------- 读 ----------------
@@ -606,7 +606,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     // ---------------- 内部工具 ----------------
 
     /// <summary>首次访问懒建档：player_state + 初始角色 + 初始物品 + 初始资金流水，全部一次保存。</summary>
-    private static async Task<PlayerState> EnsureAsync(BotDbContext db, long userId, CancellationToken ct)
+    internal static async Task<PlayerState> EnsureAsync(BotDbContext db, long userId, CancellationToken ct)
     {
         PlayerState? state = await db.PlayerStates.FirstOrDefaultAsync(x => x.UserId == userId, ct);
         if (state is not null) return state;
@@ -655,7 +655,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     }
 
     /// <summary>货币变动与 ledger 必须成对出现；Add 后由调用方的 SaveChanges 一次提交。</summary>
-    private static void ApplyCurrency(
+    internal static void ApplyCurrency(
         BotDbContext db, PlayerState state, long delta, string currency,
         string reason, string refType, string refId)
     {
@@ -670,18 +670,19 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         });
     }
 
-    private static async Task AddItemAsync(
-        BotDbContext db, long userId, string name, int quality, int quantity, CancellationToken ct)
+    internal static async Task AddItemAsync(
+        BotDbContext db, long userId, string name, int quality, int quantity,
+        CancellationToken ct, string catalogId = "gacha")
     {
         string payload = JsonSerializer.Serialize(new { name });
         ItemInstance? stack = await db.ItemInstances.FirstOrDefaultAsync(
-            x => x.UserId == userId && x.CatalogId == "gacha" && x.Quality == quality
+            x => x.UserId == userId && x.CatalogId == catalogId && x.Quality == quality
                  && x.PayloadJson == payload && !x.Bound && !x.Locked, ct);
         if (stack is null)
         {
             db.ItemInstances.Add(new ItemInstance
             {
-                UserId = userId, CatalogId = "gacha", Quantity = quantity, Quality = quality,
+                UserId = userId, CatalogId = catalogId, Quantity = quantity, Quality = quality,
                 PayloadJson = payload, AcquiredAtUtc = DateTime.UtcNow
             });
         }
@@ -691,29 +692,29 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         }
     }
 
-    private static async Task<ItemInstance?> ItemByIndexAsync(
+    internal static async Task<ItemInstance?> ItemByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
         => index <= 0 ? null : await db.ItemInstances
             .Where(x => x.UserId == userId).OrderBy(x => x.Id)
             .Skip(index - 1).FirstOrDefaultAsync(ct);
 
-    private static async Task<DataCharacter?> CharacterByIndexAsync(
+    internal static async Task<DataCharacter?> CharacterByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
         => index <= 0 ? null : await db.Characters
             .Where(x => x.UserId == userId).OrderBy(x => x.Id)
             .Skip(index - 1).FirstOrDefaultAsync(ct);
 
-    private static async Task<DataCharacter?> MainCharacterAsync(BotDbContext db, long userId, CancellationToken ct)
+    internal static async Task<DataCharacter?> MainCharacterAsync(BotDbContext db, long userId, CancellationToken ct)
         => await db.Characters.Where(x => x.UserId == userId && x.IsMain)
             .OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
 
-    private static void Consume(BotDbContext db, ItemInstance item, int amount)
+    internal static void Consume(BotDbContext db, ItemInstance item, int amount)
     {
         if (item.Quantity <= amount) db.ItemInstances.Remove(item);
         else item.Quantity -= amount;
     }
 
-    private static async Task AdvanceQuestAsync(BotDbContext db, long userId, string key, CancellationToken ct)
+    internal static async Task AdvanceQuestAsync(BotDbContext db, long userId, string key, CancellationToken ct)
     {
         (string _, string _, int target) = GameplayRules.DailyQuests.First(x => x.Key == key);
         string date = GameplayRules.Today();
@@ -736,7 +737,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         if (count >= target) quest.Status = 1;
     }
 
-    private static int ReadProgress(DailyQuest quest)
+    internal static int ReadProgress(DailyQuest quest)
     {
         try
         {
@@ -747,7 +748,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         catch (JsonException) { return 0; }
     }
 
-    private static string ReadName(ItemInstance item)
+    internal static string ReadName(ItemInstance item)
     {
         if (string.IsNullOrWhiteSpace(item.PayloadJson)) return $"物品 {item.CatalogId}";
         try
@@ -760,15 +761,15 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         catch (JsonException) { return $"物品 {item.CatalogId}"; }
     }
 
-    private static ActionResult NoSuchItem(int index)
+    internal static ActionResult NoSuchItem(int index)
         => ActionResult.Fail($"背包 @ {index} 不存在", "没有改动任何物品",
             "用 /背包 查看当前编号，编号按背包顺序稳定排列", "/背包");
 
-    private static ActionResult NoSuchCharacter(int index)
+    internal static ActionResult NoSuchCharacter(int index)
         => ActionResult.Fail($"角色 @ {index} 不存在", "没有改动任何角色",
             "用 /角色 查看当前编号", "/角色");
 
-    private static ActionResult NoMainCharacter()
+    internal static ActionResult NoMainCharacter()
         => ActionResult.Fail("没有主战角色", "没有改动任何装备",
             "用 /角色 查看角色，再用 /设主战 @编号 指定", "/角色");
 }
