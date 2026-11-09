@@ -8,7 +8,10 @@ using System.Text.Encodings.Web;
 namespace OshimaBot.Security;
 
 /// <summary>数据库侧 API Key 校验：只认 api_keys 表中的 SHA-256 摘要，支持吊销/过期/按 key 分权。</summary>
-public sealed class ApiKeyAuthenticator(IServiceScopeFactory scopeFactory)
+public sealed class ApiKeyAuthenticator(
+    IServiceScopeFactory scopeFactory,
+    IUserDirectory directory,
+    ILogger<ApiKeyAuthenticator> logger)
 {
     public async Task<ApiKeyIdentity?> AuthenticateAsync(string key, CancellationToken cancellationToken = default)
     {
@@ -22,11 +25,33 @@ public sealed class ApiKeyAuthenticator(IServiceScopeFactory scopeFactory)
         if (row is null || row.RevokedAtUtc is not null) return null;
         if (row.ExpiresAtUtc is not null && row.ExpiresAtUtc <= DateTime.UtcNow) return null;
 
-        List<int> roleValues = row.UserId is null
+        // S6 遗留边界：引导密钥的 user_id 为 NULL，第三方通道因此拿不到存档身份。
+        // 每个 ApiKey 首次认证时懒建一个独立内部用户（provider=apikey），之后走纯读路径。
+        long? userId = row.UserId;
+        if (userId is null)
+        {
+            try
+            {
+                ExternalIdentity identity = new("apikey", $"key-{row.Id}", "thirdparty");
+                BotUserPrincipal principal = await directory.ResolveAsync(identity, cancellationToken);
+                await db.ApiKeys.Where(x => x.Id == row.Id && x.UserId == null)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.UserId, (long?)principal.UserId), cancellationToken);
+                userId = principal.UserId;
+                logger.LogInformation("API Key 已绑定内部用户：KeyId={KeyId}, UserId={UserId}", row.Id, userId);
+            }
+            catch (Exception exception)
+            {
+                // 身份写入失败不阻断只读查询；需身份的 P1 指令会提示「身份尚未就绪」。
+                logger.LogWarning(exception, "API Key 身份懒注册失败：KeyId={KeyId}", row.Id);
+            }
+        }
+
+        List<int> roleValues = userId is null
             ? []
             : await db.UserRoles.AsNoTracking()
-                .Where(x => x.UserId == row.UserId.Value).Select(x => x.Role).ToListAsync(cancellationToken);
-        return new ApiKeyIdentity(row.Id, row.UserId, row.Name,
+                .Where(x => x.UserId == userId.Value).Select(x => x.Role).ToListAsync(cancellationToken);
+        return new ApiKeyIdentity(row.Id, userId, row.Name,
             ApiKeyDefaults.ParseScopes(row.ScopesJson), ApiKeyDefaults.ParseRoles(roleValues));
     }
 }

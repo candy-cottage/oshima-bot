@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using OshimaBot.Commands;
 using OshimaBot.Data;
 using OshimaBot.Game.Services;
+using OshimaBot.Gameplay;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
 using OshimaBot.Security;
@@ -72,11 +73,13 @@ builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();
 builder.Services.AddSingleton<IUserSessionService, UserSessionService>();
+builder.Services.AddSingleton<IPlayerService, PlayerService>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<FunGameQueryService>(),
     sp.GetRequiredService<FunGameSimulationService>(),
     sp.GetRequiredService<IBindCodeService>(),
     sp.GetRequiredService<IUserSessionService>(),
+    sp.GetRequiredService<IPlayerService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

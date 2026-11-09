@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using OshimaBot.Gameplay;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
 using OshimaBot.Security;
@@ -21,6 +22,7 @@ public sealed record CommandDependencies(
     FunGameSimulationService Simulations,
     IBindCodeService BindCodes,
     IUserSessionService Sessions,
+    IPlayerService Players,
     ILogger Logger);
 
 public interface ICommand
