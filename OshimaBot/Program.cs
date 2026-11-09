@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
 using OshimaBot.Game.Services;
+using OshimaBot.Messaging;
 using OshimaBot.Models;
 using OshimaBot.Security;
 using OshimaBot.Services;
@@ -56,6 +57,7 @@ builder.Services.AddHttpClient(QQBotService.HttpClientName, client =>
 builder.Services.AddSingleton<IQQBotService, QQBotService>();
 builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
+builder.Services.AddScoped<MessageSender>();
 builder.Services.AddScoped<RainBotService>();
 builder.Services.AddSingleton<BotMessageQueue>();
 builder.Services.AddHostedService<BotMessageBackgroundService>();

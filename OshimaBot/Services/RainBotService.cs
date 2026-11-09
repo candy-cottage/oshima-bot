@@ -1,5 +1,6 @@
 using System.Text;
 using OshimaBot.Game.Services;
+using OshimaBot.Messaging;
 using OshimaBot.Models;
 using FunGame.Core.Library.Constant;
 
@@ -8,7 +9,7 @@ namespace OshimaBot.Services
     public sealed class RainBotService(
         FunGameQueryService queries,
         FunGameSimulationService simulations,
-        IQQBotService qqBot,
+        MessageSender messageSender,
         ILogger<RainBotService> logger)
     {
         public async Task<bool> Handler(IBotMessage message, OtherData data, CancellationToken cancellationToken = default)
@@ -105,32 +106,8 @@ namespace OshimaBot.Services
             return MergeToMarkdown($"模拟结果如下（种子：{result.Seed}）：", result.Messages);
         }
 
-        private async Task SendAsync(IBotMessage message, BotReply reply, CancellationToken cancellationToken)
-        {
-            if (message is ThirdPartyMessage thirdParty)
-            {
-                thirdParty.Result = reply.Markdown?.Content ?? reply.Text;
-                thirdParty.IsCompleted = true;
-                return;
-            }
-
-            string? msgId = message.SendProactive ? null : message.Id;
-            if (reply.Markdown is not null && !string.IsNullOrWhiteSpace(reply.Markdown.Content))
-            {
-                if (message.IsGroup)
-                    await qqBot.SendGroupMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, 1, cancellationToken);
-                else
-                    await qqBot.SendC2CMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, 1, cancellationToken);
-            }
-            else if (!string.IsNullOrWhiteSpace(reply.Text))
-            {
-                string content = message.IsGroup ? "\r\n" + reply.Text.Trim() : reply.Text.Trim();
-                if (message.IsGroup)
-                    await qqBot.SendGroupMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: 1, cancellationToken: cancellationToken);
-                else
-                    await qqBot.SendC2CMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: 1, cancellationToken: cancellationToken);
-            }
-        }
+        private Task SendAsync(IBotMessage message, BotReply reply, CancellationToken cancellationToken)
+            => messageSender.SendAsync(message, reply, cancellationToken);
 
         public BotReply MergeToMarkdown(string subtitle, IReadOnlyCollection<string> messages)
         {

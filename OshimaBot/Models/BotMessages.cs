@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OshimaBot.Messaging;
 
 namespace OshimaBot.Models
 {
@@ -181,8 +182,13 @@ namespace OshimaBot.Models
         [JsonPropertyName("id")] public string Id { get; set; } = Guid.NewGuid().ToString();
         [JsonPropertyName("render_data")] public KeyboardRenderData RenderData { get; set; } = new();
         [JsonPropertyName("action")] public KeyboardAction Action { get; set; } = new();
+
+        [JsonPropertyName("group_id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? GroupId { get; set; }
     }
 
+    /// <summary>style：0 灰色线框 / 1 蓝色线框 / 3 白底红字 / 4 蓝底白字；label 最多 10 字符。</summary>
     public sealed class KeyboardRenderData
     {
         [JsonPropertyName("label")] public string Label { get; set; } = "";
@@ -192,15 +198,42 @@ namespace OshimaBot.Models
 
     public sealed class KeyboardAction
     {
+        /// <summary>0 跳转 / 1 回调（触发 INTERACTION_CREATE，必须回执） / 2 指令。</summary>
         [JsonPropertyName("type")] public int Type { get; set; } = 2;
         [JsonPropertyName("permission")] public KeyboardPermission Permission { get; set; } = new();
         [JsonPropertyName("data")] public string Data { get; set; } = "";
-        [JsonPropertyName("enter")] public bool? Enter { get; set; } = true;
-        [JsonPropertyName("reply")] public bool? Reply { get; set; }
+
+        [JsonPropertyName("enter")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? Enter { get; set; } = true;
+
+        [JsonPropertyName("reply")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? Reply { get; set; }
+
+        [JsonPropertyName("anchor")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Anchor { get; set; }
+
+        [JsonPropertyName("modal")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public KeyboardModal? Modal { get; set; }
+
+        /// <summary>官方 msg-btn 页列为必填：客户端不支持该 action 时的 toast 文案。</summary>
+        [JsonPropertyName("unsupport_tips")]
+        public string UnsupportTips { get; set; } = QQCmdTag.DefaultUnsupportedTips;
+    }
+
+    public sealed class KeyboardModal
+    {
+        [JsonPropertyName("content")] public string Content { get; set; } = "";
+        [JsonPropertyName("confirm_text")] public string ConfirmText { get; set; } = "确认";
+        [JsonPropertyName("cancel_text")] public string CancelText { get; set; } = "取消";
     }
 
     public sealed class KeyboardPermission
     {
+        /// <summary>0 指定用户 / 1 仅管理者 / 2 所有人 / 3 指定身份组（仅频道）。</summary>
         [JsonPropertyName("type")] public int Type { get; set; } = 2;
         [JsonPropertyName("specify_user_ids")] public List<string> SpecifyUserIds { get; set; } = [];
     }
