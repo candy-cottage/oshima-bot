@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -31,6 +32,7 @@ builder.Services.AddOptions<QQBotOptions>()
 builder.Services.AddOptions<ServerOptions>()
     .Bind(builder.Configuration.GetSection(ServerOptions.SectionName))
     .Validate(options => options.MaximumRespawnTimes is >= 0 and <= 100, "最大复活次数必须在 0 到 100 之间。")
+    .Validate(options => options.BindCodeTtlSeconds is >= 30 and <= 3600, "绑定码有效期必须在 30 到 3600 秒之间。")
     .ValidateOnStart();
 builder.Services.AddOptions<DatabaseOptions>()
     .Bind(builder.Configuration.GetSection(DatabaseOptions.SectionName))
@@ -38,6 +40,11 @@ builder.Services.AddOptions<DatabaseOptions>()
     .ValidateOnStart();
 
 builder.Services.AddSingleton<WebhookSignatureVerifier>();
+builder.Services.AddAuthentication(ApiKeyDefaults.Scheme)
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyDefaults.Scheme, null);
+builder.Services.AddAuthorization(options => options.AddPolicy(ApiKeyDefaults.Policy, policy => policy
+    .AddAuthenticationSchemes(ApiKeyDefaults.Scheme)
+    .RequireAuthenticatedUser()));
 
 builder.Services.AddDbContext<BotDbContext>(options =>
 {
@@ -67,6 +74,9 @@ builder.Services.AddSingleton<IBotMessageSink>(sp => sp.GetRequiredService<BotMe
 builder.Services.AddSingleton<IEventDeduplicationStore, EventDeduplicationStore>();
 builder.Services.AddSingleton<IInteractionAckService, InteractionAckService>();
 builder.Services.AddSingleton<IQQEventDispatcher, QQEventDispatcher>();
+builder.Services.AddSingleton<ApiKeyAuthenticator>();
+builder.Services.AddSingleton<IUserDirectory, UserDirectory>();
+builder.Services.AddSingleton<IBindCodeService, BindCodeService>();
 builder.Services.AddSingleton<IGatewayApiClient, GatewayApiClient>();
 builder.Services.AddSingleton<IGatewaySessionStore, GatewaySessionStore>();
 builder.Services.AddSingleton<IGatewayStatus, GatewayStatus>();
@@ -80,6 +90,9 @@ app.UseExceptionHandler();
 
 // 仅当 QQBot:EnableWebhook=true 时对 POST /QQBot 校验 Ed25519 签名。
 app.UseMiddleware<WebhookSignatureMiddleware>();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {

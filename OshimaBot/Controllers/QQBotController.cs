@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -12,7 +13,8 @@ namespace OshimaBot.Controllers
     public sealed class QQBotController(
         IOptions<QQBotOptions> options,
         ILogger<QQBotController> logger,
-        IQQEventDispatcher dispatcher) : ControllerBase
+        IQQEventDispatcher dispatcher,
+        IBindCodeService bindCodes) : ControllerBase
     {
         private readonly QQBotOptions _options = options.Value;
 
@@ -85,9 +87,41 @@ namespace OshimaBot.Controllers
         {
             if (message is null) return Ok("");
 
+            // 第三方消息自报的 openid 只用于回显，身份一律以 ApiKey 关联的 ClaimsPrincipal 为准。
+            message.FunGameUID = CurrentUserId();
+            message.Principal = HttpContext.User;
             OtherData data = new() { RequestUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}" };
             bool handled = await rainBot.Handler(message, data, cancellationToken);
             return Ok(!handled || message.IsCompleted ? message.Result : "");
+        }
+
+        private long CurrentUserId()
+            => long.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out long userId) ? userId : 0;
+
+        [RequireApiKey]
+        [HttpPost("bind")]
+        public async Task<IActionResult> Bind([FromBody] BindRequest? request, CancellationToken cancellationToken)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.OpenId))
+            {
+                return BadRequest(new { error = "需要 code 与 openId。" });
+            }
+
+            ExternalIdentity identity = new(
+                string.IsNullOrWhiteSpace(request.Provider) ? "qq" : request.Provider.Trim(),
+                request.OpenId.Trim(),
+                string.IsNullOrWhiteSpace(request.Scene) ? "c2c" : request.Scene.Trim());
+            BindRedeemResult result = await bindCodes.RedeemAsync(request.Code.Trim(), identity, cancellationToken);
+            logger.LogInformation("绑定码兑换：Status={Status}, UserId={UserId}, Provider={Provider}",
+                result.Status, result.UserId, identity.Provider);
+
+            return result.Status switch
+            {
+                BindRedeemStatus.Success => Ok(new { bound = true, userId = result.UserId }),
+                BindRedeemStatus.Conflict => Conflict(new { error = result.Reason }),
+                BindRedeemStatus.InvalidUser => StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = result.Reason }),
+                _ => BadRequest(new { error = result.Reason })
+            };
         }
 
         [RequireApiKey]
@@ -107,7 +141,9 @@ namespace OshimaBot.Controllers
                 OpenId = openID,
                 Detail = msg,
                 Id = openID,
-                Timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                Timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                FunGameUID = CurrentUserId(),
+                Principal = HttpContext.User
             };
             OtherData data = new() { RequestUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}" };
             bool handled = await rainBot.Handler(message, data, cancellationToken);

@@ -85,7 +85,14 @@ namespace OshimaBot.Models
     {
         public const string SectionName = "Server";
 
+        /// <summary>仅作首次启动引导密钥：启动时把其 SHA-256 写入 api_keys，认证阶段不再读取明文。</summary>
         public string ApiKey { get; set; } = "";
         public int MaximumRespawnTimes { get; set; } = 10;
+
+        /// <summary>超管白名单 QQ OpenID，与 user_roles 双轨；数据库清空后仍可恢复管理权限。</summary>
+        public List<string> SuperAdminOpenIds { get; set; } = [];
+
+        /// <summary>一次性绑定码有效期（秒）。</summary>
+        public int BindCodeTtlSeconds { get; set; } = 300;
     }
 }

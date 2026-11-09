@@ -1,51 +1,18 @@
-using System.Security.Cryptography;
-using System.Text;
-using OshimaBot.Models;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authorization;
 
 namespace OshimaBot.Security
 {
+    /// <summary>
+    /// 旧版直接比对全局明文 Server:ApiKey；S6 起改为标准 AuthenticationScheme + Policy，
+    /// 由 ApiKeyAuthenticationHandler 查库校验哈希，支持吊销、过期与分权。
+    /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
-    public sealed class RequireApiKeyAttribute : Attribute, IAuthorizationFilter
+    public sealed class RequireApiKeyAttribute : AuthorizeAttribute
     {
-        public void OnAuthorization(AuthorizationFilterContext context)
+        public RequireApiKeyAttribute()
         {
-            ServerOptions options = context.HttpContext.RequestServices
-                .GetRequiredService<IOptions<ServerOptions>>().Value;
-            if (string.IsNullOrWhiteSpace(options.ApiKey))
-            {
-                context.Result = new ObjectResult(new ProblemDetails
-                {
-                    Title = "第三方接口尚未配置 API Key。",
-                    Status = StatusCodes.Status503ServiceUnavailable
-                })
-                {
-                    StatusCode = StatusCodes.Status503ServiceUnavailable
-                };
-                return;
-            }
-
-            string provided = context.HttpContext.Request.Headers["X-API-Key"].ToString();
-            if (string.IsNullOrWhiteSpace(provided))
-            {
-                string authorization = context.HttpContext.Request.Headers.Authorization.ToString();
-                if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                {
-                    provided = authorization[7..].Trim();
-                }
-            }
-
-            byte[] expectedBytes = Encoding.UTF8.GetBytes(options.ApiKey);
-            byte[] providedBytes = Encoding.UTF8.GetBytes(provided);
-            if (providedBytes.Length == 0
-                || providedBytes.Length != expectedBytes.Length
-                || !CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
-            {
-                context.HttpContext.Response.Headers.WWWAuthenticate = "Bearer";
-                context.Result = new UnauthorizedResult();
-            }
+            AuthenticationSchemes = ApiKeyDefaults.Scheme;
+            Policy = ApiKeyDefaults.Policy;
         }
     }
 }

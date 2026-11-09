@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
+using OshimaBot.Security;
 
 namespace OshimaBot.Services;
 
@@ -47,6 +48,7 @@ public sealed class QQEventDispatcher(
     IEventDeduplicationStore deduplication,
     IInteractionAckService interactionAck,
     IBotMessageSink sink,
+    IUserDirectory userDirectory,
     ILogger<QQEventDispatcher> logger) : IQQEventDispatcher
 {
     private const string InteractionPrefix = "INTERACTION_CREATE:";
@@ -98,6 +100,7 @@ public sealed class QQEventDispatcher(
                 ? payload.Id
                 : null;
 
+            await AttachIdentityAsync(message, eventKey, cancellationToken);
             await sink.QueueAsync(message, cancellationToken);
             await deduplication.MarkProcessedAsync(eventKey, 0, cancellationToken);
             logger.LogInformation("已接收 QQ {EventType} 事件：Source={Source}, EventId={EventId}, MessageId={MessageId}",
@@ -114,6 +117,25 @@ public sealed class QQEventDispatcher(
             await deduplication.ForgetAsync(eventKey, 0, CancellationToken.None);
             logger.LogError(exception, "QQ 事件分发失败：Source={Source}, EventId={EventId}", source, eventKey);
             return EventDispatchResult.Failed("事件分发失败。");
+        }
+    }
+
+    private async Task AttachIdentityAsync(IBotMessage message, string eventKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(message.AuthorOpenId)) return;
+        ExternalIdentity identity = ExternalIdentity.Qq(message.AuthorOpenId, message.IsGroup ? "group" : "c2c");
+        try
+        {
+            BotUserPrincipal principal = await userDirectory.ResolveAsync(identity, cancellationToken);
+            message.FunGameUID = principal.UserId;
+            message.Principal = principal.ToClaimsPrincipal();
+            logger.LogDebug("QQ 身份解析完成：EventId={EventId}, UserId={UserId}, IsNew={IsNew}",
+                eventKey, principal.UserId, principal.IsNew);
+        }
+        catch (Exception exception)
+        {
+            // 用户库暂不可用时仍允许查询类指令工作；S7 起需要身份的指令再单独拦截。
+            logger.LogWarning(exception, "QQ 用户身份解析失败：EventId={EventId}，按未认证消息继续投递。", eventKey);
         }
     }
 

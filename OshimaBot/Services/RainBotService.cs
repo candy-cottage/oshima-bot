@@ -2,6 +2,7 @@ using System.Text;
 using OshimaBot.Game.Services;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
+using OshimaBot.Security;
 using FunGame.Core.Library.Constant;
 
 namespace OshimaBot.Services
@@ -10,6 +11,7 @@ namespace OshimaBot.Services
         FunGameQueryService queries,
         FunGameSimulationService simulations,
         MessageSender messageSender,
+        IBindCodeService bindCodes,
         ILogger<RainBotService> logger)
     {
         public async Task<bool> Handler(IBotMessage message, OtherData data, CancellationToken cancellationToken = default)
@@ -35,7 +37,16 @@ namespace OshimaBot.Services
             if (command == "帮助") return BotReply.FromMarkdown(CreateHelp());
             if (command is "战斗帮助" or "角色帮助" or "物品帮助") return BotReply.FromMarkdown(CreateBattleHelp());
             if (command == "重置状态") return "当前版本采用无状态指令路由，无需重置指令状态。";
-            if (command == "获取接入码" && !message.IsGroup) return $"你的接入码为 {message.AuthorOpenId}，请妥善保存！";
+            // 旧版直接回显 OpenID 作为「接入码」已停用：改为 6 位一次性绑定码。
+            if ((command is "获取接入码" or "绑定" or "/绑定") && !message.IsGroup)
+            {
+                if (message.FunGameUID <= 0)
+                {
+                    return "身份尚未就绪，请稍后重试或换一条消息触发注册。";
+                }
+                string code = await bindCodes.IssueAsync(message.FunGameUID, "qq_bind", cancellationToken);
+                return $"你的绑定码为 {code}，{bindCodes.TtlSeconds / 60} 分钟内有效且只能使用一次。请在第三方端凭码绑定，切勿公开；旧版直接回显 OpenID 的方式已停用。";
+            }
             if (command == "查询服务器启动时间") return $"OshimaBot 启动时间（UTC）：{FunGameRuntime.StartedAt:yyyy-MM-dd HH:mm:ss}";
 
             if (command == "预览魔法卡") return queries.GenerateMagicCard();

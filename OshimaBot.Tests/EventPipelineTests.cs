@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OshimaBot.Data;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
+using OshimaBot.Security;
 using OshimaBot.Services;
 using Xunit;
 
@@ -30,7 +32,7 @@ public sealed class EventPipelineTests
 
     private static QQEventDispatcher CreateDispatcher(
         FakeDedup dedup, FakeAck ack, FakeSink sink) => new(
-            dedup, ack, sink, NullLogger<QQEventDispatcher>.Instance);
+            dedup, ack, sink, new FakeUserDirectory(), NullLogger<QQEventDispatcher>.Instance);
 
     [Fact]
     public async Task DedupStore_SecondMarkIsRejected()
@@ -75,6 +77,24 @@ public sealed class EventPipelineTests
         Assert.Null(message.EventId);
         Assert.Empty(ack.InteractionIds);
         Assert.Equal(1, dedup.MarkedCount);
+    }
+
+    [Fact]
+    public async Task Dispatcher_AttachesResolvedIdentityBeforeQueue()
+    {
+        FakeDedup dedup = new();
+        FakeSink sink = new();
+        FakeUserDirectory users = new();
+        QQEventDispatcher dispatcher = new(dedup, new FakeAck(), sink, users, NullLogger<QQEventDispatcher>.Instance);
+
+        EventDispatchResult result = await dispatcher.DispatchAsync(Parse(C2CJson), QQEventSource.WebSocket);
+
+        Assert.Equal(EventDispatchStatus.Accepted, result.Status);
+        IBotMessage message = Assert.Single(sink.Messages);
+        Assert.Equal(42, message.FunGameUID);
+        Assert.NotNull(message.Principal);
+        Assert.Equal("42", message.Principal!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        Assert.Equal(1, users.Calls);
     }
 
     [Fact]
@@ -262,6 +282,20 @@ public sealed class EventPipelineTests
             InteractionIds.Add(interactionId);
             return Task.FromResult(true);
         }
+    }
+
+    private sealed class FakeUserDirectory : IUserDirectory
+    {
+        public int Calls { get; private set; }
+
+        public Task<BotUserPrincipal> ResolveAsync(ExternalIdentity identity, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new BotUserPrincipal(42, "U000042", "", [BotRole.Player], false));
+        }
+
+        public Task<IdentityLinkStatus> LinkAsync(long userId, ExternalIdentity identity, CancellationToken cancellationToken = default)
+            => Task.FromResult(IdentityLinkStatus.Linked);
     }
 
     private sealed class FakeSink : IBotMessageSink

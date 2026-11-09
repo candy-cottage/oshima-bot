@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OshimaBot.Messaging;
@@ -44,6 +45,9 @@ namespace OshimaBot.Models
 
         /// <summary>互动事件的被动回复使用 event_id（与 msg_id 互斥）；消息事件为 null。</summary>
         string? EventId { get; set; }
+
+        /// <summary>S6 起由事件管线注入；第三方接口则由 ApiKey ClaimsPrincipal 注入。</summary>
+        ClaimsPrincipal? Principal { get; set; }
     }
 
     public sealed class ThirdPartyMessage : IBotMessage
@@ -58,6 +62,7 @@ namespace OshimaBot.Models
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
         [JsonIgnore] public string? EventId { get; set; }
+        [JsonIgnore] public ClaimsPrincipal? Principal { get; set; }
         [JsonIgnore] public bool IsCompleted { get; set; }
         [JsonIgnore] public string Result { get; set; } = "";
     }
@@ -71,6 +76,7 @@ namespace OshimaBot.Models
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
         [JsonIgnore] public string? EventId { get; set; }
+        [JsonIgnore] public ClaimsPrincipal? Principal { get; set; }
         public string Detail { get => Content; set => Content = value; }
         public string OpenId => Author.UserOpenId;
         public string AuthorOpenId => Author.UserOpenId;
@@ -87,6 +93,7 @@ namespace OshimaBot.Models
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
         [JsonIgnore] public string? EventId { get; set; }
+        [JsonIgnore] public ClaimsPrincipal? Principal { get; set; }
         public string Detail { get => Content; set => Content = value; }
         public string OpenId => GroupOpenId;
         public string AuthorOpenId => Author.MemberOpenId;
@@ -104,6 +111,7 @@ namespace OshimaBot.Models
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
         [JsonIgnore] public string? EventId { get; set; }
+        [JsonIgnore] public ClaimsPrincipal? Principal { get; set; }
         public string Detail { get => Data.Resolved?.ButtonData ?? ""; set { } }
         public string OpenId => IsGroup ? GroupOpenId : UserOpenId;
         public string AuthorOpenId => UserOpenId;
