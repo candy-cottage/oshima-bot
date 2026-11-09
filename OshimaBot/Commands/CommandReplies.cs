@@ -1,4 +1,5 @@
 using System.Text;
+using OshimaBot.Gameplay;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
 
@@ -102,6 +103,48 @@ public static class CommandReplies
             keyboard = new KeyboardBuilder().AddPagination(command, current, total).Build();
         }
         return Compose(title, pageStatus, lines, actions, keyboard);
+    }
+
+    /// <summary>玩法仓储结果统一渲染：成功走 4 段式，失败走错误三段式。</summary>
+    public static BotReply FromResult(ActionResult result)
+        => result.Ok
+            ? Compose(result.Title, result.Status, result.Lines, result.Actions)
+            : Error(result.Title, result.Status,
+                result.Lines.FirstOrDefault() ?? "稍后重试，或输入 /帮助 查看用法",
+                result.Actions.FirstOrDefault());
+
+    /// <summary>Markdown 列表分页（不包代码块，保留 - / @编号 的排版），附翻页指令与按钮。</summary>
+    public static BotReply ListPage(
+        string title, string status, IReadOnlyList<string> lines, int page, string command,
+        IEnumerable<string>? extraActions = null)
+    {
+        List<List<string>> chunks = [];
+        List<string> current = [];
+        int length = 0;
+        foreach (string line in lines)
+        {
+            if (current.Count > 0 && length + line.Length + 1 > QQMarkdown.DefaultMaxLength - 400)
+            {
+                chunks.Add(current);
+                current = [];
+                length = 0;
+            }
+            current.Add(line);
+            length += line.Length + 1;
+        }
+        if (current.Count > 0) chunks.Add(current);
+
+        int total = Math.Max(1, chunks.Count);
+        int currentPage = Math.Clamp(page, 1, total);
+        List<string> actions = [];
+        if (currentPage > 1) actions.Add($"{command} p{currentPage - 1}");
+        if (currentPage < total) actions.Add($"{command} p{currentPage + 1}");
+        if (extraActions is not null) actions.AddRange(extraActions);
+        KeyboardMessage? keyboard = total > 1
+            ? new KeyboardBuilder().AddPagination(command, currentPage, total).Build()
+            : null;
+        return Compose(title, $"{status} · 第 {currentPage}/{total} 页",
+            chunks.Count == 0 ? ["- （空）"] : chunks[currentPage - 1], actions, keyboard);
     }
 
     /// <summary>帮助完全由注册表生成，保证「文档与实现同源」。</summary>

@@ -13,6 +13,7 @@ public static class CommandGroups
     public const string Query = "查询";
     public const string Stats = "统计";
     public const string Simulation = "战斗模拟";
+    public const string Player = "旅人存档";
     public const string Legacy = "待迁移";
 }
 
