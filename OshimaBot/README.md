@@ -39,6 +39,28 @@ dotnet tool install dotnet-ef --version 10.0.11 --tool-path .tools
 ./.tools/dotnet-ef.exe database update --project OshimaBot/OshimaBot.csproj
 ```
 
+## Linux 部署包（Ubuntu x64）
+
+在**仓库根目录**运行 `publish-linux.bat`，一键生成框架依赖版（`--self-contained false`，**不含 .NET runtime**）：
+
+| 产物 | 说明 |
+|---|---|
+| `publish\linux-x64-fd\` | 可直接上传的部署目录，含 `OshimaBot.dll`、依赖库、`appsettings*.json` 与英文 `DEPLOY.txt` |
+| `publish\OshimaBot-linux-x64-fd.zip` | 同内容压缩包，解压即用 |
+
+脚本会先清理旧产物、校验仓库外的 `FunGame.Core` 引用，先尝试 `--no-restore` 发布、失败再回退到带还原的发布；完成后**剔除本机 `*.db*` / `*.pfx` / `appsettings.*.local.json` / `rounds_archive.zip`**，绝不把本地存档或凭据带进部署包。`publish/` 已被 gitignore。
+
+目标机（Ubuntu 22.04 / 24.04 x64）需预装 **.NET 10 ASP.NET Core Runtime**，然后：
+
+```bash
+sudo unzip -o OshimaBot-linux-x64-fd.zip -d /opt/oshimobot
+cd /opt/oshimobot
+dotnet OshimaBot.dll --urls http://127.0.0.1:5090
+curl http://127.0.0.1:5090/health
+```
+
+凭据用环境变量（`QQBot__Enabled` / `QQBot__AppId` / `QQBot__Secret` / `Server__ApiKey`）注入，不要写进 `appsettings.json`；SQLite 数据库首次启动自动创建并迁移。systemd unit 模板、备份与反向代理说明见包内 `DEPLOY.txt`。
+
 ## 配置
 
 **不要把真实凭据提交进仓库**，用 `dotnet user-secrets` 或环境变量：

@@ -28,3 +28,6 @@ rounds_archive.zip
 *.db-wal
 *.db-shm
 TestResults/
+
+# Ubuntu 部署包产物（publish-linux.bat 生成）
+/publish/
