@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OshimaBot.Commands;
 using OshimaBot.Data;
 using OshimaBot.Game.Services;
 using OshimaBot.Messaging;
@@ -68,6 +69,15 @@ builder.Services.AddSingleton<IQQBotService, QQBotService>();
 builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();
+builder.Services.AddSingleton<IUserSessionService, UserSessionService>();
+builder.Services.AddSingleton(sp => new CommandDependencies(
+    sp.GetRequiredService<FunGameQueryService>(),
+    sp.GetRequiredService<FunGameSimulationService>(),
+    sp.GetRequiredService<IBindCodeService>(),
+    sp.GetRequiredService<IUserSessionService>(),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
+builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
+builder.Services.AddSingleton<CommandRouter>();
 builder.Services.AddScoped<RainBotService>();
 builder.Services.AddSingleton<BotMessageQueue>();
 builder.Services.AddSingleton<IBotMessageSink>(sp => sp.GetRequiredService<BotMessageQueue>());
