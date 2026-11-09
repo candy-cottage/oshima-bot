@@ -60,6 +60,11 @@ builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();
 builder.Services.AddScoped<RainBotService>();
 builder.Services.AddSingleton<BotMessageQueue>();
+builder.Services.AddSingleton<IBotMessageSink>(sp => sp.GetRequiredService<BotMessageQueue>());
+builder.Services.AddSingleton<IEventDeduplicationStore, EventDeduplicationStore>();
+builder.Services.AddSingleton<IInteractionAckService, InteractionAckService>();
+builder.Services.AddSingleton<IQQEventDispatcher, QQEventDispatcher>();
+builder.Services.AddHostedService<ProcessedEventCleanupService>();
 builder.Services.AddHostedService<BotMessageBackgroundService>();
 
 WebApplication app = builder.Build();

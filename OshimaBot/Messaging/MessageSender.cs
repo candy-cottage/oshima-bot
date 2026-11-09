@@ -6,7 +6,7 @@ namespace OshimaBot.Messaging;
 
 /// <summary>
 /// 出站消息统一入口：修正旧版 msgSeq 恒为 1 的缺陷（同一 msg_id 第二次回复会触发 40054005），
-/// 按 msg_id 在被动窗口内递增序号；第三方消息则直接写回结果对象。
+/// 按 msg_id 在被动窗口内递增序号；互动事件改用互斥的 event_id；第三方消息直接写回结果对象。
 /// </summary>
 public sealed class MessageSender(IQQBotService qqBot, IMemoryCache cache, ILogger<MessageSender> logger)
 {
@@ -22,18 +22,20 @@ public sealed class MessageSender(IQQBotService qqBot, IMemoryCache cache, ILogg
             return;
         }
 
-        string? msgId = message.SendProactive ? null : message.Id;
-        int? msgSeq = string.IsNullOrWhiteSpace(msgId) ? null : NextSeq(msgId);
+        // event_id（互动事件）与 msg_id（消息事件）互斥；主动消息两者都不带。
+        string? eventId = message.SendProactive ? null : message.EventId;
+        string? msgId = !string.IsNullOrWhiteSpace(eventId) || message.SendProactive ? null : message.Id;
+        int? msgSeq = string.IsNullOrWhiteSpace(msgId) ? null : NextSeq(msgId!);
 
         if (reply.Markdown is not null && !string.IsNullOrWhiteSpace(reply.Markdown.Content))
         {
             if (message.IsGroup)
             {
-                await qqBot.SendGroupMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, msgSeq, cancellationToken);
+                await qqBot.SendGroupMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, msgSeq, cancellationToken, eventId);
             }
             else
             {
-                await qqBot.SendC2CMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, msgSeq, cancellationToken);
+                await qqBot.SendC2CMarkdownAsync(message.OpenId, reply.Markdown, reply.Keyboard, msgId, msgSeq, cancellationToken, eventId);
             }
             return;
         }
@@ -43,11 +45,13 @@ public sealed class MessageSender(IQQBotService qqBot, IMemoryCache cache, ILogg
         string content = message.IsGroup ? "\r\n" + reply.Text.Trim() : reply.Text.Trim();
         if (message.IsGroup)
         {
-            await qqBot.SendGroupMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: msgSeq, cancellationToken: cancellationToken);
+            await qqBot.SendGroupMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: msgSeq,
+                cancellationToken: cancellationToken, eventId: eventId);
         }
         else
         {
-            await qqBot.SendC2CMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: msgSeq, cancellationToken: cancellationToken);
+            await qqBot.SendC2CMessageAsync(message.OpenId, content, msgId: msgId, msgSeq: msgSeq,
+                cancellationToken: cancellationToken, eventId: eventId);
         }
     }
 

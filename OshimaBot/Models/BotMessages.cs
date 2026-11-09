@@ -41,6 +41,9 @@ namespace OshimaBot.Models
         string AuthorOpenId { get; }
         long FunGameUID { get; set; }
         bool SendProactive { get; set; }
+
+        /// <summary>互动事件的被动回复使用 event_id（与 msg_id 互斥）；消息事件为 null。</summary>
+        string? EventId { get; set; }
     }
 
     public sealed class ThirdPartyMessage : IBotMessage
@@ -54,6 +57,7 @@ namespace OshimaBot.Models
         [JsonPropertyName("authoropenid")] public string AuthorOpenId { get; set; } = "";
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
+        [JsonIgnore] public string? EventId { get; set; }
         [JsonIgnore] public bool IsCompleted { get; set; }
         [JsonIgnore] public string Result { get; set; } = "";
     }
@@ -66,6 +70,7 @@ namespace OshimaBot.Models
         [JsonPropertyName("timestamp")] public string Timestamp { get; set; } = "";
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
+        [JsonIgnore] public string? EventId { get; set; }
         public string Detail { get => Content; set => Content = value; }
         public string OpenId => Author.UserOpenId;
         public string AuthorOpenId => Author.UserOpenId;
@@ -81,6 +86,7 @@ namespace OshimaBot.Models
         [JsonPropertyName("group_openid")] public string GroupOpenId { get; set; } = "";
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
+        [JsonIgnore] public string? EventId { get; set; }
         public string Detail { get => Content; set => Content = value; }
         public string OpenId => GroupOpenId;
         public string AuthorOpenId => Author.MemberOpenId;
@@ -97,6 +103,7 @@ namespace OshimaBot.Models
         [JsonPropertyName("data")] public InteractionData Data { get; set; } = new();
         [JsonIgnore] public long FunGameUID { get; set; }
         [JsonIgnore] public bool SendProactive { get; set; }
+        [JsonIgnore] public string? EventId { get; set; }
         public string Detail { get => Data.Resolved?.ButtonData ?? ""; set { } }
         public string OpenId => IsGroup ? GroupOpenId : UserOpenId;
         public string AuthorOpenId => UserOpenId;

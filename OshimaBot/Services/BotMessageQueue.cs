@@ -3,7 +3,7 @@ using OshimaBot.Models;
 
 namespace OshimaBot.Services
 {
-    public sealed class BotMessageQueue
+    public sealed class BotMessageQueue : IBotMessageSink
     {
         private readonly Channel<IBotMessage> _channel = Channel.CreateBounded<IBotMessage>(new BoundedChannelOptions(1_000)
         {

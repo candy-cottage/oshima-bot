@@ -91,7 +91,7 @@ public sealed class MessagingTests
         keyboard.AppendButtons(3, buttons);
         Assert.Equal(3, keyboard.Content!.Rows.Count);
         Assert.Equal(3, keyboard.Content.Rows[0].Buttons.Count);
-        Assert.Equal(1, keyboard.Content.Rows[2].Buttons.Count);
+        Assert.Single(keyboard.Content.Rows[2].Buttons);
     }
 
     [Fact]

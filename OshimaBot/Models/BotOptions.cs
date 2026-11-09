@@ -67,6 +67,9 @@ namespace OshimaBot.Models
 
         /// <summary>启动时自动应用 EF Core Migration。</summary>
         public bool ApplyMigrationsOnStartup { get; set; } = true;
+
+        /// <summary>processed_events 幂等记录保留时长（小时），过期由后台任务每小时清理。</summary>
+        public int ProcessedEventRetentionHours { get; set; } = 24;
     }
 
     public sealed class ServerOptions

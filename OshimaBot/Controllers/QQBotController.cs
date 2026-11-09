@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using OshimaBot.Models;
 using OshimaBot.Security;
@@ -13,8 +12,7 @@ namespace OshimaBot.Controllers
     public sealed class QQBotController(
         IOptions<QQBotOptions> options,
         ILogger<QQBotController> logger,
-        BotMessageQueue queue,
-        IMemoryCache memoryCache) : ControllerBase
+        IQQEventDispatcher dispatcher) : ControllerBase
     {
         private readonly QQBotOptions _options = options.Value;
 
@@ -68,39 +66,14 @@ namespace OshimaBot.Controllers
 
         private async Task<IActionResult> HandleEventAsync(Payload payload, CancellationToken cancellationToken)
         {
-            if (!string.IsNullOrWhiteSpace(payload.Id))
+            EventDispatchResult result = await dispatcher.DispatchAsync(payload, QQEventSource.Webhook, cancellationToken);
+            return result.Status switch
             {
-                string cacheKey = $"OshimaBot:QQBot:Event:{payload.Id}";
-                if (memoryCache.TryGetValue(cacheKey, out _)) return Ok();
-                memoryCache.Set(cacheKey, true, TimeSpan.FromMinutes(10));
-            }
-
-            IBotMessage? message = payload.EventType switch
-            {
-                "C2C_MESSAGE_CREATE" => payload.Data.Deserialize<C2CMessage>(),
-                "GROUP_AT_MESSAGE_CREATE" => payload.Data.Deserialize<GroupAtMessage>(),
-                "INTERACTION_CREATE" => payload.Data.Deserialize<InteractionEvent>(),
-                _ => null
+                EventDispatchStatus.Invalid => BadRequest(result.Reason),
+                // 失败时返回 5xx，让平台重推；占位记录已撤销，重推可重新处理。
+                EventDispatchStatus.Failed => StatusCode(StatusCodes.Status500InternalServerError, result.Reason),
+                _ => Ok()
             };
-
-            if (message is null)
-            {
-                if (payload.EventType is "C2C_MESSAGE_CREATE" or "GROUP_AT_MESSAGE_CREATE" or "INTERACTION_CREATE")
-                {
-                    return BadRequest("无效的消息事件数据。");
-                }
-                logger.LogDebug("忽略未定义的 QQ 事件：{EventType}", payload.EventType);
-                return Ok();
-            }
-
-            if (string.IsNullOrWhiteSpace(message.OpenId) || string.IsNullOrWhiteSpace(message.Detail))
-            {
-                return Ok();
-            }
-
-            logger.LogInformation("收到 QQ {EventType} 消息：MessageId={MessageId}", payload.EventType, message.Id);
-            await queue.QueueAsync(message, cancellationToken);
-            return Ok();
         }
 
         [RequireApiKey]

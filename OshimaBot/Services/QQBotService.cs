@@ -9,14 +9,17 @@ namespace OshimaBot.Services
 {
     public interface IQQBotService
     {
-        Task SendC2CMessageAsync(string openid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default);
-        Task SendGroupMessageAsync(string groupOpenid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default);
-        Task SendC2CMarkdownAsync(string openid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default);
-        Task SendGroupMarkdownAsync(string groupOpenid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default);
+        Task SendC2CMessageAsync(string openid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null);
+        Task SendGroupMessageAsync(string groupOpenid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null);
+        Task SendC2CMarkdownAsync(string openid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null);
+        Task SendGroupMarkdownAsync(string groupOpenid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null);
         Task<UploadMediaResult> UploadC2CMediaAsync(string openid, int fileType, string url, CancellationToken cancellationToken = default);
         Task<UploadMediaResult> UploadGroupMediaAsync(string groupOpenid, int fileType, string url, CancellationToken cancellationToken = default);
         Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default);
         Task<string> RefreshTokenAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>回应 INTERACTION_CREATE，否则客户端会一直 loading。同一 interaction_id 只能回一次。</summary>
+        Task<bool> AckInteractionAsync(string interactionId, int code = 0, CancellationToken cancellationToken = default);
     }
 
     public sealed class QQBotService(
@@ -33,30 +36,30 @@ namespace OshimaBot.Services
         private readonly HttpClient _httpClient = httpClientFactory.CreateClient(HttpClientName);
         private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
-        public Task SendC2CMessageAsync(string openid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default)
-            => SendMessageAsync($"/v2/users/{Uri.EscapeDataString(openid)}/messages", content, msgType, media, msgId, msgSeq, cancellationToken);
+        public Task SendC2CMessageAsync(string openid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null)
+            => SendMessageAsync($"/v2/users/{Uri.EscapeDataString(openid)}/messages", content, msgType, media, msgId, msgSeq, eventId, cancellationToken);
 
-        public Task SendGroupMessageAsync(string groupOpenid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default)
-            => SendMessageAsync($"/v2/groups/{Uri.EscapeDataString(groupOpenid)}/messages", content, msgType, media, msgId, msgSeq, cancellationToken);
+        public Task SendGroupMessageAsync(string groupOpenid, string content, int msgType = 0, object? media = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null)
+            => SendMessageAsync($"/v2/groups/{Uri.EscapeDataString(groupOpenid)}/messages", content, msgType, media, msgId, msgSeq, eventId, cancellationToken);
 
-        public Task SendC2CMarkdownAsync(string openid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default)
-            => SendMarkdownMessageAsync($"/v2/users/{Uri.EscapeDataString(openid)}/messages", markdown, keyboard, msgId, msgSeq, cancellationToken);
+        public Task SendC2CMarkdownAsync(string openid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null)
+            => SendMarkdownMessageAsync($"/v2/users/{Uri.EscapeDataString(openid)}/messages", markdown, keyboard, msgId, msgSeq, eventId, cancellationToken);
 
-        public Task SendGroupMarkdownAsync(string groupOpenid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default)
-            => SendMarkdownMessageAsync($"/v2/groups/{Uri.EscapeDataString(groupOpenid)}/messages", markdown, keyboard, msgId, msgSeq, cancellationToken);
+        public Task SendGroupMarkdownAsync(string groupOpenid, MarkdownMessage markdown, KeyboardMessage? keyboard = null, string? msgId = null, int? msgSeq = null, CancellationToken cancellationToken = default, string? eventId = null)
+            => SendMarkdownMessageAsync($"/v2/groups/{Uri.EscapeDataString(groupOpenid)}/messages", markdown, keyboard, msgId, msgSeq, eventId, cancellationToken);
 
-        private async Task SendMessageAsync(string path, string content, int msgType, object? media, string? msgId, int? msgSeq, CancellationToken cancellationToken)
+        private async Task SendMessageAsync(string path, string content, int msgType, object? media, string? msgId, int? msgSeq, string? eventId, CancellationToken cancellationToken)
         {
             Dictionary<string, object?> body = new()
             {
                 ["content"] = content,
                 ["msg_type"] = msgType
             };
-            AddMessageContext(body, media, msgId, msgSeq);
+            AddMessageContext(body, media, msgId, msgSeq, eventId);
             await PostAsync(path, body, cancellationToken);
         }
 
-        private async Task SendMarkdownMessageAsync(string path, MarkdownMessage markdown, KeyboardMessage? keyboard, string? msgId, int? msgSeq, CancellationToken cancellationToken)
+        private async Task SendMarkdownMessageAsync(string path, MarkdownMessage markdown, KeyboardMessage? keyboard, string? msgId, int? msgSeq, string? eventId, CancellationToken cancellationToken)
         {
             Dictionary<string, object?> body = new()
             {
@@ -64,15 +67,41 @@ namespace OshimaBot.Services
                 ["markdown"] = markdown
             };
             if (keyboard is not null) body["keyboard"] = keyboard;
-            AddMessageContext(body, null, msgId, msgSeq);
+            AddMessageContext(body, null, msgId, msgSeq, eventId);
             await PostAsync(path, body, cancellationToken);
         }
 
-        private static void AddMessageContext(Dictionary<string, object?> body, object? media, string? msgId, int? msgSeq)
+        /// <summary>event_id 与 msg_id 二选一：互动事件用 event_id，普通消息事件用 msg_id + 递增 msg_seq。</summary>
+        private static void AddMessageContext(Dictionary<string, object?> body, object? media, string? msgId, int? msgSeq, string? eventId)
         {
             if (media is not null) body["media"] = media;
+            if (!string.IsNullOrWhiteSpace(eventId))
+            {
+                body["event_id"] = eventId;
+                return;
+            }
             if (!string.IsNullOrWhiteSpace(msgId)) body["msg_id"] = msgId;
             if (msgSeq.HasValue) body["msg_seq"] = msgSeq.Value;
+        }
+
+        public async Task<bool> AckInteractionAsync(string interactionId, int code = 0, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(interactionId)) return false;
+
+            EnsureConfigured();
+            string accessToken = await GetAccessTokenAsync(cancellationToken);
+            using HttpRequestMessage request = new(HttpMethod.Put,
+                $"{_options.ResolvedApiBaseAddress}/interactions/{Uri.EscapeDataString(interactionId)}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("QQBot", accessToken);
+            request.Content = new StringContent(JsonSerializer.Serialize(new { code }, JsonOptions), Encoding.UTF8, "application/json");
+
+            using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode) return true;
+
+            string error = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning("互动事件回执失败：InteractionId={InteractionId}, Status={StatusCode}, {Response}",
+                interactionId, (int)response.StatusCode, error);
+            return false;
         }
 
         public Task<UploadMediaResult> UploadC2CMediaAsync(string openid, int fileType, string url, CancellationToken cancellationToken = default)
