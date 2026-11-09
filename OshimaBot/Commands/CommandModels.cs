@@ -14,7 +14,8 @@ public static class CommandGroups
     public const string Stats = "统计";
     public const string Simulation = "战斗模拟";
     public const string Player = "旅人存档";
-    public const string Legacy = "待迁移";
+    public const string Economy = "经济战斗";
+    public const string Legacy = "版本状态";
 }
 
 /// <summary>命令工厂所需的全部依赖，全部由 DI 显式传入，不做反射扫描。</summary>

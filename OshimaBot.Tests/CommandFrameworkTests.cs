@@ -101,7 +101,7 @@ public sealed class CommandFrameworkTests
     {
         (CommandRouter router, _, _, _) = CreateRouter();
 
-        BotReply? reply = await router.RouteAsync(Message("/玩法帮助"), new OtherData());
+        BotReply? reply = await router.RouteAsync(Message("/绑定", isGroup: true), new OtherData());
 
         Assert.NotNull(reply);
         string content = reply!.Markdown!.Content!;

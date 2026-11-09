@@ -26,7 +26,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(49, registry.All.Count);
+        Assert.Equal(66, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -93,19 +93,17 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
-    public async Task Help_LastPageContainsP1Group()
+    public async Task Help_LastPageContainsP2Group()
     {
         using GameplayCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
 
-        string content = await RouteAsync(router, "/帮助 p9");
+        string content = await RouteAsync(router, "/帮助 p11");
 
-        Assert.Contains("9/9", content);
-        bool hasP1 = content.Contains("/状态", StringComparison.Ordinal)
-                     || content.Contains("/抽卡", StringComparison.Ordinal)
-                     || content.Contains("/每日任务", StringComparison.Ordinal)
-                     || content.Contains("旅人存档", StringComparison.Ordinal);
-        Assert.True(hasP1, content);
+        Assert.Contains("11/11", content);
+        bool hasP2 = content.Contains("/排行榜", StringComparison.Ordinal)
+                     || content.Contains("经济战斗", StringComparison.Ordinal);
+        Assert.True(hasP2, content);
     }
 
     [Fact]

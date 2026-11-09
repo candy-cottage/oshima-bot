@@ -164,11 +164,10 @@ public static class GameplayRules
         ("史诗遗物匣", 500, 20)
     ];
 
-    public static string RankingBoardName(string board) => board switch
+    public static string RankingBoardName(string board) => board.ToLowerInvariant() switch
     {
-        "credits" => "金币榜",
-        "level" => "等级榜",
-        "points" => "战绩榜",
+        "level" or "等级" => "等级榜",
+        "points" or "战绩" => "战绩榜",
         _ => "金币榜"
     };
 

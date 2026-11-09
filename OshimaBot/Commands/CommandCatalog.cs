@@ -1,3 +1,4 @@
+using System.Globalization;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
@@ -25,7 +26,12 @@ public static class CommandCatalog
         "register", "status", "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "bag",
         "use", "salvage", "lock", "unlock", "equip", "unequip",
-        "characters", "set-main", "levelup", "break", "train", "train-claim", "party"
+        "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
+        // ---- P2：经济与战斗 ----
+        "shop", "buy", "market", "list-item", "delist", "market-buy",
+        "offers", "offer", "offer-accept", "offer-cancel",
+        "forge", "forge-claim", "instance", "instance-claim",
+        "duel", "boss", "rank"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -73,7 +79,8 @@ public static class CommandCatalog
             {
                 if (context.IsGroup)
                 {
-                    return CommandReplies.Error("群聊不能签发绑定码", "没有生成任何码", "请在与机器人的单聊里发送 /绑定");
+                    return CommandReplies.Error("群聊不能签发绑定码", "没有生成任何码",
+                        "请在与机器人的单聊里发送 /绑定", "/帮助");
                 }
                 if (context.UserId <= 0)
                 {
@@ -97,10 +104,15 @@ public static class CommandCatalog
 
         "legacy-help" => new DelegateCommand(
             key: "legacy-help", name: "玩法帮助", aliases: ["存档帮助", "社团帮助", "活动帮助", "商店帮助", "legacy"],
-            usage: "/玩法帮助", description: "查看尚未迁移的模块", group: CommandGroups.Legacy,
-            handler: _ => Task.FromResult(CommandReplies.Error(
-                "P2 模块尚未迁移", "商店、市场、交易、锻造、秘境与决斗暂不可用",
-                "P1 存档、角色、背包、签到、抽卡与练级已开放，输入 /状态 查看", "/状态"))),
+            usage: "/玩法帮助", description: "查看当前开放的玩法范围", group: CommandGroups.Legacy,
+            handler: _ => Task.FromResult(CommandReplies.Compose("🧭 OshimaBot 版本状态",
+                "P0 至 P2 玩法已全部开放",
+                [
+                    "- P0　角色/技能/物品查询、战斗模拟与统计排行",
+                    "- P1　存档、背包、签到、抽卡、练级、每日任务",
+                    "- P2　商店、市场、报价交易、锻造、秘境、决斗、Boss、排行榜",
+                    "- P3（社团/赛马/赛事预测）按计划不在本轮范围"
+                ], ["/帮助", "/状态", "/商店"]))),
 
         // ---- P1：旅人存档（全部由显式 switch 注册）----
         "register" => new DelegateCommand(
@@ -252,6 +264,106 @@ public static class CommandCatalog
             description: "查看或调整 3 人主力小队", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.SquadAsync(
                 context.UserId, context.FirstArgument ?? "", RefIndex(context, 1), context.CancellationToken))),
+
+        // ---- P2：经济与战斗（全部由显式 switch 注册）----
+        "shop" => new DelegateCommand(
+            key: "shop", name: "商店", aliases: ["shop"], usage: "/商店 [p2]",
+            description: "铎京补给站货架", group: CommandGroups.Economy,
+            handler: context => ShopAsync(deps, context)),
+
+        "buy" => new DelegateCommand(
+            key: "buy", name: "购买", aliases: ["buy"], usage: "/购买 @1 [x2]",
+            description: "购买商店商品（最多 10 件）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.BuyAsync(
+                context.UserId, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
+
+        "market" => new DelegateCommand(
+            key: "market", name: "市场", aliases: ["market"], usage: "/市场 [p2]",
+            description: "旅人挂单列表", group: CommandGroups.Economy,
+            handler: context => MarketAsync(deps, context)),
+
+        "list-item" => new DelegateCommand(
+            key: "list-item", name: "上架", aliases: ["list"], usage: "/上架 @1 <价格>",
+            description: "把背包物品挂到市场（收上架费）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.ListOnMarketAsync(
+                context.UserId, RefIndex(context), Price(context), context.CancellationToken))),
+
+        "delist" => new DelegateCommand(
+            key: "delist", name: "下架", aliases: ["delist"], usage: "/下架 @1",
+            description: "撤回自己的挂单", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.DelistAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "market-buy" => new DelegateCommand(
+            key: "market-buy", name: "购买市场", aliases: ["marketbuy"], usage: "/购买市场 @1",
+            description: "购买市场挂单（买卖双方各记一笔账）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.BuyMarketAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "offers" => new DelegateCommand(
+            key: "offers", name: "报价列表", aliases: ["offers"], usage: "/报价列表 [p2]",
+            description: "查看公开报价单", group: CommandGroups.Economy,
+            handler: context => OffersAsync(deps, context)),
+
+        "offer" => new DelegateCommand(
+            key: "offer", name: "报价", aliases: ["offer"], usage: "/报价 @1 <价格>",
+            description: "发布物品报价单（不收上架费）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.CreateOfferAsync(
+                context.UserId, RefIndex(context), Price(context), context.CancellationToken))),
+
+        "offer-accept" => new DelegateCommand(
+            key: "offer-accept", name: "接受报价", aliases: ["offeraccept"], usage: "/接受报价 @1",
+            description: "按报价买下物品", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.AcceptOfferAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "offer-cancel" => new DelegateCommand(
+            key: "offer-cancel", name: "撤回报价", aliases: ["offercancel"], usage: "/撤回报价 @1",
+            description: "撤回自己发布的报价单", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.CancelOfferAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "forge" => new DelegateCommand(
+            key: "forge", name: "锻造", aliases: ["forge"], usage: "/锻造 @1 [分钟]",
+            description: "消耗 2 个同类材料 + 金币开始锻造", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.ForgeAsync(
+                context.UserId, RefIndex(context),
+                Quantity(context, 1, GameplayRules.ForgeDefaultMinutes), context.CancellationToken))),
+
+        "forge-claim" => new DelegateCommand(
+            key: "forge-claim", name: "收取锻造", aliases: ["forgeclaim"], usage: "/收取锻造",
+            description: "结算已完成的锻造", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Economy.ClaimForgeAsync(context.UserId, context.CancellationToken))),
+
+        "instance" => new DelegateCommand(
+            key: "instance", name: "秘境", aliases: ["instance"], usage: "/秘境 [难度]",
+            description: "进入秘境探索（定时结算）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.InstanceAsync(
+                context.UserId, context.FirstArgument ?? "", context.CancellationToken))),
+
+        "instance-claim" => new DelegateCommand(
+            key: "instance-claim", name: "收取秘境", aliases: ["instanceclaim"], usage: "/收取秘境",
+            description: "结算秘境经验、金币与掉落", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Economy.ClaimInstanceAsync(context.UserId, context.CancellationToken))),
+
+        "duel" => new DelegateCommand(
+            key: "duel", name: "决斗", aliases: ["duel"], usage: "/决斗",
+            description: "即时决斗，胜负都累计战绩", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Economy.DuelAsync(context.UserId, context.CancellationToken))),
+
+        "boss" => new DelegateCommand(
+            key: "boss", name: "Boss", aliases: ["挑战Boss"], usage: "/Boss",
+            description: "每日一次 Boss 讨伐", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Economy.BossAsync(context.UserId, context.CancellationToken))),
+
+        "rank" => new DelegateCommand(
+            key: "rank", name: "排行榜", aliases: ["rank", "ranklist"], usage: "/排行榜 [金币|等级|战绩]",
+            description: "查看服务器排行榜", group: CommandGroups.Economy,
+            handler: context => RankAsync(deps, context)),
 
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
@@ -494,10 +606,13 @@ public static class CommandCatalog
                 "- 抽卡屋　@2　碰碰手气（/抽卡 · /十连抽卡）",
                 "- 训练场　@3　锻炼角色（/练级 @1 · /收取练级）",
                 "- 仓库　　@4　整理背包（/背包）",
+                "- 补给站　@5　/商店 · /购买 @1",
+                "- 交易摊　@6　/市场 · /上架 @1 200",
+                "- 锻造炉　@7　/锻造 @1 · /收取锻造",
                 "",
-                "商店与交易摊位还蒙着布——那是下一批工匠的活。"
+                "补给站和交易摊已经开张，铁匠的炉火也重新烧起来了。"
             ],
-            ["/签到", "/每日任务", "/抽卡", "/练级 @1 1", "/背包"]);
+            ["/签到", "/每日任务", "/商店", "/市场", "/背包"]);
     }
 
     private static async Task<BotReply> QuestsAsync(CommandDependencies deps, CommandContext context)
@@ -542,5 +657,60 @@ public static class CommandCatalog
         lines.Add("- /设主战 @编号 · /升级 @编号 · /突破 @编号 · /练级 @编号 [分钟]");
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
             "/我的角色", ["/状态", "/背包"]);
+    }
+
+    // ---- P2 指令辅助 ----
+
+    private static long Price(CommandContext context, int position = 1)
+        => position < context.Args.Count && long.TryParse(context.Args[position], out long value)
+            ? value : 0; // 0 会被仓储的价格范围校验拦下并给出三段式提示
+
+    private static async Task<BotReply> ShopAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<StoreEntry> goods = await deps.Economy.GetStoreAsync(
+            context.UserId, context.CancellationToken);
+        List<string> lines = goods.Select(good =>
+            $"- @{good.Index} {good.Name}　{good.Price} 金币　库存 {(good.Stock < 0 ? "无限" : good.Stock.ToString(CultureInfo.InvariantCulture))}").ToList();
+        lines.Add("- /购买 @编号 [x数量]　·　同名物品会自动堆叠");
+        return CommandReplies.ListPage("🏪 铎京补给站", $"{goods.Count} 种商品", lines,
+            context.Page, "/商店", ["/背包", "/状态"]);
+    }
+
+    private static async Task<BotReply> MarketAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<MarketEntry> listings = await deps.Economy.GetMarketAsync(
+            context.UserId, context.CancellationToken);
+        List<string> lines = listings.Select(listing =>
+            $"- @{listing.Index} {GameplayRules.QualityName(listing.Quality)} · {listing.ItemName}"
+            + $"　{listing.Price} 金币　卖家 {listing.SellerHandle}{(listing.IsMine ? "（我的）" : "")}").ToList();
+        if (lines.Count == 0) lines.Add("- 市场暂时空着，用 /上架 @编号 <价格> 挂出第一件物品");
+        lines.Add("- /上架 @编号 <价格> · /购买市场 @编号 · /下架 @编号");
+        return CommandReplies.ListPage("🏷️ 旅人市场", $"{listings.Count} 件在售", lines,
+            context.Page, "/市场", ["/背包", "/状态"]);
+    }
+
+    private static async Task<BotReply> OffersAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<OfferEntry> offers = await deps.Economy.GetOffersAsync(
+            context.UserId, context.CancellationToken);
+        List<string> lines = offers.Select(offer =>
+            $"- @{offer.Index} {offer.ItemName}　{offer.Price} 金币"
+            + $"　发起 {offer.SellerHandle}{(offer.IsMine ? "（我的）" : "")}").ToList();
+        if (lines.Count == 0) lines.Add("- 暂无报价单，用 /报价 @编号 <价格> 发布");
+        lines.Add("- /报价 @编号 <价格> · /接受报价 @编号 · /撤回报价 @编号");
+        return CommandReplies.ListPage("📝 公开报价", $"{offers.Count} 份报价", lines,
+            context.Page, "/报价列表", ["/市场", "/背包"]);
+    }
+
+    private static async Task<BotReply> RankAsync(CommandDependencies deps, CommandContext context)
+    {
+        string board = context.FirstArgument ?? "credits";
+        IReadOnlyList<RankEntry> ranks = await deps.Economy.GetRankingAsync(
+            board, context.CancellationToken);
+        List<string> lines = ranks.Select(rank =>
+            $"- @{rank.Index} {rank.Handle}　{rank.Value}").ToList();
+        if (lines.Count == 0) lines.Add("- 榜单还没有数据，先去 /决斗 或 /Boss 攒点战绩");
+        return CommandReplies.ListPage("🏆 排行榜", GameplayRules.RankingBoardName(board), lines,
+            context.Page, $"/排行榜 {board}", ["/决斗", "/Boss", "/状态"]);
     }
 }
