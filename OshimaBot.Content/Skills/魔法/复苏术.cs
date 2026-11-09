@@ -1,0 +1,31 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using OshimaBot.Content.Effects.SkillEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 复苏术 : Skill
+    {
+        public override long Id => (long)MagicID.复苏术;
+        public override string Name => "复苏术";
+        public override string Description => string.Join("", Effects.Select(e => e.Description));
+        public override string DispelDescription => Effects.FirstOrDefault(e => e is 弱驱散特效)?.DispelDescription ?? "";
+        public override double MPCost => Level > 0 ? 95 + (85 * (Level - 1)) : 95;
+        public override double CD => 48;
+        public override double CastTime => 6;
+        public override double HardnessTime { get; set; } = 8;
+        public override bool CanSelectSelf => true;
+        public override bool CanSelectEnemy => false;
+        public override bool CanSelectTeammate => true;
+        public override int CanSelectTargetCount => 1;
+        public override bool AllowSelectDead => true;
+        public override double MagicBottleneck => 14 + 15 * (Level - 1);
+
+        public 复苏术(Character? character = null) : base(SkillType.Magic, character)
+        {
+            SelectTargetPredicates.Add(c => c.HP >= 0 && c.HP < c.MaxHP);
+            Effects.Add(new 强驱散特效(this));
+            Effects.Add(new 百分比回复生命值(this, 0.21, 0.02, true));
+        }
+    }
+}

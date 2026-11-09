@@ -1,0 +1,20 @@
+# 本地策划资料，不纳入版本控制
+/docs/
+
+# .NET 构建产物
+bin/
+obj/
+
+# Visual Studio / IDE 本地状态
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# 本地运行期与凭据文件
+appsettings.*.local.json
+*.pfx
+
+# WorkBuddy 会话数据
+.workbuddy/

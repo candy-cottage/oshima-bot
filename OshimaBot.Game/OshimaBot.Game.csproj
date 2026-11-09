@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OshimaBot.Game</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Constants\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OshimaBot.Content\OshimaBot.Content.csproj" />
+  </ItemGroup>
+
+</Project>

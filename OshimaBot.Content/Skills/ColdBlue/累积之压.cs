@@ -1,0 +1,96 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.EffectResult;
+using OshimaBot.Content.Effects.PassiveEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 累积之压 : Skill
+    {
+        public override long Id => (long)PassiveID.累积之压;
+        public override string Name => "累积之压";
+        public override string Description => Effects.Count > 0 ? Effects.First().Description : "";
+        public override string DispelDescription => Effects.Count > 0 ? Effects.First().DispelDescription : "";
+
+        public 累积之压(Character? character = null) : base(SkillType.Passive, character)
+        {
+            Effects.Add(new 累积之压特效(this));
+            ExemptionDescription = SkillSet.GetExemptionDescription(EffectType.Cripple);
+        }
+
+        public override IEnumerable<Effect> AddPassiveEffectToCharacter()
+        {
+            return Effects;
+        }
+    }
+
+    public class 累积之压特效(Skill skill) : Effect(skill)
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description => $"造成伤害时会标记目标，攻击具有标记的敌人将对其造成战斗不能 1 回合，并回收标记，额外对该角色造成 {系数 * 100:0.##}% 最大生命值的物理伤害。";
+        public override string DispelDescription => "被驱散性：战斗不能需强驱散，标记可弱驱散";
+
+        public double 系数 { get; set; } = 0.12;
+        private bool 是否是嵌套伤害 = false;
+
+        public override BeforeCriticalCheckResult BeforeCriticalCheck(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character actor || ctx.Enemy is not Character enemy) return default;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            if (actor == Skill.Character)
+            {
+                // 嵌套伤害不进行暴击检定
+                return new BeforeCriticalCheckResult { SkipCriticalCheck = 是否是嵌套伤害 };
+            }
+            return default;
+        }
+
+        public override void AfterDamageCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return;
+            double damage = ctx.Damage;
+            double actualDamage = ctx.ActualDamage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            if (character == Skill.Character && actualDamage > 0 && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical) && !是否是嵌套伤害 && enemy.HP > 0)
+            {
+                // 叠标记
+                IEnumerable<Effect> effects = enemy.Effects.Where(e => e is 累积之压标记 && e.Source == character);
+                if (effects.FirstOrDefault() is 累积之压标记 e)
+                {
+                    // 移除标记
+                    enemy.Effects.Remove(e);
+                    double 额外伤害 = enemy.MaxHP * 系数;
+                    WriteLine($"[ {character} ] 发动了累积之压！将对 [ {enemy} ] 造成战斗不能和额外伤害！");
+                    // 战斗不能
+                    IEnumerable<Effect> effects3 = enemy.Effects.Where(e => e is 战斗不能 && e.Skill == Skill);
+                    if (effects3.Any())
+                    {
+                        effects3.First().RemainDurationTurn++;
+                    }
+                    else
+                    {
+                        战斗不能 e3 = new(Skill, character, false, 0, 1);
+                        enemy.Effects.Add(e3);
+                        e3.OnEffectGained(new HookContext(GamingQueue, enemy));
+                    }
+                    是否是嵌套伤害 = true;
+                    DamageToEnemy(character, enemy, DamageType.Physical, magicType, 额外伤害);
+                }
+                else
+                {
+                    enemy.Effects.Add(new 累积之压标记(Skill, character));
+                }
+            }
+
+            if (character == Skill.Character && 是否是嵌套伤害)
+            {
+                是否是嵌套伤害 = false;
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../../FunGame/FunGame.Core/src/FunGame.Core.csproj" />
+  <Project Path="OshimaBot.Content/OshimaBot.Content.csproj" />
+  <Project Path="OshimaBot.Game/OshimaBot.Game.csproj" />
+  <Project Path="OshimaBot/OshimaBot.csproj" />
+</Solution>

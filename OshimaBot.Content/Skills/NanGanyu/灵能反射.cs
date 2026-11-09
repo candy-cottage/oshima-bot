@@ -1,0 +1,127 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.EffectResult;
+using FunGame.Core.Model.Framework;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 灵能反射 : Skill
+    {
+        public override long Id => (long)PassiveID.灵能反射;
+        public override string Name => "灵能反射";
+        public override string Description => Effects.Count > 0 ? Effects.First().Description : "";
+
+        public 灵能反射(Character? character = null) : base(SkillType.Passive, character)
+        {
+            Effects.Add(new 灵能反射特效(this));
+        }
+
+        public override IEnumerable<Effect> AddPassiveEffectToCharacter()
+        {
+            return Effects;
+        }
+    }
+
+    public class 灵能反射特效(Skill skill) : Effect(skill)
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description => $"每释放 {触发硬直次数:0.##} 次魔法才会触发硬直时间，且魔法伤害命中时基于 8% 智力 [ {获得额外能量值:0.##} ] 获得额外能量值，并减少所有技能 2 {GameplayEquilibriumConstant.InGameTime}冷却时间。";
+
+        public bool 是否支持普攻 { get; set; } = false;
+        public int 触发硬直次数 { get; set; } = 2;
+        public int 释放次数 { get; set; } = 0;
+        public double 获得额外能量值 => 0.08 * Skill.Character?.INT ?? 0;
+
+        public override void AfterDamageCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return;
+            double damage = ctx.Damage;
+            double actualDamage = ctx.ActualDamage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            if (character == Skill.Character && (是否支持普攻 && isNormalAttack || damageType == DamageType.Magical) && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical) && character.EP < 200)
+            {
+                double 实际获得能量值 = 获得额外能量值;
+                character.EP += 实际获得能量值;
+                foreach (Skill scd in character.Skills)
+                {
+                    scd.CurrentCD -= 2;
+                    if (scd.CurrentCD <= 0)
+                    {
+                        scd.CurrentCD = 0;
+                        scd.Enable = true;
+                    }
+                }
+                WriteLine($"[ {character} ] 发动了灵能反射！额外获得了 {实际获得能量值:0.##} 能量，并消除了 2 {GameplayEquilibriumConstant.InGameTime}冷却时间！");
+                IEnumerable<Effect> effects = character.Effects.Where(e => e is 三相灵枢特效);
+                if (effects.Any() && effects.First() is 三相灵枢特效 e && e.Skill.Character == Skill.Character)
+                {
+                    double 获得的魔法值 = 实际获得能量值 * 3;
+                    character.MP += 获得的魔法值;
+                    WriteLine($"[ {character} ] 发动了三相灵枢！回复了 {获得的魔法值:0.##} 魔法值！");
+                }
+            }
+        }
+
+        public override AlterHardnessTimeResult AlterHardnessTimeAfterNormalAttack(HardnessContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return default;
+            if (是否支持普攻)
+            {
+                return new AlterHardnessTimeResult { ClearHardnessTime = ClearHardnessTime(character) };
+            }
+            return default;
+        }
+
+        public override AlterHardnessTimeResult AlterHardnessTimeAfterCastSkill(HardnessContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return default;
+            if (ctx.Skill is Skill skill && skill.SkillType == SkillType.Magic)
+            {
+                return new AlterHardnessTimeResult { ClearHardnessTime = ClearHardnessTime(character) };
+            }
+            return default;
+        }
+
+        /// <summary>
+        /// 触发灵能反射副作用；返回是否清零硬直时间（框架据此将硬直置 0 并解除插队保护）
+        /// </summary>
+        private bool ClearHardnessTime(Character character)
+        {
+            释放次数++;
+            if (释放次数 < 触发硬直次数)
+            {
+                WriteLine($"[ {character} ] 发动了灵能反射，消除了硬直时间！！");
+                if (GamingQueue != null && GamingQueue.CharacterDecisionPoints.TryGetValue(character, out DecisionPoints? dp) && dp != null)
+                {
+                    dp.ActionsTaken = 1;
+                    dp.ActionsHardnessTime.Clear();
+                }
+                return true;
+            }
+            释放次数 = 0;
+            IEnumerable<Effect> effects = character.Effects.Where(e => e is 三相灵枢特效);
+            if (effects.Any() && effects.First() is 三相灵枢特效 e && e.Skill.Character == Skill.Character)
+            {
+                WriteLine($"[ {character} ] 发动了灵能反射，消除了硬直时间！！");
+                if (GamingQueue != null && GamingQueue.CharacterDecisionPoints.TryGetValue(character, out DecisionPoints? dp) && dp != null)
+                {
+                    dp.ActionsTaken = 1;
+                    dp.ActionsHardnessTime.Clear();
+                }
+                e.剩余持续次数--;
+                if (e.剩余持续次数 == 0)
+                {
+                    character.Effects.Remove(e);
+                    e.OnEffectLost(new HookContext(GamingQueue, character));
+                }
+                return true;
+            }
+            return false;
+        }
+    }
+}

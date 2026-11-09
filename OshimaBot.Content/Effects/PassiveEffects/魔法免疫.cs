@@ -1,0 +1,67 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.EffectResult;
+using OshimaBot.Content.Effects.OpenEffects;
+
+namespace OshimaBot.Content.Effects.PassiveEffects
+{
+    public class 魔法免疫 : Effect
+    {
+        public override long Id => (long)PassiveEffectID.魔法免疫;
+        public override string Name => "魔法免疫";
+        public override string Description => $"此角色处于魔法免疫状态，无法选中其作为魔法技能的目标（自释放魔法技能除外），并且免疫魔法伤害。来自：[ {Source} ] 的 [ {Skill.Name} ]";
+        public override EffectType EffectType => EffectType.MagicalImmune;
+        public override DispelledType DispelledType => DispelledType.Weak;
+        public override bool IsDebuff => false;
+        public override Character Source => _sourceCharacter;
+        public override bool Durative => _durative;
+        public override double Duration => _duration;
+        public override int DurationTurn => _durationTurn;
+
+        private readonly Character _sourceCharacter;
+        private readonly bool _durative;
+        private readonly double _duration;
+        private readonly int _durationTurn;
+
+        public 魔法免疫(Skill skill, Character sourceCharacter, bool durative = false, double duration = 0, int durationTurn = 1) : base(skill)
+        {
+            GamingQueue = skill.GamingQueue;
+            _sourceCharacter = sourceCharacter;
+            _durative = durative;
+            _duration = duration;
+            _durationTurn = durationTurn;
+        }
+
+        public override void OnEffectGained(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            if (_durative && RemainDuration == 0)
+            {
+                RemainDuration = Duration;
+            }
+            else if (RemainDurationTurn == 0)
+            {
+                RemainDurationTurn = DurationTurn;
+            }
+            AddImmuneTypesToCharacter(character, [ImmuneType.Magical]);
+        }
+
+        public override void OnEffectLost(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            RemoveImmuneTypesFromCharacter(character);
+        }
+
+        public override OnImmuneCheckResult OnImmuneCheck(ImmuneContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return default;
+            Character? target = ctx.Target;
+            if (character == target)
+            {
+                return new OnImmuneCheckResult { IgnoreImmunity = true };
+            }
+            return default;
+        }
+    }
+}

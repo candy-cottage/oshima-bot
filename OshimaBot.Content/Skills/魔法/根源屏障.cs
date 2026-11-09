@@ -1,0 +1,74 @@
+﻿using FunGame.Core.Api;
+using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.Framework;
+using OshimaBot.Content.Effects.SkillEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 根源屏障 : Skill
+    {
+        public override long Id => (long)MagicID.根源屏障;
+        public override string Name => "根源屏障";
+        public override string Description => string.Join("", Effects.Select(e => e.Description));
+        public override string DispelDescription => "被驱散性：可弱驱散";
+        public override double MPCost => Level > 0 ? 200 + (75 * (Level - 1)) : 200;
+        public override double CD => Level > 0 ? 50 - (3 * (Level - 1)) : 50;
+        public override double CastTime => Level > 0 ? 12 - (0.5 * (Level - 1)) : 12;
+        public override double HardnessTime { get; set; } = 8;
+        public override bool CanSelectSelf => true;
+        public override bool CanSelectEnemy => false;
+        public override bool CanSelectTeammate => true;
+        public override int CanSelectTargetCount => 1;
+        public override double MagicBottleneck => 11 + 12 * (Level - 1);
+
+        public 根源屏障(Character? character = null) : base(SkillType.Magic, character)
+        {
+            Effects.Add(new 根源屏障特效(this));
+        }
+    }
+
+    public class 根源屏障特效 : Effect
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description => $"为{Skill.TargetDescription()}提供{CharacterSet.GetImmuneTypeName(ImmuneType.Magical)}，持续 {持续时间}。" + (Skill.Level > 4 ? $"为{Skill.TargetDescription()}提供{CharacterSet.GetImmuneTypeName(ImmuneType.Skilled)}，持续 1 回合。" : "");
+        public override EffectType EffectType => EffectType.MagicalImmune;
+        public override DispelledType DispelledType => DispelledType.Weak;
+
+        private string 持续时间 => $"{实际持续时间} 回合";
+        private int 实际持续时间
+        {
+            get
+            {
+                return Level switch
+                {
+                    3 or 4 or 5 => 3,
+                    6 or 7 or 8 => 4,
+                    _ => 2
+                };
+            }
+        }
+
+        public 根源屏障特效(Skill skill) : base(skill)
+        {
+            GamingQueue = skill.GamingQueue;
+        }
+
+        public override void OnSkillCasted(SkillCastContext ctx)
+        {
+            if (ctx.Trigger is not Character caster) return;
+            List<Character> targets = ctx.Targets;
+            List<Grid> grids = ctx.Grids;
+            Dictionary<string, object> others = ctx.Others;
+            Effect effect = new 施加免疫(Skill, ImmuneType.Magical, false, 0, 实际持续时间);
+            effect.OnSkillCasted(ctx);
+            if (Level > 4)
+            {
+                effect = new 施加免疫(Skill, ImmuneType.Skilled, false, 0, 2);
+                effect.OnSkillCasted(ctx);
+            }
+        }
+    }
+}

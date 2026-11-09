@@ -1,0 +1,19 @@
+﻿namespace OshimaBot.Game.Constants
+{
+    public class OshimaGameModuleConstant
+    {
+        public const string General = "oshima-studios";
+        public const string WebAPI = "oshima.fungame.webapi";
+        public const string FastAuto = "oshima.fungame.fastauto";
+        public const string Character = "oshima.fungame.characters";
+        public const string Skill = "oshima.fungame.skills";
+        public const string Item = "oshima.fungame.items";
+        public const string Description = "Oshima Studios Presents";
+        public const string Version = "1.0.0";
+        public const string Author = "Oshima Studios";
+        public const string FastAutoMap = "oshima.fungame.fastauto.map";
+        public const string Anonymous = "oshima.fungame.anonymous";
+        public const string AnonymousMap = "oshima.fungame.anonymous.map";
+        public const string Server = "oshima.fungame.server";
+    }
+}

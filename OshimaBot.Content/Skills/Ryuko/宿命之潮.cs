@@ -1,0 +1,223 @@
+﻿using FunGame.Core.Api;
+using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.EffectResult;
+using FunGame.Core.Model.Framework;
+using OshimaBot.Content.Effects.PassiveEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 宿命之潮 : Skill
+    {
+        public override long Id => (long)SuperSkillID.宿命之潮;
+        public override string Name => "宿命之潮";
+        public override string Description => Effects.Count > 0 ? ((宿命之潮特效)Effects.First()).通用描述 : "";
+        public override string DispelDescription => Effects.Count > 0 ? Effects.First().DispelDescription : "";
+        public override string ExemptionDescription => Effects.Count > 0 ? Effects.First().ExemptionDescription : "";
+        public override double EPCost => 100;
+        public override double CD => 80;
+        public override double HardnessTime { get; set; } = 2;
+        public override bool CanSelectSelf => true;
+        public override bool CanSelectEnemy => false;
+
+        public 宿命之潮(Character? character = null) : base(SkillType.SuperSkill, character)
+        {
+            Effects.Add(new 宿命之潮特效(this));
+        }
+    }
+
+    public class 宿命之潮特效 : Effect
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description { get; set; } = "";
+        public override bool Durative => true;
+        public override DispelledType DispelledType => DispelledType.CannotBeDispelled;
+        public override string DispelDescription => $"被驱散性：所有回复/禁止回复不可驱散，攻击力加成不可驱散，嘲讽需强驱散";
+        public override PrimaryAttribute ExemptionType => PrimaryAttribute.AGI;
+        public override bool ExemptDuration => false;
+
+        public string 通用描述 => $"{Skill.SkillOwner()}可以选择获得哪一种力量：\r\n{熵核描述}\r\n{守护描述}";
+        private string 熵核描述 => $"【熵核】加速生命回复，每{GameplayEquilibriumConstant.InGameTime}额外回复 {熵核额外回复 * 100:0.##}% 当前生命值 [ {Skill.Character?.HP * 熵核额外回复:0.##} ]，攻击力提升 {熵核攻击力提升 * 100:0.##}% [ {Skill.Character?.BaseATK * 熵核攻击力提升:0.##} ]，但是受到的伤害提升 {熵核受到伤害提升 * 100:0.##}%。" +
+            $"对敌人造成伤害会使其在 {熵核影响敌人时间:0.##} {GameplayEquilibriumConstant.InGameTime}内无法获得自然的生命和魔法回复的禁止治疗效果，施加该状态时，只有目标的敏捷高于{Skill.SkillOwner()}的角色才能进行豁免检定。持续 {熵核持续时间:0.##} {GameplayEquilibriumConstant.InGameTime}。";
+        private static double 熵核额外回复 => 0.02;
+        private double 熵核攻击力提升 => 0.2 + 0.1 * (Skill.Level - 1);
+        private double 熵核受到伤害提升 => 0.15 + 0.05 * (Skill.Level - 1);
+        private static double 熵核影响敌人时间 => 10;
+        private double 熵核持续时间 => 15 + 2 * (Skill.Level - 1);
+        private string 守护描述 => $"【守护】极致地加速生命回复，每{GameplayEquilibriumConstant.InGameTime}额外回复 {守护额外回复 * 100:0.##}% 当前生命值 [ {Skill.Character?.HP * 守护额外回复:0.##} ]，为全体友方角色提供每{GameplayEquilibriumConstant.InGameTime}额外 {守护友方回复 * 100:0.##}% 当前生命值的生命回复，并嘲讽全体敌方角色，被嘲讽的角色仅能将{Skill.SkillOwner()}作为攻击目标。" +
+            $"施加嘲讽状态时，只有目标的敏捷高于{Skill.SkillOwner()}的角色才能进行豁免检定。持续 {守护持续时间:0.##} {GameplayEquilibriumConstant.InGameTime}。";
+        private double 守护额外回复 => 0.01 + 0.003 * (Skill.Level - 1);
+        private double 守护友方回复 => 0.01 + 0.002 * (Skill.Level - 1);
+        private double 守护持续时间 => 15 + 1 * (Skill.Level - 1);
+        private bool 选择熵核 { get; set; } = false;
+
+        private double 实际攻击力提升 = 0;
+        private bool 实际选择熵核 = false;
+
+        public 宿命之潮特效(Skill skill) : base(skill)
+        {
+            Description = 通用描述;
+        }
+
+        public override void OnEffectGained(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            if (实际选择熵核)
+            {
+                实际攻击力提升 = 熵核攻击力提升;
+                character.ExATKPercentage += 实际攻击力提升;
+                WriteLine($"[ {character} ] 的攻击力提升了 {实际攻击力提升 * 100:0.##}% [ {character.BaseATK * 实际攻击力提升:0.##} ] ！");
+            }
+        }
+
+        public override void OnEffectLost(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            if (实际选择熵核)
+            {
+                character.ExATKPercentage -= 实际攻击力提升;
+            }
+        }
+
+        public override AlterActualDamageResult AlterActualDamageAfterCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return default;
+            double damage = ctx.Damage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            Dictionary<Effect, double> totalDamageBonus = ctx.TotalDamageBonus;
+            if (实际选择熵核 && enemy == Skill.Character && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical))
+            {
+                double bouns = -(damage * 熵核受到伤害提升);
+                WriteLine($"[ {enemy} ] 触发了宿命之潮，额外受到 {Math.Abs(bouns):0.##} 伤害！");
+                return new AlterActualDamageResult { DamageDelta = bouns };
+
+            }
+            return default;
+
+        }
+
+        public override void AfterDamageCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return;
+            double damage = ctx.Damage;
+            double actualDamage = ctx.ActualDamage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            if (实际选择熵核 && character == Skill.Character && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical) && !CheckSkilledImmune(character, enemy, Skill))
+            {
+                禁止治疗 e = new(Skill, character, false, true, true, true, 熵核影响敌人时间, 0)
+                {
+                    ExemptionType = PrimaryAttribute.AGI,
+                    ExemptDuration = false,
+                    DispelledType = DispelledType
+                };
+                if (enemy.AGI <= character.AGI || (enemy.AGI > character.AGI && !CheckExemption(character, enemy, e)))
+                {
+                    WriteLine($"[ {character} ] 对 [ {enemy} ] 施加了禁止治疗{e.禁止类型}！！持续时间：{熵核影响敌人时间:0.##} {GameplayEquilibriumConstant.InGameTime}！");
+                    enemy.Effects.Add(e);
+                    e.OnEffectGained(new HookContext(GamingQueue, enemy));
+                    GamingQueue?.AddApplyEffects(enemy, e.EffectType);
+                }
+            }
+        }
+
+        public override void OnSkillCasted(SkillCastContext ctx)
+        {
+            if (ctx.Trigger is not Character caster) return;
+            List<Character> targets = ctx.Targets;
+            List<Grid> grids = ctx.Grids;
+            Dictionary<string, object> others = ctx.Others;
+            if (caster.Effects.Contains(this))
+            {
+                OnEffectLost(new HookContext(GamingQueue, caster));
+                caster.Effects.Remove(this);
+            }
+            caster.Effects.Add(this);
+            实际攻击力提升 = 0;
+            InquiryResponse response = Inquiry(caster, new(InquiryType.Choice, nameof(宿命之潮))
+            {
+                Description = "作出抉择",
+                Choices = new()
+                {
+                    { "熵核", 熵核描述 },
+                    { "守护", 守护描述 }
+                },
+                DefaultChoice = Random.Next() % 2 == 0 ? "熵核" : "守护",
+                CanCancel = false
+            });
+            if (response.Choices.Count > 0)
+            {
+                选择熵核 = response.Choices[0] == "熵核";
+            }
+            实际选择熵核 = 选择熵核;
+            Duration = 实际选择熵核 ? 熵核持续时间 : 守护持续时间;
+            RemainDuration = Duration;
+            OnEffectGained(new HookContext(GamingQueue, caster));
+            if (实际选择熵核)
+            {
+                Description = $"作出抉择：{熵核描述}";
+                Effect effect = new 持续回复(Skill, caster, caster, true, Duration, 0, true, 0, 熵核额外回复)
+                {
+                    DispelledType = DispelledType
+                };
+                WriteLine($"[ {caster} ] 获得了持续生命回复！持续时间：{Duration:0.##} {GameplayEquilibriumConstant.InGameTime}！");
+                caster.Effects.Add(effect);
+                effect.OnEffectGained(new HookContext(GamingQueue, caster));
+                GamingQueue?.AddApplyEffects(caster, effect.EffectType);
+            }
+            else
+            {
+                Description = $"作出抉择：{守护描述}";
+                Effect effect = new 持续回复(Skill, caster, caster, true, Duration, 0, true, 0, 守护额外回复)
+                {
+                    DispelledType = DispelledType
+                };
+                WriteLine($"[ {caster} ] 获得了持续生命回复！持续时间：{Duration:0.##} {GameplayEquilibriumConstant.InGameTime}！");
+                caster.Effects.Add(effect);
+                effect.OnEffectGained(new HookContext(GamingQueue, caster));
+                GamingQueue?.AddApplyEffects(caster, effect.EffectType);
+                List<Character> allEnemys = [];
+                List<Character> allTeammates = [];
+                if (GamingQueue != null)
+                {
+                    allEnemys = [.. GamingQueue.GetEnemies(caster).Where(c => c != caster && GamingQueue.Queue.Contains(c))];
+                    allTeammates = [.. GamingQueue.GetTeammates(caster).Where(c => c != caster && GamingQueue.Queue.Contains(c))];
+                }
+                foreach (Character enemy in allEnemys)
+                {
+                    Effect e = new 愤怒(Skill, caster, caster, true, Duration, 0)
+                    {
+                        ExemptionType = PrimaryAttribute.AGI,
+                        DispelledType = DispelledType.Strong
+                    };
+                    if (enemy.AGI <= caster.AGI || (enemy.AGI > caster.AGI && !CheckExemption(caster, enemy, e)))
+                    {
+                        WriteLine($"[ {caster} ] 嘲讽了 [ {enemy} ]，[ {enemy} ] 愤怒了！！持续时间：{Duration:0.##} {GameplayEquilibriumConstant.InGameTime}！");
+                        enemy.Effects.Add(e);
+                        e.OnEffectGained(new HookContext(GamingQueue, enemy));
+                        GamingQueue?.AddApplyEffects(enemy, e.EffectType);
+                    }
+                }
+                foreach (Character teammate in allTeammates)
+                {
+                    Effect e = new 持续回复(Skill, caster, caster, true, Duration, 0, true, 0, 守护友方回复)
+                    {
+                        DispelledType = DispelledType
+                    };
+                    WriteLine($"[ {caster} ] 对 [ {teammate} ] 施加了持续生命回复！持续时间：{Duration:0.##} {GameplayEquilibriumConstant.InGameTime}！");
+                    teammate.Effects.Add(e);
+                    e.OnEffectGained(new HookContext(GamingQueue, teammate));
+                    GamingQueue?.AddApplyEffects(teammate, e.EffectType);
+                }
+            }
+            GamingQueue?.AddApplyEffects(caster, EffectType.Focusing, EffectType.HealOverTime);
+        }
+    }
+}

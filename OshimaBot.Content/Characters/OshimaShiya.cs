@@ -1,0 +1,29 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+
+namespace OshimaBot.Content.Characters
+{
+    public class OshimaShiya : Character
+    {
+        public OshimaShiya() : base()
+        {
+            Id = 1;
+            Name = "Oshima";
+            FirstName = "Shiya";
+            NickName = "大島シヤ";
+            PrimaryAttribute = PrimaryAttribute.STR;
+            InitialATK = 25;
+            InitialHP = 85;
+            InitialMP = 10;
+            InitialSTR = 30;
+            STRGrowth = 3;
+            InitialAGI = 0;
+            AGIGrowth = 0;
+            InitialINT = 0;
+            INTGrowth = 0;
+            InitialSPD = 300;
+            InitialHR = 4;
+            InitialMR = 2;
+        }
+    }
+}

@@ -1,0 +1,84 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.EffectResult;
+using OshimaBot.Content.Effects.OpenEffects;
+
+namespace OshimaBot.Content.Effects.PassiveEffects
+{
+    public class 物理护盾 : Effect
+    {
+        public override long Id => (long)PassiveEffectID.物理护盾;
+        public override string Name => "物理护盾";
+        public override string Description => $"此角色拥有物理护盾{CurrentShield}。来自：[ {Source} ] 的 [ {Skill.Name} ]";
+        public override EffectType EffectType => EffectType.Shield;
+        public override DispelledType DispelledType => DispelledType.CannotBeDispelled;
+        public override bool DurativeWithoutDuration => true;
+        public override bool IsDebuff => false;
+        public override Character Source => _sourceCharacter;
+        public override bool Durative => _durative;
+        public override double Duration => _duration;
+        public override int DurationTurn => _durationTurn;
+
+        private string CurrentShield
+        {
+            get
+            {
+                if (_targetCharacter != null && _targetCharacter.Shield.ShieldOfEffects.TryGetValue(this, out ShieldOfEffect? value) && value != null)
+                {
+                    return $"，护盾值：{value.Shield:0.##} 点";
+                }
+                else return "";
+            }
+        }
+        private readonly Character _targetCharacter;
+        private readonly Character _sourceCharacter;
+        private readonly double _shield;
+        private readonly bool _durative;
+        private readonly double _duration;
+        private readonly int _durationTurn;
+
+        public 物理护盾(Skill skill, Character targetCharacter, Character sourceCharacter, double shield, bool durative = false, double duration = 0, int durationTurn = 0) : base(skill)
+        {
+            GamingQueue = skill.GamingQueue;
+            _targetCharacter = targetCharacter;
+            _sourceCharacter = sourceCharacter;
+            _durative = durative;
+            _duration = duration;
+            _durationTurn = durationTurn;
+            _shield = shield;
+        }
+
+        public override void OnEffectGained(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            if (_durative && RemainDuration == 0)
+            {
+                RemainDuration = Duration;
+            }
+            else if (RemainDurationTurn == 0)
+            {
+                RemainDurationTurn = DurationTurn;
+            }
+            character.Shield.AddShieldOfEffect(new(this, _shield, ShieldType.Physical, MagicType.None));
+        }
+
+        public override void OnEffectLost(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            character.Shield.RemoveShieldOfEffect(this);
+        }
+
+        public override OnShieldBrokenResult OnShieldBroken(ShieldContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return default;
+            Effect? effet = ctx.ShieldEffect;
+            if (effet == this)
+            {
+                character.Shield.RemoveShieldOfEffect(this);
+                character.Effects.Remove(this);
+            }
+            return default;
+        }
+    }
+}

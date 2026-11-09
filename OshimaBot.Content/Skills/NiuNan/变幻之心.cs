@@ -1,0 +1,191 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using FunGame.Core.Model.Framework;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 变幻之心 : Skill
+    {
+        public override long Id => (long)SuperSkillID.变幻之心;
+        public override string Name => "变幻之心";
+        public override string Description => Effects.Count > 0 ? Effects.First().Description : "";
+        public override string DispelDescription => Effects.Count > 0 ? Effects.First().DispelDescription : "";
+        public override double EPCost => 100;
+        public override double CD => 20;
+        public override double HardnessTime { get; set; } = 3;
+        public override bool CanSelectSelf => true;
+        public override bool CanSelectEnemy => false;
+
+        public 变幻之心(Character? character = null) : base(SkillType.SuperSkill, character)
+        {
+            Effects.Add(new 变幻之心特效(this));
+        }
+    }
+
+    public class 变幻之心特效(Skill skill) : Effect(skill)
+    {
+        public override long Id => Skill.Id;
+        public override string Name => "变幻之心";
+        public override string Description => $"检查 [ 双生流转 ] 的模式。在力量模式下，立即回复 {生命值回复 * 100:0.##}% 生命值，同时下 {吸血次数} 次对敌人造成伤害时获得 30% 生命偷取；" +
+            $"智力模式下，下 {魔法加成次数} 次魔法伤害提升 {伤害提升 * 100:0.##}%。此技能效果不叠加，重复释放时将重置次数；若是模式切换后重复释放，将回收先前的效果。{当前次数描述}";
+        public override DispelledType DispelledType => DispelledType.CannotBeDispelled;
+
+        private string 当前次数描述
+        {
+            get
+            {
+                string str = "";
+                if (当前吸血次数 > 0 || 当前魔法加成次数 > 0)
+                {
+                    str = 当前吸血次数 > 0 ? "吸血次数" : (当前魔法加成次数 > 0 ? "魔法加成次数" : "");
+                    if (str != "")
+                    {
+                        str = $"剩余{str}：";
+                    }
+                    if (当前吸血次数 > 0)
+                    {
+                        str += $"{当前吸血次数} 次。";
+                    }
+                    else if (当前魔法加成次数 > 0)
+                    {
+                        str += $"{当前魔法加成次数} 次。";
+                    }
+                }
+                return str;
+            }
+        }
+        private int 吸血次数
+        {
+            get
+            {
+                return Level switch
+                {
+                    1 => 2,
+                    2 => 2,
+                    3 => 3,
+                    4 => 3,
+                    5 => 4,
+                    6 => 3,
+                    _ => 2
+                };
+            }
+        }
+        private int 魔法加成次数
+        {
+            get
+            {
+                return Level switch
+                {
+                    1 => 1,
+                    2 => 1,
+                    3 => 2,
+                    4 => 2,
+                    5 => 3,
+                    6 => 3,
+                    _ => 1
+                };
+            }
+        }
+        private double 生命值回复 => 0.25 + 0.03 * (Level - 1);
+        private double 伤害提升 => 0.6 + 0.4 * (Level - 1);
+        private int 当前吸血次数 = 0;
+        private int 当前魔法加成次数 = 0;
+
+        public override void OnEffectGained(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            if (character.PrimaryAttribute == PrimaryAttribute.STR)
+            {
+                当前吸血次数 = 吸血次数;
+            }
+            else if (character.PrimaryAttribute == PrimaryAttribute.INT)
+            {
+                当前魔法加成次数 = 魔法加成次数;
+            }
+        }
+
+        public override void OnEffectLost(HookContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            当前吸血次数 = 0;
+            当前魔法加成次数 = 0;
+        }
+
+        public override double AlterExpectedDamageBeforeCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return 0;
+            double damage = ctx.Damage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            Dictionary<Effect, double> totalDamageBonus = ctx.TotalDamageBonus;
+            if (character == Skill.Character && damageType == DamageType.Magical && 当前魔法加成次数 > 0)
+            {
+                当前魔法加成次数--;
+                double 实际伤害提升百分比 = 伤害提升;
+                double 实际伤害提升 = damage * 实际伤害提升百分比;
+                WriteLine($"[ {character} ] 发动了变幻之心！伤害提升了 {实际伤害提升:0.##} 点！变幻之心加成剩余：{当前魔法加成次数} 次。");
+                if (当前魔法加成次数 == 0)
+                {
+                    character.Effects.Remove(this);
+                    OnEffectLost(new HookContext(GamingQueue, character));
+                }
+                return 实际伤害提升;
+            }
+            return 0;
+        }
+
+        public override void AfterDamageCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return;
+            double damage = ctx.Damage;
+            double actualDamage = ctx.ActualDamage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            if (character == Skill.Character && 当前吸血次数 > 0 && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical) && damage > 0)
+            {
+                当前吸血次数--;
+                double 实际吸血 = damage * 0.3;
+                character.HP += 实际吸血;
+                WriteLine($"[ {character} ] 发动了变幻之心！回复了 {实际吸血:0.##} 点生命值！变幻之心加成剩余：{当前吸血次数} 次。");
+                if (当前吸血次数 == 0)
+                {
+                    character.Effects.Remove(this);
+                    OnEffectLost(new HookContext(GamingQueue, character));
+                }
+            }
+        }
+
+        public override void OnSkillCasted(SkillCastContext ctx)
+        {
+            if (ctx.Trigger is not Character caster) return;
+            List<Character> targets = ctx.Targets;
+            List<Grid> grids = ctx.Grids;
+            Dictionary<string, object> others = ctx.Others;
+            IEnumerable<Effect> effects = caster.Effects.Where(e => e is 双生流转特效 && e.Skill.Character == Skill.Character);
+            if (effects.Any())
+            {
+                if (caster.Effects.Contains(this))
+                {
+                    caster.Effects.Remove(this);
+                    OnEffectLost(new HookContext(GamingQueue, caster));
+                }
+                caster.Effects.Add(this);
+                OnEffectGained(new HookContext(GamingQueue, caster));
+                if (caster.PrimaryAttribute == PrimaryAttribute.STR)
+                {
+                    double 回复的生命 = 生命值回复 * caster.MaxHP;
+                    HealToTarget(caster, caster, 回复的生命);
+                    GamingQueue?.AddApplyEffects(caster, EffectType.Lifesteal);
+                }
+                else if (caster.PrimaryAttribute == PrimaryAttribute.INT)
+                {
+                    GamingQueue?.AddApplyEffects(caster, EffectType.DamageBoost);
+                }
+            }
+        }
+    }
+}

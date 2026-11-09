@@ -1,0 +1,64 @@
+﻿using FunGame.Core.Api;
+using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using OshimaBot.Content.Effects.OpenEffects;
+
+namespace OshimaBot.Content.Effects.SkillEffects
+{
+    public class 降低敌方行动速度 : Effect
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description => $"降低{Skill.TargetDescription()} {Math.Abs(SPD):0.##} 点行动速度 {持续时间}。并延长目标 30% 的行动等待时间（当前硬直时间）。";
+        public override EffectType EffectType => EffectType.Slow;
+        public override bool ExemptDuration => true;
+
+        private double SPD => Level > 0 ? -Math.Abs(基础数值速度 + 基础速度等级成长 * (Level - 1)) : -Math.Abs(基础数值速度);
+        private double 基础数值速度 { get; set; } = 30;
+        private double 基础速度等级成长 { get; set; } = 20;
+        private string 持续时间 => _durative && _duration > 0 ? _duration + $" {GameplayEquilibriumConstant.InGameTime}" : (!_durative && _durationTurn > 0 ? _durationTurn + " 回合" : $"0 {GameplayEquilibriumConstant.InGameTime}");
+        private readonly bool _durative;
+        private readonly double _duration;
+        private readonly int _durationTurn;
+
+        public 降低敌方行动速度(Skill skill, double 基础数值速度, double 基础速度等级成长, bool durative = true, double duration = 40, int durationTurn = 0) : base(skill)
+        {
+            GamingQueue = skill.GamingQueue;
+            this.基础数值速度 = 基础数值速度;
+            this.基础速度等级成长 = 基础速度等级成长;
+            _durative = durative;
+            _duration = duration;
+            _durationTurn = durationTurn;
+        }
+
+        public override void OnSkillCasted(SkillCastContext ctx)
+        {
+            if (ctx.Trigger is not Character caster) return;
+            List<Character> targets = ctx.Targets;
+            foreach (Character target in targets)
+            {
+                ExSPD e = new(Skill, new Dictionary<string, object>()
+                {
+                    { "exspd", SPD }
+                }, caster)
+                {
+                    Name = Name,
+                    Durative = _durative,
+                    Duration = _duration,
+                    DurationTurn = _durationTurn
+                };
+                if (!CheckExemption(caster, target, e))
+                {
+                    target.Effects.Add(e);
+                    e.OnEffectGained(new HookContext(GamingQueue, target));
+                    e.EffectType = EffectType.Slow;
+                    e.IsDebuff = true;
+                    WriteLine($"[ {target} ] 的行动速度降低了 {-SPD:0.##} 点，行动等待时间（当前硬直时间）被延长了 30%！持续时间：{持续时间}！");
+                    GamingQueue?.AddApplyEffects(target, e.EffectType);
+                    GamingQueue?.ChangeCharacterHardnessTime(target, 0.3, true, false);
+                }
+            }
+        }
+    }
+}

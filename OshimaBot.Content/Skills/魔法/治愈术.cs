@@ -1,0 +1,29 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using OshimaBot.Content.Effects.SkillEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 治愈术 : Skill
+    {
+        public override long Id => (long)MagicID.治愈术;
+        public override string Name => "治愈术";
+        public override string Description => string.Join("", Effects.Select(e => e.Description));
+        public override double MPCost => Level > 0 ? 80 + (85 * (Level - 1)) : 80;
+        public override double CD => Level > 0 ? 35 - (1 * (Level - 1)) : 35;
+        public override double CastTime => Level > 0 ? 3 + (0.25 * (Level - 1)) : 3;
+        public override double HardnessTime { get; set; } = 6;
+        public override bool CanSelectSelf => true;
+        public override bool CanSelectEnemy => false;
+        public override bool CanSelectTeammate => true;
+        public override int CanSelectTargetCount => 1;
+        public override double MagicBottleneck => 12 + 13 * (Level - 1);
+
+        public 治愈术(Character? character = null) : base(SkillType.Magic, character)
+        {
+            SelectTargetPredicates.Add(c => c.HP > 0 && c.HP < c.MaxHP);
+            Effects.Add(new 弱驱散特效(this));
+            Effects.Add(new 百分比回复生命值(this, 0.28, 0.03));
+        }
+    }
+}

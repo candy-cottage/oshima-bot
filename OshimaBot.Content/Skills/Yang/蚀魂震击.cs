@@ -1,0 +1,100 @@
+﻿using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using OshimaBot.Content.Effects.PassiveEffects;
+
+namespace OshimaBot.Content.Skills
+{
+    public class 蚀魂震击 : Skill
+    {
+        public override long Id => (long)PassiveID.蚀魂震击;
+        public override string Name => "蚀魂震击";
+        public override string Description => Effects.Count > 0 ? Effects.First().Description : "";
+        public override string DispelDescription => Effects.Count > 0 ? Effects.First().DispelDescription : "";
+
+        public 蚀魂震击(Character? character = null) : base(SkillType.Passive, character)
+        {
+            ExemptionDescription = SkillSet.GetExemptionDescription(EffectType.Stun);
+            Effects.Add(new 蚀魂震击特效(this));
+        }
+
+        public override IEnumerable<Effect> AddPassiveEffectToCharacter()
+        {
+            return Effects;
+        }
+    }
+
+    public class 蚀魂震击特效(Skill skill) : Effect(skill)
+    {
+        public override long Id => Skill.Id;
+        public override string Name => Skill.Name;
+        public override string Description => $"对处于完全行动不能、行动受限、战斗不能、技能受限、攻击受限状态的敌人额外造成 {系数 * 100:0.##}% 力量 [ {伤害加成:0.##} ] 点伤害；造成魔法伤害时使敌人眩晕 1 回合，冷却 {基础冷却时间:0.##} {GameplayEquilibriumConstant.InGameTime}。" +
+            (冷却时间 > 0 ? $"（正在冷却：剩余 {冷却时间:0.##} {GameplayEquilibriumConstant.InGameTime}）" : "");
+        public override string DispelDescription => "被驱散性：眩晕需强驱散";
+        public double 冷却时间 { get; set; } = 0;
+        public double 基础冷却时间 { get; set; } = 10;
+        private static double 系数 => 4;
+        private double 伤害加成 => 系数 * Skill.Character?.STR ?? 0;
+
+        public override double AlterExpectedDamageBeforeCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return 0;
+            double damage = ctx.Damage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            Dictionary<Effect, double> totalDamageBonus = ctx.TotalDamageBonus;
+            if (character == Skill.Character && (
+                enemy.CharacterState == CharacterState.NotActionable ||
+                enemy.CharacterState == CharacterState.ActionRestricted ||
+                enemy.CharacterState == CharacterState.BattleRestricted ||
+                enemy.CharacterState == CharacterState.SkillRestricted ||
+                enemy.CharacterState == CharacterState.AttackRestricted))
+            {
+                return 伤害加成;
+            }
+            return 0;
+        }
+
+        public override void AfterDamageCalculation(DamageContext ctx)
+        {
+            if (ctx.Trigger is not Character character || ctx.Enemy is not Character enemy) return;
+            double damage = ctx.Damage;
+            double actualDamage = ctx.ActualDamage;
+            bool isNormalAttack = ctx.IsNormalAttack;
+            DamageType damageType = ctx.DamageType;
+            MagicType magicType = ctx.MagicType;
+            DamageResult damageResult = ctx.DamageResult;
+            if (character == Skill.Character && damageType == DamageType.Magical && actualDamage > 0 && 冷却时间 == 0 && (damageResult == DamageResult.Normal || damageResult == DamageResult.Critical))
+            {
+                IEnumerable<Effect> effects = enemy.Effects.Where(e => e is 眩晕 && e.Skill == Skill);
+                if (effects.Any())
+                {
+                    effects.First().RemainDurationTurn++;
+                }
+                else
+                {
+                    眩晕 e = new(Skill, character, false, 0, 1);
+                    enemy.Effects.Add(e);
+                    e.OnEffectGained(new HookContext(GamingQueue, enemy));
+                }
+                WriteLine($"[ {character} ] 的魔法伤害触发了蚀魂震击，[ {enemy} ] 被眩晕了！");
+                冷却时间 = 基础冷却时间;
+            }
+        }
+
+        public override void OnTimeElapsed(TimeLapseContext ctx)
+        {
+            if (ctx.Trigger is not Character character) return;
+            double elapsed = ctx.Elapsed;
+            if (冷却时间 > 0)
+            {
+                冷却时间 -= elapsed;
+                if (冷却时间 <= 0)
+                {
+                    冷却时间 = 0;
+                }
+            }
+        }
+    }
+}

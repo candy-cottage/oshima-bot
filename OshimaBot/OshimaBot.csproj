@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OshimaBot</RootNamespace>
+    <AssemblyName>OshimaBot</AssemblyName>
+    <UserSecretsId>8d0ef0f5-2aa4-4c0f-9e4f-7d42ab971e95</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageReference Include="Rebex.Elliptic.Ed25519" Version="1.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OshimaBot.Game\OshimaBot.Game.csproj" />
+  </ItemGroup>
+
+</Project>
