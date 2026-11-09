@@ -3,4 +3,5 @@
   <Project Path="OshimaBot.Content/OshimaBot.Content.csproj" />
   <Project Path="OshimaBot.Game/OshimaBot.Game.csproj" />
   <Project Path="OshimaBot/OshimaBot.csproj" />
+  <Project Path="OshimaBot.Tests/OshimaBot.Tests.csproj" />
 </Solution>

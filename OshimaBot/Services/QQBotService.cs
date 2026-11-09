@@ -116,7 +116,7 @@ namespace OshimaBot.Services
         {
             EnsureConfigured();
             string accessToken = await GetAccessTokenAsync(cancellationToken);
-            using HttpRequestMessage request = new(HttpMethod.Post, $"{_options.ApiBaseAddress.TrimEnd('/')}{path}");
+            using HttpRequestMessage request = new(HttpMethod.Post, $"{_options.ResolvedApiBaseAddress}{path}");
             request.Headers.Authorization = new AuthenticationHeaderValue("QQBot", accessToken);
             request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
 

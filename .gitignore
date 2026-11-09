@@ -18,3 +18,10 @@ appsettings.*.local.json
 
 # WorkBuddy 会话数据
 .workbuddy/
+
+# 本地 EF CLI 工具、SQLite 数据库与测试结果
+.tools/
+*.db
+*.db-wal
+*.db-shm
+TestResults/

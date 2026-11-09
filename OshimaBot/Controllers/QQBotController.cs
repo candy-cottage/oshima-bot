@@ -1,12 +1,10 @@
-using System.Text;
 using System.Text.Json;
-using OshimaBot.Models;
-using OshimaBot.Security;
-using OshimaBot.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using Rebex.Security.Cryptography;
+using OshimaBot.Models;
+using OshimaBot.Security;
+using OshimaBot.Services;
 
 namespace OshimaBot.Controllers
 {
@@ -23,6 +21,8 @@ namespace OshimaBot.Controllers
         [HttpPost]
         public async Task<IActionResult> Post([FromBody] Payload? payload, CancellationToken cancellationToken)
         {
+            // WebSocket 为唯一运行模式；webhook 仅在 QQBot:EnableWebhook=true 时接受平台回调。
+            if (!_options.EnableWebhook) return NotFound();
             if (payload is null) return BadRequest("Payload 格式无效。");
 
             try
@@ -30,6 +30,8 @@ namespace OshimaBot.Controllers
                 return payload.Op switch
                 {
                     13 => HandleValidation(payload),
+                    // op=12 是 HTTP 回调模式的 ACK 回包；平台不会主动推送，HTTP 200 即视为确认。
+                    12 => Ok(),
                     0 => await HandleEventAsync(payload, cancellationToken),
                     _ => Ok()
                 };
@@ -54,13 +56,8 @@ namespace OshimaBot.Controllers
                 return BadRequest("无效的验证 Payload 格式。");
             }
 
-            string seed = _options.Secret;
-            while (seed.Length < 32) seed += seed;
-            seed = seed[..32];
-
-            Ed25519 ed25519 = new();
-            ed25519.FromSeed(Encoding.UTF8.GetBytes(seed));
-            byte[] signature = ed25519.SignMessage(Encoding.UTF8.GetBytes(validation.EventTs + validation.PlainToken));
+            byte[] signature = WebhookSignatureVerifier.SignValidation(
+                _options.Secret, validation.EventTs, validation.PlainToken);
 
             return Ok(new ValidationResponse
             {

@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Options;
 using OshimaBot.Game.Services;
 using OshimaBot.Models;
+using OshimaBot.Security;
 using OshimaBot.Services;
 
 FunGameRuntime.EnsureInitialized();
@@ -15,11 +17,20 @@ builder.Services.AddOptions<QQBotOptions>()
     .Bind(builder.Configuration.GetSection(QQBotOptions.SectionName))
     .Validate(options => !options.Enabled || options.IsConfigured, "启用 QQBot 时必须配置 AppId 和 Secret。")
     .Validate(options => options.RequestTimeoutSeconds is > 0 and <= 300, "QQBot 请求超时必须在 1 到 300 秒之间。")
+    .Validate(options => options.Intents > 0, "QQBot Intents 必须大于 0。")
+    .Validate(options => options.SignatureMaxAgeSeconds is > 0 and <= 3600, "回调签名时间戳窗口必须在 1 到 3600 秒之间。")
+    .Validate(options => !options.EnableWebhook || !string.IsNullOrWhiteSpace(options.Secret), "启用 Webhook 回调时必须配置 Secret 用于验签。")
     .ValidateOnStart();
 builder.Services.AddOptions<ServerOptions>()
     .Bind(builder.Configuration.GetSection(ServerOptions.SectionName))
     .Validate(options => options.MaximumRespawnTimes is >= 0 and <= 100, "最大复活次数必须在 0 到 100 之间。")
     .ValidateOnStart();
+builder.Services.AddOptions<DatabaseOptions>()
+    .Bind(builder.Configuration.GetSection(DatabaseOptions.SectionName))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ConnectionString), "Database:ConnectionString 不能为空。")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<WebhookSignatureVerifier>();
 
 builder.Services.AddHttpClient(QQBotService.HttpClientName, client =>
 {
@@ -36,10 +47,18 @@ WebApplication app = builder.Build();
 
 app.UseExceptionHandler();
 
+// 仅当 QQBot:EnableWebhook=true 时对 POST /QQBot 校验 Ed25519 签名。
+app.UseMiddleware<WebhookSignatureMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+QQBotOptions botOptions = app.Services.GetRequiredService<IOptions<QQBotOptions>>().Value;
+app.Logger.LogInformation(
+    "OshimaBot 启动：Mode={Mode}, Environment={Environment}, Webhook={WebhookEnabled}, Intents={Intents}",
+    botOptions.Mode, botOptions.Environment, botOptions.EnableWebhook, botOptions.Intents);
 
 app.MapGet("/", () => Results.Ok(new
 {
@@ -51,6 +70,16 @@ app.MapGet("/", () => Results.Ok(new
     skills = FunGameService.AllSkills.Count,
     items = FunGameService.AllItems.Count
 }));
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ok",
+    mode = botOptions.Mode.ToString(),
+    environment = botOptions.Environment.ToString(),
+    webhookEnabled = botOptions.EnableWebhook,
+    startedAt = FunGameRuntime.StartedAt
+}));
+
 app.MapControllers();
 
 app.Run();
