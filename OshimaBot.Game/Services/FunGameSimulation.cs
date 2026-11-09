@@ -17,57 +17,78 @@ namespace OshimaBot.Game.Services
 {
     public class FunGameSimulation
     {
-        public static Dictionary<Character, CharacterStatistics> CharacterStatistics { get; } = [];
-        public static Dictionary<Character, CharacterStatistics> TeamCharacterStatistics { get; } = [];
-        public static IReadOnlyList<string> LastRecord { get; private set; } = [];
-        public static IReadOnlyList<string> LastFullRecord { get; private set; } = [];
-        public static GameMap Map { get; } = new FastAutoMap();
+        // ---- S8 前置：运行态按实例隔离，统计/日志收敛到仓储 ----
+        private static readonly AsyncLocal<SimulationRunContext?> Ambient = new();
+        private static readonly SimulationRunContext DefaultContext = new();
+        private static ISimulationStatisticsStore _statisticsStore = new InMemorySimulationStatisticsStore();
 
-        public static void InitializeStatistics()
+        /// <summary>当前执行流绑定的运行上下文；未在 BeginRun 作用域内时退回默认上下文。</summary>
+        public static SimulationRunContext Current => Ambient.Value ?? DefaultContext;
+
+        public static ISimulationStatisticsStore StatisticsStore => _statisticsStore;
+
+        /// <summary>注入自定义统计仓储（S9 可换数据库实现），须在首次模拟/统计读写前调用。</summary>
+        public static void UseStatisticsStore(ISimulationStatisticsStore store)
+            => _statisticsStore = store ?? throw new ArgumentNullException(nameof(store));
+
+        /// <summary>把后续静态状态读写绑定到指定运行上下文；AsyncLocal 随 async 流与 Task.Run 传递。</summary>
+        public static IDisposable BeginRun(SimulationRunContext context)
         {
-            CharacterStatistics.Clear();
-            TeamCharacterStatistics.Clear();
-            LastRecord = [];
-            LastFullRecord = [];
-
-            foreach (Character character in FunGameService.Characters)
-            {
-                CharacterStatistics.Add(character, new());
-                TeamCharacterStatistics.Add(character, new());
-            }
+            ArgumentNullException.ThrowIfNull(context);
+            SimulationRunContext? previous = Ambient.Value;
+            Ambient.Value = context;
+            return new RunScope(previous);
         }
-        public static bool IsRuning { get; set; } = false;
-        public static bool IsWeb { get; set; } = false;
-        public static bool IsDebug { get; set; } = false;
-        public static bool PrintOut { get; set; } = false;
-        public static bool DeathMatchRoundDetail { get; set; } = false;
-        public static string Msg { get; set; } = "";
+
+        private sealed class RunScope(SimulationRunContext? previous) : IDisposable
+        {
+            public void Dispose() => Ambient.Value = previous;
+        }
+
+        // 跨运行共享：统计与最近日志由仓储持有，查询服务只读这里。
+        public static Dictionary<Character, CharacterStatistics> CharacterStatistics => _statisticsStore.CharacterStatistics;
+        public static Dictionary<Character, CharacterStatistics> TeamCharacterStatistics => _statisticsStore.TeamCharacterStatistics;
+        public static IReadOnlyList<string> LastRecord { get => _statisticsStore.LastRecord; private set => _statisticsStore.LastRecord = value; }
+        public static IReadOnlyList<string> LastFullRecord { get => _statisticsStore.LastFullRecord; private set => _statisticsStore.LastFullRecord = value; }
+        public static GameMap Map { get => Current.Map; set => Current.Map = value; }
+
+        public static void InitializeStatistics() => _statisticsStore.Reset(FunGameService.Characters);
+
+        // 单次运行态：全部委托到 SimulationRunContext，进程内不再有共享可变字段。
+        public static bool IsRuning { get => Current.IsRunning; set => Current.IsRunning = value; }
+        public static bool IsWeb { get => Current.IsWeb; set => Current.IsWeb = value; }
+        public static bool IsDebug { get => Current.IsDebug; set => Current.IsDebug = value; }
+        public static bool PrintOut { get => Current.PrintOut; set => Current.PrintOut = value; }
+        public static bool DeathMatchRoundDetail { get => Current.DeathMatchRoundDetail; set => Current.DeathMatchRoundDetail = value; }
+        public static string Msg { get => Current.Msg; set => Current.Msg = value; }
 
         /// <summary>
-        /// 指定本局使用的随机种子；为 null 时每局自动随机<br/>
-        /// 设值后（或读取 <see cref="Seed"/> 得到的上一局实际值）同一份输入数据下整局模拟可复现
+        /// 指定本局种子；为 null 时每局自动随机。现在字段属于运行上下文，设置后不会泄漏到下一局。
         /// </summary>
-        public static int? SeedOverride { get; set; } = null;
+        public static int? SeedOverride { get => Current.SeedOverride; set => Current.SeedOverride = value; }
 
-        /// <summary>
-        /// 固定武器 Id（0 = 不固定，按品质随机）。由 <see cref="SimulationOptions.FixedWeaponId"/> 传入。
-        /// <para/>用于平衡测试时消除「武器攻击力 20–170（8.5×）+ 副属性各异 + 武器类型倍率 1.41×」这组混淆变量。
-        /// </summary>
-        public static long FixedWeaponId { get; set; } = 0;
+        /// <summary>固定武器 Id（0 = 不固定）。同种子复现用，属于本局运行态。</summary>
+        public static long FixedWeaponId { get => Current.FixedWeaponId; set => Current.FixedWeaponId = value; }
 
-        /// <summary>
-        /// 本局实际使用的随机种子（开局确定并保留，便于复现）
-        /// </summary>
-        public static int Seed { get; private set; } = 0;
+        /// <summary>本局实际使用的随机种子（开局确定并保留，便于复现）。</summary>
+        public static int Seed { get => Current.Seed; private set => Current.Seed = value; }
 
-        /// <summary>
-        /// 模拟器自己的随机数生成器（由 <see cref="Seed"/> 决定）
-        /// <para>队列创建之前的角色抽选、技能分配、分队等走它；队列创建之后一律走 <see cref="GamingQueue.Random"/>。</para>
-        /// <para>两者同源，因此本文件内<b>禁止使用进程级的 <c>Random.Shared</c></b>，否则整局不可复现</para>
-        /// </summary>
-        public static Random Random { get; private set; } = new();
+        /// <summary>本局随机数生成器（由 Seed 决定）；禁止改回进程级 Random.Shared。</summary>
+        public static Random Random { get => Current.Random; private set => Current.Random = value; }
 
-        public static async Task<List<string>> StartSimulationGame(SimulationOptions options)
+        /// <summary>兼容旧调用：使用一次性默认上下文。</summary>
+        public static Task<List<string>> StartSimulationGame(SimulationOptions options)
+            => StartSimulationGame(options, new SimulationRunContext());
+
+        /// <summary>S8 起推荐入口：显式绑定本次运行上下文，静态运行态不再跨局共享。</summary>
+        public static async Task<List<string>> StartSimulationGame(SimulationOptions options, SimulationRunContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            using IDisposable scope = BeginRun(context);
+            return await StartSimulationGameCore(options).ConfigureAwait(false);
+        }
+
+        private static async Task<List<string>> StartSimulationGameCore(SimulationOptions options)
         {
             PrintOut = options.PrintOut;
             IsWeb = options.IsWeb;
@@ -165,7 +186,7 @@ namespace OshimaBot.Game.Services
                     TeamGamingQueue? tgq = null;
                     if (isTeam)
                     {
-                        tgq = new TeamGamingQueue(characters, WriteLine, seed: Seed)
+                        tgq = new TeamGamingQueue(characters, Current.WriteLine, seed: Seed)
                         {
                             MaxRespawnTimes = -1,
                             MaxScoreToWin = 30
@@ -174,7 +195,7 @@ namespace OshimaBot.Game.Services
                     }
                     else
                     {
-                        mgq = new MixGamingQueue(characters, WriteLine, seed: Seed)
+                        mgq = new MixGamingQueue(characters, Current.WriteLine, seed: Seed)
                         {
                             MaxRespawnTimes = maxRespawnTimesMix
                         };
@@ -842,11 +863,7 @@ namespace OshimaBot.Game.Services
             return roundsData;
         }
 
-        public static void WriteLine(string str)
-        {
-            Msg += str + "\r\n";
-            if (PrintOut) Console.WriteLine(str);
-        }
+        public static void WriteLine(string str) => Current.WriteLine(str);
 
         public static void AddStoreItems(GamingQueue queue, List<Item> store)
         {

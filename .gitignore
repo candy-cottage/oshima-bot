@@ -16,6 +16,9 @@ obj/
 appsettings.*.local.json
 *.pfx
 
+# 模拟器运行期产物（S9 用 simulation_runs 表替代）
+rounds_archive.zip
+
 # WorkBuddy 会话数据
 .workbuddy/
 

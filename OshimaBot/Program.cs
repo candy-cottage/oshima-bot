@@ -66,6 +66,8 @@ builder.Services.AddHttpClient(QQBotService.HttpClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("QQBot:RequestTimeoutSeconds", 30));
 });
 builder.Services.AddSingleton<IQQBotService, QQBotService>();
+// 与模拟器共享同一个统计仓储实例（S9 可换数据库实现，只需在启动前 FunGameSimulation.UseStatisticsStore）。
+builder.Services.AddSingleton(FunGameSimulation.StatisticsStore);
 builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();

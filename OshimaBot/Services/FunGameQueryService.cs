@@ -7,7 +7,7 @@ namespace OshimaBot.Services
 {
     public sealed record CatalogEntry(long Id, string Name, string Category);
 
-    public sealed class FunGameQueryService(FunGameSimulationService simulations)
+    public sealed class FunGameQueryService(ISimulationStatisticsStore statistics)
     {
         public IReadOnlyList<CatalogEntry> GetCharacters()
             => [.. FunGameService.Characters.Select(character => new CatalogEntry(character.Id, character.GetName(), "角色"))];
@@ -84,14 +84,14 @@ namespace OshimaBot.Services
             => FunGameService.GenerateMagicCardPack(Random.Shared, 3)?.ToString(false, true) ?? "";
 
         public Task<string> GetStatsAsync(int id, bool team, CancellationToken cancellationToken = default)
-            => simulations.ReadAsync(() =>
+            => Task.FromResult(statistics.Read(store =>
             {
                 Character? character = FunGameService.Characters.ElementAtOrDefault(id - 1);
                 if (id <= 0 || character is null) return "";
 
                 Dictionary<Character, CharacterStatistics> source = team
-                    ? FunGameSimulation.TeamCharacterStatistics
-                    : FunGameSimulation.CharacterStatistics;
+                    ? store.TeamCharacterStatistics
+                    : store.CharacterStatistics;
                 if (!source.TryGetValue(character, out CharacterStatistics? stats)) return "";
 
                 StringBuilder builder = new();
@@ -107,14 +107,14 @@ namespace OshimaBot.Services
                 builder.AppendLine($"存活回合：{stats.LiveRound} / 行动回合：{stats.ActionTurn} / 存活时长：{stats.LiveTime:0.##}");
                 builder.Append($"决策数：{stats.TurnDecisions} / 决策点：{stats.UseDecisionPoints}");
                 return builder.ToString();
-            }, cancellationToken);
+            }));
 
         public Task<List<string>> GetRankingAsync(bool team, bool byRating, CancellationToken cancellationToken = default)
-            => simulations.ReadAsync(() =>
+            => Task.FromResult(statistics.Read(store =>
             {
                 Dictionary<Character, CharacterStatistics> source = team
-                    ? FunGameSimulation.TeamCharacterStatistics
-                    : FunGameSimulation.CharacterStatistics;
+                    ? store.TeamCharacterStatistics
+                    : store.CharacterStatistics;
                 IEnumerable<KeyValuePair<Character, CharacterStatistics>> ordered = byRating
                     ? source.OrderByDescending(entry => entry.Value.Rating)
                     : source.OrderByDescending(entry => entry.Value.Winrate);
@@ -131,7 +131,7 @@ namespace OshimaBot.Services
                     result.Add(builder.ToString());
                 }
                 return result;
-            }, cancellationToken);
+            }));
 
         private static Character CreateDemoCharacter()
         {
