@@ -1,6 +1,7 @@
+using System.Text.Json;
+using Microsoft.Extensions.Options;
 using OshimaBot.Game.Services;
 using OshimaBot.Models;
-using Microsoft.Extensions.Options;
 
 namespace OshimaBot.Services
 {
@@ -20,6 +21,9 @@ namespace OshimaBot.Services
         public int NormalAttackLevel { get; set; } = 2;
         public long FixedWeaponId { get; set; }
         public int? Seed { get; set; }
+
+        /// <summary>S9：触发模拟的内部用户，写入 simulation_runs.user_id；第三方/匿名请求为 null。</summary>
+        public long? UserId { get; set; }
     }
 
     public sealed record SimulationResult(
@@ -29,16 +33,21 @@ namespace OshimaBot.Services
         TimeSpan Duration);
 
     /// <summary>
-    /// S8 前置：每次运行创建独立的 SimulationRunContext，静态运行态不再进程级共享；
-    /// 统计与最近日志改由 ISimulationStatisticsStore 持有。引擎仍串行执行（FunGame.Core 目录为只读共享），
-    /// 但两个运行之间不会串种子 / 消息 / 地图 / 运行状态。
+    /// S8 前置：每次运行创建独立的 SimulationRunContext，静态运行态不再进程级共享。
+    /// S9：一局结束后把结果与统计写入 SQLite（simulation_runs / simulation_statistics），
+    /// 内存仓储只作为模拟器运行期的工作副本，重启后由 LoadAsync 恢复。
+    /// 引擎仍串行执行（FunGame.Core 目录为只读共享）。
     /// </summary>
     public sealed class FunGameSimulationService(
         ISimulationStatisticsStore statistics,
-        IOptions<ServerOptions> options)
+        ISimulationRunRecorder recorder,
+        IOptions<ServerOptions> options,
+        ILogger<FunGameSimulationService> logger)
     {
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly int _maximumRespawnTimes = options.Value.MaximumRespawnTimes;
+        private readonly bool _archiveRounds = options.Value.ArchiveSimulationRounds;
+        private readonly bool _storeFullLog = options.Value.StoreFullSimulationLog;
 
         public bool IsRunning => _gate.CurrentCount == 0;
 
@@ -68,19 +77,43 @@ namespace OshimaBot.Services
                     SkillLevel = Math.Clamp(request.SkillLevel, 1, 8),
                     NormalAttackLevel = Math.Clamp(request.NormalAttackLevel, 1, 8),
                     EnablePeriodicDrop = request.EnablePeriodicDrop,
-                    FixedWeaponId = request.FixedWeaponId
+                    FixedWeaponId = request.FixedWeaponId,
+                    ArchiveRounds = _archiveRounds
                 };
 
                 List<string> messages = await Task.Run(
                     () => FunGameSimulation.StartSimulationGame(simulationOptions, context),
                     cancellationToken);
 
-                return new SimulationResult(messages, context.Seed, DateTimeOffset.UtcNow,
-                    DateTimeOffset.UtcNow - startedAt);
+                DateTimeOffset finishedAt = DateTimeOffset.UtcNow;
+                SimulationResult result = new(messages, context.Seed, finishedAt, finishedAt - startedAt);
+                await PersistRunAsync(request, context.Seed, messages, startedAt, finishedAt, cancellationToken);
+                return result;
             }
             finally
             {
                 _gate.Release();
+            }
+        }
+
+        /// <summary>持久化失败只记日志，不丢弃已经算完的模拟结果。</summary>
+        private async Task PersistRunAsync(
+            SimulationRequest request, int seed, IReadOnlyList<string> messages,
+            DateTimeOffset startedAt, DateTimeOffset finishedAt, CancellationToken cancellationToken)
+        {
+            try
+            {
+                IReadOnlyList<string> full = _storeFullLog
+                    ? statistics.Read(store => (IReadOnlyList<string>)[.. store.LastFullRecord])
+                    : [];
+                await recorder.RecordAsync(new SimulationRunRecord(
+                    request.UserId, seed, JsonSerializer.Serialize(request), messages, full,
+                    startedAt, finishedAt), cancellationToken);
+                await statistics.PersistAsync(cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "模拟结果入库失败：Seed={Seed}", seed);
             }
         }
 

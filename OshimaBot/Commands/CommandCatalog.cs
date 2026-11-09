@@ -497,6 +497,9 @@ public static class CommandCatalog
     private static async Task<BotReply> RunSimulationAsync(
         CommandDependencies deps, SimulationRequest request, CommandContext context)
     {
+        // S9：把触发者写入 simulation_runs.user_id，便于按用户复盘；
+        // userId=0 的匿名 / 第三方请求留空。
+        request.UserId = context.UserId > 0 ? context.UserId : null;
         SimulationResult? result = await deps.Simulations.RunAsync(request, context.CancellationToken);
         if (result is null)
         {

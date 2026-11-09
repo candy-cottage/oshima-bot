@@ -33,6 +33,12 @@ namespace OshimaBot.Game.Services
         public bool IsDebug { get; set; }
 
         /// <summary>
+        /// S9：是否把回合记录写入 rounds_archive.zip。默认 false —— 归档改由
+        /// simulation_runs 表承担，只有显式开启（复盘/平衡测试）才落盘。
+        /// </summary>
+        public bool ArchiveRounds { get; set; }
+
+        /// <summary>
         /// 是否启用「角色绑定的回合奖励」（对应 <c>InitRoundRewards</c> 的 bindToCharacter）。<para/>
         /// <b>默认 true</b>：不启用时【命运XX】系技能（抢夺 / 剥夺 / 馈赠）与【强运】会全部静默失效。
         /// </summary>

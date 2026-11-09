@@ -84,6 +84,7 @@ namespace OshimaBot.Game.Services
         public static async Task<List<string>> StartSimulationGame(SimulationOptions options, SimulationRunContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
+            context.ArchiveRounds = options.ArchiveRounds;
             using IDisposable scope = BeginRun(context);
             return await StartSimulationGameCore(options).ConfigureAwait(false);
         }
@@ -701,18 +702,23 @@ namespace OshimaBot.Game.Services
                         }
                     }
 
-                    string zipFileName = "rounds_archive.zip";
-                    try
+                    // S9：默认不再无条件落盘 zip；结果由 simulation_runs 表承载，
+                    // 只有显式开启 ArchiveRounds（复盘 / 平衡测试）才生成 rounds_archive.zip。
+                    if (Current.ArchiveRounds)
                     {
-                        WriteRoundsToZip(actionQueue.Rounds.ToDictionary(kv => kv.Round, kv => kv), zipFileName);
-                    }
-                    catch (Exception ex)
-                    {
-                        // 档案落盘失败（IO/权限/磁盘满等）不应连带丢弃整局模拟结果
-                        string msg = $"回合记录写入失败（{zipFileName}）：{ex.Message}";
-                        Console.WriteLine(ex);
-                        result.Add(msg);
-                        lastRecord.Add(msg);
+                        string zipFileName = "rounds_archive.zip";
+                        try
+                        {
+                            WriteRoundsToZip(actionQueue.Rounds.ToDictionary(kv => kv.Round, kv => kv), zipFileName);
+                        }
+                        catch (Exception ex)
+                        {
+                            // 档案落盘失败（IO/权限/磁盘满等）不应连带丢弃整局模拟结果
+                            string msg = $"回合记录写入失败（{zipFileName}）：{ex.Message}";
+                            Console.WriteLine(ex);
+                            result.Add(msg);
+                            lastRecord.Add(msg);
+                        }
                     }
 
                     LastRecord = result;

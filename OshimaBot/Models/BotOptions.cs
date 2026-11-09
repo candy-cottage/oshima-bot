@@ -94,5 +94,11 @@ namespace OshimaBot.Models
 
         /// <summary>一次性绑定码有效期（秒）。</summary>
         public int BindCodeTtlSeconds { get; set; } = 300;
+
+        /// <summary>S9：是否额外把回合记录写入 rounds_archive.zip。默认关闭，结果统一入 simulation_runs 表。</summary>
+        public bool ArchiveSimulationRounds { get; set; }
+
+        /// <summary>S9：是否把完整模拟日志写入 simulation_runs.rounds_json（供 /上次的完整日志 重启后恢复）。</summary>
+        public bool StoreFullSimulationLog { get; set; } = true;
     }
 }

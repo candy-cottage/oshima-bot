@@ -18,6 +18,12 @@ public interface ISimulationStatisticsStore
 
     /// <summary>在读锁内执行读取，避免与正在写入的模拟互相干扰。</summary>
     T Read<T>(Func<ISimulationStatisticsStore, T> reader);
+
+    /// <summary>
+    /// 一局模拟结束后把统计与最近日志持久化。内存实现为空操作；
+    /// S9 的 EF Core 实现写 simulation_statistics，重启后可恢复。
+    /// </summary>
+    Task PersistAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemorySimulationStatisticsStore : ISimulationStatisticsStore
@@ -49,4 +55,6 @@ public sealed class InMemorySimulationStatisticsStore : ISimulationStatisticsSto
     {
         lock (_sync) return reader(this);
     }
+
+    public Task PersistAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

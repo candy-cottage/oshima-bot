@@ -22,6 +22,9 @@ public sealed class SimulationRunContext
     public Random Random { get; set; } = new();
     public GameMap Map { get; set; } = new FastAutoMap();
 
+    /// <summary>S9：本局是否额外写 rounds_archive.zip（默认关闭，结果统一入库）。</summary>
+    public bool ArchiveRounds { get; set; }
+
     /// <summary>绑定到本实例的日志回调：不依赖 AsyncLocal，跨线程回调也不会串局。</summary>
     public void WriteLine(string text)
     {

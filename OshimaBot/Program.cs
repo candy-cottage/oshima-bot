@@ -67,8 +67,10 @@ builder.Services.AddHttpClient(QQBotService.HttpClientName, client =>
     client.Timeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("QQBot:RequestTimeoutSeconds", 30));
 });
 builder.Services.AddSingleton<IQQBotService, QQBotService>();
-// 与模拟器共享同一个统计仓储实例（S9 可换数据库实现，只需在启动前 FunGameSimulation.UseStatisticsStore）。
-builder.Services.AddSingleton(FunGameSimulation.StatisticsStore);
+// S9：统计与模拟运行记录统一由 EF Core 实现；模拟器、查询服务与后台任务共享同一实例。
+builder.Services.AddSingleton<EfSimulationStatisticsStore>();
+builder.Services.AddSingleton<ISimulationStatisticsStore>(sp => sp.GetRequiredService<EfSimulationStatisticsStore>());
+builder.Services.AddSingleton<ISimulationRunRecorder>(sp => sp.GetRequiredService<EfSimulationStatisticsStore>());
 builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();
@@ -102,6 +104,12 @@ builder.Services.AddHostedService<BotMessageBackgroundService>();
 builder.Services.AddHostedService<QQBotGatewayClient>();
 
 WebApplication app = builder.Build();
+
+// S9：在首次模拟 / 统计读写前把 EF Core 仓储注入模拟器。
+// InitializeStatistics 只为新仓储补齐字典；真正的数据库恢复由 DatabaseInitializer.LoadAsync 在迁移后完成。
+EfSimulationStatisticsStore statisticsStore = app.Services.GetRequiredService<EfSimulationStatisticsStore>();
+FunGameSimulation.UseStatisticsStore(statisticsStore);
+FunGameSimulation.InitializeStatistics();
 
 app.UseExceptionHandler();
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using OshimaBot.Data.Entities;
 using OshimaBot.Models;
 using OshimaBot.Security;
+using OshimaBot.Services;
 
 namespace OshimaBot.Data;
 
@@ -34,6 +35,11 @@ public sealed class DatabaseInitializer(
         {
             logger.LogInformation("已跳过数据库自动迁移（Database:ApplyMigrationsOnStartup=false）。");
         }
+
+        // S9：迁移完成后把模拟统计与最近一次日志从数据库恢复到内存工作副本。
+        // 用 GetService 而非构造函数注入，保证只构建 DbContext 的集成测试也能复用本类。
+        EfSimulationStatisticsStore? statistics = scope.ServiceProvider.GetService<EfSimulationStatisticsStore>();
+        if (statistics is not null) await statistics.LoadAsync(cancellationToken);
 
         await SeedBootstrapApiKeyAsync(db, cancellationToken);
     }

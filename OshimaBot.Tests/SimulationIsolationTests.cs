@@ -1,4 +1,5 @@
 using FunGame.Core.Entity;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OshimaBot.Game.Services;
 using OshimaBot.Models;
@@ -105,7 +106,8 @@ public sealed class SimulationIsolationTests
         InMemorySimulationStatisticsStore store = new();
         store.LastRecord = ["A"];
         store.LastFullRecord = ["A", "B"];
-        FunGameSimulationService service = new(store, Options.Create(new ServerOptions()));
+        FunGameSimulationService service = new(store, new NoopRunRecorder(),
+            Options.Create(new ServerOptions()), NullLogger<FunGameSimulationService>.Instance);
 
         Assert.Equal(new[] { "A" }, await service.GetLastAsync(false));
         Assert.Equal(2, (await service.GetLastAsync(true)).Count);
@@ -127,5 +129,11 @@ public sealed class SimulationIsolationTests
         List<string> ranking = await queries.GetRankingAsync(false, true);
         Assert.Single(ranking);
         Assert.Contains("技术得分", ranking[0]);
+    }
+
+    private sealed class NoopRunRecorder : ISimulationRunRecorder
+    {
+        public Task<long> RecordAsync(SimulationRunRecord record, CancellationToken cancellationToken = default)
+            => Task.FromResult(0L);
     }
 }
