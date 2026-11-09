@@ -7,6 +7,7 @@ using OshimaBot.Messaging;
 using OshimaBot.Models;
 using OshimaBot.Security;
 using OshimaBot.Services;
+using OshimaBot.Services.Gateway;
 
 FunGameRuntime.EnsureInitialized();
 
@@ -24,6 +25,8 @@ builder.Services.AddOptions<QQBotOptions>()
     .Validate(options => options.Intents > 0, "QQBot Intents 必须大于 0。")
     .Validate(options => options.SignatureMaxAgeSeconds is > 0 and <= 3600, "回调签名时间戳窗口必须在 1 到 3600 秒之间。")
     .Validate(options => !options.EnableWebhook || !string.IsNullOrWhiteSpace(options.Secret), "启用 Webhook 回调时必须配置 Secret 用于验签。")
+    .Validate(options => options.ShardId >= 0, "QQBot ShardId 不能为负数。")
+    .Validate(options => options.GatewayMaxReconnectDelaySeconds is > 0 and <= 600, "网关重连退避上限必须在 1 到 600 秒之间。")
     .ValidateOnStart();
 builder.Services.AddOptions<ServerOptions>()
     .Bind(builder.Configuration.GetSection(ServerOptions.SectionName))
@@ -64,8 +67,12 @@ builder.Services.AddSingleton<IBotMessageSink>(sp => sp.GetRequiredService<BotMe
 builder.Services.AddSingleton<IEventDeduplicationStore, EventDeduplicationStore>();
 builder.Services.AddSingleton<IInteractionAckService, InteractionAckService>();
 builder.Services.AddSingleton<IQQEventDispatcher, QQEventDispatcher>();
+builder.Services.AddSingleton<IGatewayApiClient, GatewayApiClient>();
+builder.Services.AddSingleton<IGatewaySessionStore, GatewaySessionStore>();
+builder.Services.AddSingleton<IGatewayStatus, GatewayStatus>();
 builder.Services.AddHostedService<ProcessedEventCleanupService>();
 builder.Services.AddHostedService<BotMessageBackgroundService>();
+builder.Services.AddHostedService<QQBotGatewayClient>();
 
 WebApplication app = builder.Build();
 
@@ -80,6 +87,7 @@ if (app.Environment.IsDevelopment())
 }
 
 QQBotOptions botOptions = app.Services.GetRequiredService<IOptions<QQBotOptions>>().Value;
+IGatewayStatus gatewayStatus = app.Services.GetRequiredService<IGatewayStatus>();
 app.Logger.LogInformation(
     "OshimaBot 启动：Mode={Mode}, Environment={Environment}, Webhook={WebhookEnabled}, Intents={Intents}",
     botOptions.Mode, botOptions.Environment, botOptions.EnableWebhook, botOptions.Intents);
@@ -95,14 +103,26 @@ app.MapGet("/", () => Results.Ok(new
     items = FunGameService.AllItems.Count
 }));
 
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", () =>
 {
-    status = "ok",
-    mode = botOptions.Mode.ToString(),
-    environment = botOptions.Environment.ToString(),
-    webhookEnabled = botOptions.EnableWebhook,
-    startedAt = FunGameRuntime.StartedAt
-}));
+    GatewayStatusSnapshot gateway = gatewayStatus.Snapshot;
+    return Results.Ok(new
+    {
+        status = "ok",
+        mode = botOptions.Mode.ToString(),
+        environment = botOptions.Environment.ToString(),
+        webhookEnabled = botOptions.EnableWebhook,
+        gateway = new
+        {
+            connected = gateway.Connected,
+            sessionId = gateway.SessionId,
+            lastSeq = gateway.LastSeq,
+            connectedAtUtc = gateway.ConnectedAtUtc,
+            lastError = gateway.LastError
+        },
+        startedAt = FunGameRuntime.StartedAt
+    });
+});
 
 app.MapControllers();
 

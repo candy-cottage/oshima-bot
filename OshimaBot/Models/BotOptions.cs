@@ -47,6 +47,15 @@ namespace OshimaBot.Models
         /// <summary>心跳周期由 op 10 Hello 下发，此处仅作为网关请求超时兜底。</summary>
         public int GatewayRequestTimeoutSeconds { get; set; } = 15;
 
+        /// <summary>留空时通过 GET /gateway/bot 自动获取；可用于沙箱代理或显式指定网关。</summary>
+        public string GatewayUrl { get; set; } = "";
+
+        /// <summary>单连接起步，分片编号固定 0；分片总数取自 /gateway/bot 的 shards。</summary>
+        public int ShardId { get; set; }
+
+        /// <summary>断线重连的指数退避上限（秒）。</summary>
+        public int GatewayMaxReconnectDelaySeconds { get; set; } = 30;
+
         public string ResolvedApiBaseAddress => string.IsNullOrWhiteSpace(ApiBaseAddress)
             ? Environment == QQBotEnvironment.Sandbox
                 ? "https://sandbox.api.sgroup.qq.com"
