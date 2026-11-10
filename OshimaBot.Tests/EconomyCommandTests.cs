@@ -69,7 +69,8 @@ public sealed class EconomyCommandTests
         Assert.Contains("进入秘境", await RouteAsync(router, "/秘境 精英"));
         Assert.Contains("尚未结束", await RouteAsync(router, "/收取秘境"));
 
-        Assert.Contains("Boss 讨伐成功", await RouteAsync(router, "/Boss"));
+        // Boss 已是真实战斗，胜负都可能；标题固定包含「Boss 讨伐」。
+        Assert.Contains("Boss 讨伐", await RouteAsync(router, "/Boss"));
         Assert.Contains("今天已经挑战过", await RouteAsync(router, "/Boss"));
         Assert.Contains("决斗", await RouteAsync(router, "/决斗"));
 

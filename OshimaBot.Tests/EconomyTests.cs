@@ -186,13 +186,15 @@ public sealed class EconomyTests
         IReadOnlyList<RankEntry> points = await economy.GetRankingAsync("战绩");
         IReadOnlyList<RankEntry> credits = await economy.GetRankingAsync("credits");
         Assert.Single(points);
-        Assert.True(points[0].Value >= GameplayRules.BossWinPoints);
+        // Boss 现在是真实战斗：胜利给满分，失败按伤害占比给部分战绩。
+        Assert.True(points[0].Value >= 1);
         Assert.NotEmpty(credits);
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         Assert.Single(await dbContext.AppConfigs.Where(x => x.Key.StartsWith("boss:")).ToListAsync());
-        Assert.Equal(2, await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward"));
+        // 胜利才发钻石，失败只有金币一条；至少应有一条奖励流水。
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward") >= 1);
     }
 
     [Fact]

@@ -604,7 +604,8 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
     public Task<ActionResult> BossAsync(long userId, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            string key = $"boss:{userId}:{GameplayRules.Today()}";
+            string date = GameplayRules.Today();
+            string key = $"boss:{userId}:{date}";
             if (await db.AppConfigs.AsNoTracking().AnyAsync(x => x.Key == key, ct))
             {
                 return ActionResult.Fail("今天已经挑战过 Boss", "没有扣除金币，也没有发放奖励",
@@ -615,19 +616,78 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 return ActionResult.Fail("金币不足", "没有开始挑战",
                     $"需要 {GameplayRules.BossCostCredits} 金币，当前 {state.Credits}", "/状态");
             }
-            PlayerService.ApplyCurrency(db, state, -GameplayRules.BossCostCredits, "credits", "boss_entry", "boss", key);
-            PlayerService.ApplyCurrency(db, state, GameplayRules.BossRewardCredits, "credits", "boss_reward", "boss", key);
-            PlayerService.ApplyCurrency(db, state, GameplayRules.BossRewardDiamonds, "diamonds", "boss_reward", "boss", key);
-            long points = await AddPointsAsync(db, userId, GameplayRules.BossWinPoints, ct);
+
+            DataCharacter? mine = await db.Characters
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.IsMain)
+                .ThenBy(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+            if (mine is null)
+            {
+                return ActionResult.Fail("没有可出战的角色", "没有扣除金币",
+                    "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
+            }
+
+            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
+                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
+            if (me is null)
+            {
+                return ActionResult.Fail("角色数据缺失", "没有扣除金币",
+                    "内容包可能已更新，请反馈给管理员", "/状态");
+            }
+
+            // Boss 池：当天固定一只，取副本作战，池内实例的 HP 不被改写。
+            BossEntry bossEntry = BossPool.ForDate(date);
+            CoreCharacter boss = BossPool.CreateFighter(bossEntry);
+            BattleResult battle = FunGameActionQueue.RunMix([me, boss],
+                new BattleOptions { MaxRound = 150, UseRoundRewards = false });
+
+            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+            double damage = boss.MaxHP <= 0 ? 0 : Math.Clamp(1 - boss.HP / boss.MaxHP, 0, 1);
+
+            PlayerService.ApplyCurrency(db, state, -GameplayRules.BossCostCredits,
+                "credits", "boss_entry", "boss", key);
+            int credits = win
+                ? GameplayRules.BossRewardCredits
+                : (int)(GameplayRules.BossRewardCredits * damage * 0.5);
+            int diamonds = win ? GameplayRules.BossRewardDiamonds : 0;
+            if (credits > 0)
+            {
+                PlayerService.ApplyCurrency(db, state, credits, "credits", "boss_reward", "boss", key);
+            }
+            if (diamonds > 0)
+            {
+                PlayerService.ApplyCurrency(db, state, diamonds, "diamonds", "boss_reward", "boss", key);
+            }
+            int gain = win
+                ? GameplayRules.BossWinPoints
+                : Math.Max(1, (int)(GameplayRules.BossWinPoints * damage * 0.4));
+            long points = await AddPointsAsync(db, userId, gain, ct);
             db.AppConfigs.Add(new AppConfig
             {
-                Key = key, ValueJson = "{\"count\":1}", UpdatedAtUtc = DateTime.UtcNow
+                Key = key,
+                ValueJson = $"{{\"win\":{(win ? "true" : "false")},\"damage\":{damage:F4}}}",
+                UpdatedAtUtc = DateTime.UtcNow
             });
-            return ActionResult.Success("🐉 Boss 讨伐成功",
-                $"金币 +{GameplayRules.BossRewardCredits - GameplayRules.BossCostCredits}（净） · 钻石 +{GameplayRules.BossRewardDiamonds} · 战绩 +{GameplayRules.BossWinPoints}",
-                [$"- 当前战绩积分：{points}　金币：{state.Credits}　钻石：{state.Diamonds}",
-                    "- 每日仅可讨伐一次（按游戏日重置）"],
-                ["/排行榜 战绩", "/状态"]);
+
+            List<string> lines =
+            [
+                $"- 目标：{bossEntry.Display}",
+                $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
+                $"- 伤害占比：{damage:P0} · {battle.Rounds} 回合",
+                $"- 结算：金币 +{credits}{(diamonds > 0 ? $"　钻石 +{diamonds}" : "")} · 战绩 +{gain}",
+                $"- 当前战绩：{points}　金币：{state.Credits}"
+            ];
+            lines.AddRange(battle.Tail(2)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+
+            return ActionResult.Success(win ? "🐉 Boss 讨伐成功" : "🛡️ Boss 讨伐失败",
+                win
+                    ? $"击败 {bossEntry.Name} · 金币 +{credits} · 钻石 +{diamonds} · 战绩 +{gain}"
+                    : $"{bossEntry.Name} 剩 {boss.HP:F0} HP · 按伤害结算 {credits} 金币",
+                lines,
+                ["/排行榜 战绩", "/决斗", "/状态"]);
         }, cancellationToken);
 
     public Task<IReadOnlyList<RankEntry>> GetRankingAsync(string board, CancellationToken cancellationToken = default)
