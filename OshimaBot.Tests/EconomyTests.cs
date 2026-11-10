@@ -159,7 +159,7 @@ public sealed class EconomyTests
         Assert.True((await economy.ClaimForgeAsync(Seller)).Ok);
         Assert.Contains(await players.GetBagAsync(Seller), item => item.Name.Contains("锻造"));
 
-        Assert.True((await economy.InstanceAsync(Seller, "精英")).Ok);
+        Assert.True((await economy.InstanceAsync(Seller, "地区 3")).Ok);
         Assert.False((await economy.ClaimInstanceAsync(Seller)).Ok);
         await ExpireAsync(db, "instance");
         Assert.True((await economy.ClaimInstanceAsync(Seller)).Ok);
@@ -167,10 +167,9 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        // 秘境结算现在打真实战斗：胜利给全额，失败给半额。
-        Assert.True((await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller)).Exp
-                    >= GameplayRules.InstanceRewardExp / 2);
-        Assert.Single(await dbContext.LedgerEntries.Where(x => x.Reason == "instance_reward").ToListAsync());
+        // 秘境打真实战斗：胜利全额、失败半额；「地区 3」给 300 经验 + 3 件掉落。
+        Assert.True((await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller)).Exp >= 150);
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "instance_start") >= 1);
     }
 
     [Fact]

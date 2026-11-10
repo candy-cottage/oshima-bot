@@ -139,6 +139,96 @@ public static class GameplayRules
     public const int InstanceRewardCredits = 60;
     public const int InstanceMaxMinutes = 120;
 
+    /// <summary>旧版 7 类秘境。</summary>
+    public enum InstanceKind
+    {
+        Gold,
+        Material,
+        Exp,
+        Region,
+        Break,
+        Skill,
+        MagicCard
+    }
+
+    public static readonly IReadOnlyList<(InstanceKind Kind, string Name)> InstanceKinds =
+    [
+        (InstanceKind.Gold, "金币"),
+        (InstanceKind.Material, "钻石"),
+        (InstanceKind.Exp, "经验"),
+        (InstanceKind.Region, "地区"),
+        (InstanceKind.Break, "突破"),
+        (InstanceKind.Skill, "技能"),
+        (InstanceKind.MagicCard, "魔法卡")
+    ];
+
+    public static int ClampDifficulty(int difficulty) => Math.Clamp(difficulty, 1, 5);
+
+    /// <summary>旧版：敌人数量 = 难度 + 1（2~6）。</summary>
+    public static int InstanceEnemyCount(int difficulty) => ClampDifficulty(difficulty) + 1;
+
+    /// <summary>旧版：敌人等级 = 难度 × 8（8~40）。</summary>
+    public static int InstanceEnemyLevel(int difficulty) => ClampDifficulty(difficulty) * 8;
+
+    public static string InstanceKindName(InstanceKind kind)
+        => InstanceKinds.First(x => x.Kind == kind).Name;
+
+    public static InstanceKind ParseInstanceKind(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return InstanceKind.Gold;
+        string normalized = text.Trim();
+        foreach ((InstanceKind kind, string name) in InstanceKinds)
+        {
+            if (normalized.Contains(name, StringComparison.Ordinal)) return kind;
+        }
+        return normalized switch
+        {
+            "gold" or "credits" => InstanceKind.Gold,
+            "material" or "diamond" or "diamonds" => InstanceKind.Material,
+            "exp" or "experience" => InstanceKind.Exp,
+            "region" => InstanceKind.Region,
+            "break" => InstanceKind.Break,
+            "skill" => InstanceKind.Skill,
+            "magic" or "card" => InstanceKind.MagicCard,
+            _ => InstanceKind.Gold
+        };
+    }
+
+    /// <summary>难度：数字 1-5，或 普通/精英/噩梦/深渊/地狱（1/3/4/5/5）。</summary>
+    public static int ParseInstanceDifficulty(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return 1;
+        string normalized = text.Trim();
+        if (int.TryParse(normalized, out int value)) return ClampDifficulty(value);
+        return normalized switch
+        {
+            "普通" or "简单" => 1,
+            "困难" or "精英" => 3,
+            "噩梦" => 4,
+            "深渊" or "地狱" => 5,
+            _ => 1
+        };
+    }
+
+    /// <summary>
+    /// 按类型与难度产出：经验 / 金币 / 物品件数。
+    /// <para>基准取自旧版 <c>FightInstance</c>：金币约 550–1050、钻石 3–7、经验 570–1260，均随难度线性放大。</para>
+    /// </summary>
+    public static (long Exp, long Credits, long Diamonds, int Items) InstanceReward(InstanceKind kind, int difficulty)
+    {
+        int d = ClampDifficulty(difficulty);
+        return kind switch
+        {
+            InstanceKind.Gold => (0, 800L * d, 0, 0),
+            InstanceKind.Material => (0, 0, 5L * d, 0),
+            InstanceKind.Exp => (900L * d, 0, 0, 0),
+            InstanceKind.Region => (100L * d, 0, 0, d),
+            InstanceKind.Break => (0, 0, 0, d),
+            InstanceKind.Skill => (0, 0, 0, d),
+            _ => (0, 0, 0, 1)
+        };
+    }
+
     public const int DuelCostCredits = 30;
     public const int DuelRewardCredits = 80;
     public const int DuelWinPoints = 10;

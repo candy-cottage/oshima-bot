@@ -457,19 +457,44 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 return ActionResult.Fail("金币不足", "没有开始探索",
                     $"需要 {GameplayRules.InstanceCostCredits} 金币，当前 {state.Credits}", "/状态");
             }
-            string region = string.IsNullOrWhiteSpace(difficulty) ? "普通" : difficulty.Trim();
+
+            // 规格解析：`金币 3` / `精英` / `3` / 空 → 类型 + 难度 1-5
+            string spec = string.IsNullOrWhiteSpace(difficulty) ? "" : difficulty.Trim();
+            string? kindToken = null;
+            int level = 1;
+            foreach (string token in spec.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(token, out int parsed))
+                {
+                    level = GameplayRules.ClampDifficulty(parsed);
+                    continue;
+                }
+                if (GameplayRules.InstanceKinds.Any(x => token.Contains(x.Name, StringComparison.Ordinal)))
+                {
+                    kindToken = token;
+                    continue;
+                }
+                level = GameplayRules.ParseInstanceDifficulty(token);
+            }
+            GameplayRules.InstanceKind kind = GameplayRules.ParseInstanceKind(kindToken);
+            string kindName = GameplayRules.InstanceKindName(kind);
+            string region = $"{kindName}:{level}";
+
             DateTime now = DateTime.UtcNow;
             PlayerService.ApplyCurrency(db, state, -GameplayRules.InstanceCostCredits, "credits", "instance_start", "instance", region);
             db.ExplorationRuns.Add(new ExplorationRun
             {
                 UserId = userId, RegionKey = region,
-                StateJson = JsonSerializer.Serialize(new { difficulty = region }),
+                StateJson = JsonSerializer.Serialize(new { kind = kind.ToString(), difficulty = level }),
                 StartedAtUtc = now, EndsAtUtc = now.AddMinutes(GameplayRules.InstanceDefaultMinutes)
             });
+            (long exp, long credits, long diamonds, int items) = GameplayRules.InstanceReward(kind, level);
             return ActionResult.Success("🗺️ 进入秘境",
-                $"{region} 难度 · {GameplayRules.InstanceDefaultMinutes} 分钟后结算",
+                $"{kindName}秘境 · 难度 {level} · {GameplayRules.InstanceDefaultMinutes} 分钟后结算",
                 [$"- 消耗金币 {GameplayRules.InstanceCostCredits}",
-                    $"- 预计收获：经验 +{GameplayRules.InstanceRewardExp} / 金币 +{GameplayRules.InstanceRewardCredits} / 随机掉落"],
+                    $"- 敌人：{GameplayRules.InstanceEnemyCount(level)} 名 Lv.{GameplayRules.InstanceEnemyLevel(level)}",
+                    $"- 预计收获：{exp} 经验 / {credits} 金币 / {diamonds} 钻石 / {items} 件掉落",
+                    "- 胜利全额，失败半额；用 /收取秘境 结算"],
                 ["/收取秘境", "/状态"]);
         }, cancellationToken);
 
@@ -496,32 +521,65 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
 
             CoreCharacter? me = CombatCharacterFactory.FromCatalog(
                 mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
-            CoreCharacter? opponentTemplate = CombatCharacterFactory.PickOpponent(mine.CatalogId);
-            if (me is null || opponentTemplate is null)
+            if (me is null)
             {
                 return ActionResult.Fail("角色数据缺失", "没有结算任何奖励",
                     "内容包可能已更新，请反馈给管理员", "/状态");
             }
 
-            CoreCharacter enemy = CombatCharacterFactory.Build(opponentTemplate, mine.Level, 0, mine.BreakLevel);
-            BattleResult battle = FunGameActionQueue.RunMix([me, enemy],
-                new BattleOptions { MaxRound = 80, UseRoundRewards = false });
-            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+            // RegionKey 形如「金币:3」，解析出秘境类型与难度。
+            string[] parts = run.RegionKey.Split(':');
+            GameplayRules.InstanceKind kind = GameplayRules.ParseInstanceKind(parts[0]);
+            int level = parts.Length > 1 && int.TryParse(parts[1], out int parsed)
+                ? GameplayRules.ClampDifficulty(parsed) : 1;
+            string kindName = GameplayRules.InstanceKindName(kind);
 
-            int exp = win ? GameplayRules.InstanceRewardExp : GameplayRules.InstanceRewardExp / 2;
-            int credits = win ? GameplayRules.InstanceRewardCredits : GameplayRules.InstanceRewardCredits / 2;
+            // 敌人数量与等级跟随难度（旧版：数量 = 难度 + 1，等级 = 难度 × 8）。
+            List<CoreCharacter> fighters = [me];
+            int enemyCount = GameplayRules.InstanceEnemyCount(level);
+            int enemyLevel = GameplayRules.InstanceEnemyLevel(level);
+            for (int i = 0; i < enemyCount; i++)
+            {
+                CoreCharacter template = FunGameService.Characters[(i + 1) % FunGameService.Characters.Count];
+                fighters.Add(CombatCharacterFactory.Build(template, enemyLevel));
+            }
+
+            BattleResult battle = FunGameActionQueue.RunMix(fighters,
+                new BattleOptions { MaxRound = 120, UseRoundRewards = false });
+            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+            double rate = win ? 1.0 : 0.5;
+
+            (long fullExp, long fullCredits, long fullDiamonds, int fullItems) =
+                GameplayRules.InstanceReward(kind, level);
+            long exp = (long)(fullExp * rate);
+            long credits = (long)(fullCredits * rate);
+            long diamonds = (long)(fullDiamonds * rate);
+            int itemCount = win ? fullItems : Math.Max(0, fullItems / 2);
+
             state.Exp += exp;
-            PlayerService.ApplyCurrency(db, state, credits, "credits", "instance_reward", "instance", run.RegionKey);
-            int quality = Math.Clamp(GameplayRules.RollQuality(Random.Shared) - (win ? 0 : 2), 1, 5);
-            await PlayerService.AddItemAsync(db, userId, $"{run.RegionKey}秘境掉落", quality, 1, ct, "instance");
+            if (credits > 0)
+            {
+                PlayerService.ApplyCurrency(db, state, credits, "credits", "instance_reward", "instance", run.RegionKey);
+            }
+            if (diamonds > 0)
+            {
+                PlayerService.ApplyCurrency(db, state, diamonds, "diamonds", "instance_reward", "instance", run.RegionKey);
+            }
+            List<string> drops = [];
+            for (int i = 0; i < itemCount; i++)
+            {
+                int quality = Math.Clamp(GameplayRules.RollQuality(Random.Shared) - (win ? 0 : 2), 1, 5);
+                await PlayerService.AddItemAsync(db, userId, $"{kindName}秘境掉落", quality, 1, ct, "instance");
+                drops.Add(GameplayRules.QualityName(quality));
+            }
             run.SettledAtUtc = DateTime.UtcNow;
 
             List<string> lines =
             [
-                $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合",
-                $"- 经验 +{exp} · 金币 +{credits}",
-                $"- 掉落：{GameplayRules.QualityName(quality)} · {run.RegionKey}秘境掉落",
-                $"- 当前经验：{state.Exp}　金币：{state.Credits}"
+                $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level}",
+                $"- 经验 +{exp}　金币 +{credits}　钻石 +{diamonds}",
+                $"- 掉落：{(drops.Count == 0 ? "无" : string.Join("、", drops))} · {kindName}秘境",
+                $"- 当前经验：{state.Exp}　金币：{state.Credits}　钻石：{state.Diamonds}"
             ];
             lines.AddRange(battle.Tail(2)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

@@ -337,10 +337,10 @@ public static class CommandCatalog
                 await deps.Economy.ClaimForgeAsync(context.UserId, context.CancellationToken))),
 
         "instance" => new DelegateCommand(
-            key: "instance", name: "秘境", aliases: ["instance"], usage: "/秘境 [难度]",
-            description: "进入秘境探索（定时结算）", group: CommandGroups.Economy, audit: true,
+            key: "instance", name: "秘境", aliases: ["instance"], usage: "/秘境 [类型] [难度]",
+            description: "进入秘境探索（7 类 · 难度 1-5 · 定时结算）", group: CommandGroups.Economy, audit: true,
             handler: async context => CommandReplies.FromResult(await deps.Economy.InstanceAsync(
-                context.UserId, context.FirstArgument ?? "", context.CancellationToken))),
+                context.UserId, context.ArgumentText, context.CancellationToken))),
 
         "instance-claim" => new DelegateCommand(
             key: "instance-claim", name: "收取秘境", aliases: ["instanceclaim"], usage: "/收取秘境",
