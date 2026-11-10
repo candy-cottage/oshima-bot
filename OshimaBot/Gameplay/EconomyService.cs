@@ -6,6 +6,7 @@ using OshimaBot.Data.Entities;
 using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using CoreCharacter = FunGame.Core.Entity.Character;
+using CoreTeam = FunGame.Core.Entity.Team;
 using DataCharacter = OshimaBot.Data.Entities.Character;
 
 namespace OshimaBot.Gameplay;
@@ -519,9 +520,32 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                     "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
             }
 
-            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
-                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
-            if (me is null)
+            // 出战队伍：优先使用小队编成（最多 3 人），未编成则主战单刷。
+            List<DataCharacter> roster = [];
+            Squad? squad = await db.Squads.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
+            if (squad is not null)
+            {
+                List<long> memberIds = await db.SquadMembers.AsNoTracking()
+                    .Where(x => x.SquadId == squad.Id).OrderBy(x => x.Slot)
+                    .Select(x => x.CharacterId).ToListAsync(ct);
+                if (memberIds.Count > 0)
+                {
+                    List<DataCharacter> loaded = await db.Characters.AsNoTracking()
+                        .Where(x => memberIds.Contains(x.Id)).ToListAsync(ct);
+                    roster = [.. loaded.OrderBy(x => memberIds.IndexOf(x.Id))];
+                }
+            }
+            if (roster.Count == 0) roster = [mine];
+
+            List<CoreCharacter> party = [];
+            foreach (DataCharacter member in roster)
+            {
+                CoreCharacter? built = CombatCharacterFactory.FromCatalog(
+                    member.CatalogId, member.Level, member.Exp, member.BreakLevel);
+                if (built is not null) party.Add(built);
+            }
+            if (party.Count == 0)
             {
                 return ActionResult.Fail("角色数据缺失", "没有结算任何奖励",
                     "内容包可能已更新，请反馈给管理员", "/状态");
@@ -535,18 +559,21 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             string kindName = GameplayRules.InstanceKindName(kind);
 
             // 敌人数量与等级跟随难度（旧版：数量 = 难度 + 1，等级 = 难度 × 8）。
-            List<CoreCharacter> fighters = [me];
             int enemyCount = GameplayRules.InstanceEnemyCount(level);
             int enemyLevel = GameplayRules.InstanceEnemyLevel(level);
+            List<CoreCharacter> enemies = [];
             for (int i = 0; i < enemyCount; i++)
             {
                 CoreCharacter template = FunGameService.Characters[(i + 1) % FunGameService.Characters.Count];
-                fighters.Add(CombatCharacterFactory.Build(template, enemyLevel));
+                enemies.Add(CombatCharacterFactory.Build(template, enemyLevel));
             }
 
-            BattleResult battle = FunGameActionQueue.RunMix(fighters,
-                new BattleOptions { MaxRound = 120, UseRoundRewards = false });
-            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+            // 2 人以上走分队战，单人走混战。
+            BattleOptions battleOptions = new() { MaxRound = 120, UseRoundRewards = false };
+            BattleResult battle = party.Count >= 2
+                ? FunGameActionQueue.RunTeam([new CoreTeam("小队", party), new CoreTeam("秘境守卫", enemies)], battleOptions)
+                : FunGameActionQueue.RunMix([party[0], .. enemies], battleOptions);
+            bool win = battle.Winner is not null && party.Any(x => ReferenceEquals(x, battle.Winner));
             double rate = win ? 1.0 : 0.5;
 
             (long fullExp, long fullCredits, long fullDiamonds, int fullItems) =
@@ -576,7 +603,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
 
             List<string> lines =
             [
-                $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level}",
+                $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level} · 出战 {party.Count} 人",
                 $"- 经验 +{exp}　金币 +{credits}　钻石 +{diamonds}",
                 $"- 掉落：{(drops.Count == 0 ? "无" : string.Join("、", drops))} · {kindName}秘境",
                 $"- 当前经验：{state.Exp}　金币：{state.Credits}　钻石：{state.Diamonds}"
