@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 
 namespace OshimaBot.Data;
@@ -46,6 +47,11 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<SimulationRun> SimulationRuns => Set<SimulationRun>();
     public DbSet<SimulationStatistic> SimulationStatistics => Set<SimulationStatistic>();
     public DbSet<AppConfig> AppConfigs => Set<AppConfig>();
+
+    // ---- Core 语义的玩法存储（v3.1 起替代 player_states/characters/item_instances）----
+    public DbSet<CorePlayerRecord> CorePlayers => Set<CorePlayerRecord>();
+    public DbSet<CoreCharacterRecord> CoreCharacters => Set<CoreCharacterRecord>();
+    public DbSet<CoreItemRecord> CoreItems => Set<CoreItemRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -181,5 +187,27 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
         });
         modelBuilder.Entity<SimulationStatistic>().HasKey(x => new { x.Scope, x.CatalogId });
         modelBuilder.Entity<AppConfig>().HasKey(x => x.Key);
+
+        // ---- Core 语义的玩法存储 ----
+        modelBuilder.Entity<CorePlayerRecord>(entity =>
+        {
+            entity.HasKey(x => x.UserId);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<CoreCharacterRecord>(entity =>
+        {
+            entity.HasKey(x => x.Guid);
+            entity.HasIndex(x => new { x.UserId, x.Level });
+            entity.HasIndex(x => new { x.UserId, x.Promotion });
+            entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<CoreItemRecord>(entity =>
+        {
+            entity.HasKey(x => x.Guid);
+            entity.HasIndex(x => new { x.UserId, x.Quality });
+            entity.HasIndex(x => new { x.EscrowUserId, x.Quality });
+            entity.HasIndex(x => new { x.CatalogId });
+            entity.Property(x => x.Version).IsConcurrencyToken();
+        });
     }
 }

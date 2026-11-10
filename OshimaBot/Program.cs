@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OshimaBot.Commands;
 using OshimaBot.Data;
+using OshimaBot.Data.Core;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Messaging;
@@ -77,6 +78,8 @@ builder.Services.AddScoped<MessageSender>();
 builder.Services.AddSingleton<IUserSessionService, UserSessionService>();
 builder.Services.AddSingleton<IPlayerService, PlayerService>();
 builder.Services.AddSingleton<IEconomyService, EconomyService>();
+// v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
+builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<FunGameQueryService>(),
     sp.GetRequiredService<FunGameSimulationService>(),

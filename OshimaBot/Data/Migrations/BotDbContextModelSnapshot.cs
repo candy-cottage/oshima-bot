@@ -17,6 +17,138 @@ namespace OshimaBot.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
+            modelBuilder.Entity("OshimaBot.Data.Core.CoreCharacterRecord", b =>
+                {
+                    b.Property<string>("Guid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CatalogId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ExLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Exp")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LevelBreak")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Promotion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Guid");
+
+                    b.HasIndex("UserId", "Level");
+
+                    b.HasIndex("UserId", "Promotion");
+
+                    b.ToTable("CoreCharacters");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Core.CoreItemRecord", b =>
+                {
+                    b.Property<string>("Guid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CatalogId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EquipSlotType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("EscrowUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsLock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsTradable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Price")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("Quality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Guid");
+
+                    b.HasIndex("CatalogId");
+
+                    b.HasIndex("EscrowUserId", "Quality");
+
+                    b.HasIndex("UserId", "Quality");
+
+                    b.ToTable("CoreItems");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Core.CorePlayerRecord", b =>
+                {
+                    b.Property<long>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Credits")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("MainCharacterGuid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Materials")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("CorePlayers");
+                });
+
             modelBuilder.Entity("OshimaBot.Data.Entities.ActivityProgress", b =>
                 {
                     b.Property<long>("UserId")
