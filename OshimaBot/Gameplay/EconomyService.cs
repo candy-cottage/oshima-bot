@@ -3,6 +3,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
 using OshimaBot.Data.Entities;
+using OshimaBot.Game.Combat;
+using OshimaBot.Game.Services;
+using CoreCharacter = FunGame.Core.Entity.Character;
+using DataCharacter = OshimaBot.Data.Entities.Character;
 
 namespace OshimaBot.Gameplay;
 
@@ -499,18 +503,61 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 return ActionResult.Fail("金币不足", "没有开始决斗",
                     $"需要 {GameplayRules.DuelCostCredits} 金币，当前 {state.Credits}", "/状态");
             }
-            PlayerService.ApplyCurrency(db, state, -GameplayRules.DuelCostCredits, "credits", "duel_entry", "duel", userId.ToString(CultureInfo.InvariantCulture));
-            bool win = Random.Shared.Next(100) < 55;
+
+            // 出战角色：优先主战，否则取第一个角色（与旧版「默认角色 1」一致）。
+            DataCharacter? mine = await db.Characters
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.IsMain)
+                .ThenBy(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+            if (mine is null)
+            {
+                return ActionResult.Fail("没有可出战的角色", "没有扣除报名费",
+                    "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
+            }
+
+            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
+                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
+            CoreCharacter? opponentTemplate = CombatCharacterFactory.PickOpponent(mine.CatalogId);
+            if (me is null || opponentTemplate is null)
+            {
+                return ActionResult.Fail("角色数据缺失", "没有扣除报名费",
+                    "内容包可能已更新，请反馈给管理员", "/状态");
+            }
+
+            // 真实战斗：复用 Core 的 GamingQueue 生命周期，不再用概率结算。
+            CoreCharacter enemy = CombatCharacterFactory.Build(opponentTemplate, mine.Level, 0, mine.BreakLevel);
+            BattleResult battle = FunGameActionQueue.RunMix([me, enemy],
+                new BattleOptions { MaxRound = 100, UseRoundRewards = false });
+            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+
+            PlayerService.ApplyCurrency(db, state, -GameplayRules.DuelCostCredits,
+                "credits", "duel_entry", "duel", userId.ToString(CultureInfo.InvariantCulture));
             if (win)
             {
-                PlayerService.ApplyCurrency(db, state, GameplayRules.DuelRewardCredits, "credits", "duel_reward", "duel", userId.ToString(CultureInfo.InvariantCulture));
+                PlayerService.ApplyCurrency(db, state, GameplayRules.DuelRewardCredits,
+                    "credits", "duel_reward", "duel", userId.ToString(CultureInfo.InvariantCulture));
             }
             int gain = win ? GameplayRules.DuelWinPoints : GameplayRules.DuelLosePoints;
             long points = await AddPointsAsync(db, userId, gain, ct);
+
+            List<string> lines =
+            [
+                $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
+                $"- 对手：{enemy.Name} Lv.{enemy.Level}　HP {enemy.HP:F0}/{enemy.MaxHP:F0}",
+                $"- {battle.Rounds} 回合 · 耗时 {battle.TotalTime:F1}",
+                $"- 当前战绩积分：{points}　金币：{state.Credits}",
+                "- 战斗摘要："
+            ];
+            lines.AddRange(battle.Tail(3)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+
             return ActionResult.Success(win ? "⚔️ 决斗胜利" : "🛡️ 决斗失利",
-                win ? $"金币 +{GameplayRules.DuelRewardCredits - GameplayRules.DuelCostCredits}（净） · 战绩 +{gain}"
-                    : $"损失报名费 {GameplayRules.DuelCostCredits} · 战绩 +{gain}",
-                [$"- 当前战绩积分：{points}　金币：{state.Credits}", "- 战绩可在 /排行榜 战绩 查看"],
+                win
+                    ? $"击败 {enemy.Name} · 净获 {GameplayRules.DuelRewardCredits - GameplayRules.DuelCostCredits} 金币 · 战绩 +{gain}"
+                    : $"不敌 {enemy.Name} · 损失报名费 {GameplayRules.DuelCostCredits} · 战绩 +{gain}",
+                lines,
                 ["/决斗", "/排行榜 战绩", "/状态"]);
         }, cancellationToken);
 

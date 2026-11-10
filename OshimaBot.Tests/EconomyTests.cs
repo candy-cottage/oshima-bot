@@ -195,6 +195,22 @@ public sealed class EconomyTests
     }
 
     [Fact]
+    public async Task Duel_RunsRealBattleInsteadOfDiceRoll()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.RegisterAsync(Seller);   // 建档并发放初始角色
+
+        ActionResult result = await economy.DuelAsync(Seller);
+
+        Assert.True(result.Ok, result.Title);
+        Assert.Contains(result.Lines, line => line.Contains("回合"));
+        Assert.Contains(result.Lines, line => line.Contains("HP"));
+        Assert.Contains(result.Lines, line => line.Contains("战斗摘要"));
+    }
+
+    [Fact]
     public async Task NoIdentity_NeverWritesEconomyData()
     {
         using EconomyDatabase db = new();
