@@ -99,6 +99,12 @@ public static class BossPool
 
         EquipRedGear(boss);
 
+        // 旧版通过 DynamicsEffect 施加 exatk / exdef = 3.4 × 等级；这里用 Core 的「额外属性」直接等价设置。
+        // exhp2 / exmp2 / 暴击等参数在旧版由 Effect 解释为倍率，语义与这里的加值字段不同，
+        // 待核对 DynamicsEffect 实现后再补（见计划 §8.3「Boss 强化待补」）。
+        boss.ExATK2 = 3.4 * level;
+        boss.ExDEF2 = 3.4 * level;
+
         return new BossEntry
         {
             Index = index,

@@ -649,7 +649,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 "credits", "boss_entry", "boss", key);
             int credits = win
                 ? GameplayRules.BossRewardCredits
-                : (int)(GameplayRules.BossRewardCredits * damage * 0.5);
+                : Math.Max(1, (int)(GameplayRules.BossRewardCredits * damage * 0.5));
             int diamonds = win ? GameplayRules.BossRewardDiamonds : 0;
             if (credits > 0)
             {
