@@ -110,14 +110,36 @@ public static class GameplayRules
         };
     }
 
-    public static string QualityName(int quality) => quality switch
+    /// <summary>
+    /// 玩法品质档（1–5）→ Core 的 <see cref="QualityType"/>。
+    /// 1 普通 / 2 优秀 / 3 稀有 / 4 史诗 / 5 传说（对应 White/Green/Blue/Purple/Orange）；
+    /// 6、7 留作神话/不朽，正常掉落不会产生。
+    /// </summary>
+    public static QualityType QualityTypeOf(int tier) => tier switch
     {
-        1 => "普通",
-        2 => "精良",
-        3 => "稀有",
-        4 => "史诗",
-        _ => "传说"
+        <= 1 => QualityType.White,
+        2 => QualityType.Green,
+        3 => QualityType.Blue,
+        4 => QualityType.Purple,
+        5 => QualityType.Orange,
+        6 => QualityType.Red,
+        _ => QualityType.Gold
     };
+
+    /// <summary>Core 的 <see cref="QualityType"/> → 玩法品质档（1–7）。</summary>
+    public static int QualityTierOf(QualityType type) => type switch
+    {
+        QualityType.White => 1,
+        QualityType.Green => 2,
+        QualityType.Blue => 3,
+        QualityType.Purple => 4,
+        QualityType.Orange => 5,
+        QualityType.Red => 6,
+        _ => 7
+    };
+
+    /// <summary>品质名一律取 Core 的 <c>ItemSet.GetQualityTypeName</c>，不再硬编码。</summary>
+    public static string QualityName(int quality) => ItemSet.GetQualityTypeName(QualityTypeOf(quality));
 
     /// <summary>同一用户同一天的运势稳定不变（服务端确定性哈希，不用 Random.Shared）。</summary>
     public static string Fortune(long userId, string date)

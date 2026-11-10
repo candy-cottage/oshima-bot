@@ -268,6 +268,20 @@ public sealed class GameplayTests
     }
 
     [Fact]
+    public void QualityTiers_MapToCoreQualityTypes()
+    {
+        Assert.Equal(FunGame.Core.Library.Constant.QualityType.White, GameplayRules.QualityTypeOf(1));
+        Assert.Equal(FunGame.Core.Library.Constant.QualityType.Orange, GameplayRules.QualityTypeOf(5));
+        Assert.Equal("普通", GameplayRules.QualityName(1));
+        Assert.Equal("传说", GameplayRules.QualityName(5));
+
+        for (int tier = 1; tier <= 5; tier++)
+        {
+            Assert.Equal(tier, GameplayRules.QualityTierOf(GameplayRules.QualityTypeOf(tier)));
+        }
+    }
+
+    [Fact]
     public async Task Wallet_LivesInCorePlayersAndKeepsFractionalBalance()
     {
         using GameplayDatabase db = new();
