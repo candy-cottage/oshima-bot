@@ -481,16 +481,56 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 .OrderBy(x => x.EndsAtUtc).FirstOrDefaultAsync(ct);
             if (run is null) return ActionResult.Fail("没有进行中的探索", "没有结算任何奖励", "先用 /秘境 开始", "/秘境");
             if (run.EndsAtUtc > DateTime.UtcNow) return NotReady("探索", run.EndsAtUtc);
-            state.Exp += GameplayRules.InstanceRewardExp;
-            PlayerService.ApplyCurrency(db, state, GameplayRules.InstanceRewardCredits, "credits", "instance_reward", "instance", run.RegionKey);
-            int quality = GameplayRules.RollQuality(Random.Shared);
+
+            // 结算时打一场真实战斗，胜负决定奖励倍率（胜：全额 + 掉落；负：半额 + 降档掉落）。
+            DataCharacter? mine = await db.Characters
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.IsMain)
+                .ThenBy(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+            if (mine is null)
+            {
+                return ActionResult.Fail("没有可出战的角色", "没有结算任何奖励",
+                    "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
+            }
+
+            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
+                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
+            CoreCharacter? opponentTemplate = CombatCharacterFactory.PickOpponent(mine.CatalogId);
+            if (me is null || opponentTemplate is null)
+            {
+                return ActionResult.Fail("角色数据缺失", "没有结算任何奖励",
+                    "内容包可能已更新，请反馈给管理员", "/状态");
+            }
+
+            CoreCharacter enemy = CombatCharacterFactory.Build(opponentTemplate, mine.Level, 0, mine.BreakLevel);
+            BattleResult battle = FunGameActionQueue.RunMix([me, enemy],
+                new BattleOptions { MaxRound = 80, UseRoundRewards = false });
+            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
+
+            int exp = win ? GameplayRules.InstanceRewardExp : GameplayRules.InstanceRewardExp / 2;
+            int credits = win ? GameplayRules.InstanceRewardCredits : GameplayRules.InstanceRewardCredits / 2;
+            state.Exp += exp;
+            PlayerService.ApplyCurrency(db, state, credits, "credits", "instance_reward", "instance", run.RegionKey);
+            int quality = Math.Clamp(GameplayRules.RollQuality(Random.Shared) - (win ? 0 : 2), 1, 5);
             await PlayerService.AddItemAsync(db, userId, $"{run.RegionKey}秘境掉落", quality, 1, ct, "instance");
             run.SettledAtUtc = DateTime.UtcNow;
-            return ActionResult.Success("🏆 秘境结算",
-                $"经验 +{GameplayRules.InstanceRewardExp} · 金币 +{GameplayRules.InstanceRewardCredits}",
-                [$"- 掉落：{GameplayRules.QualityName(quality)} · {run.RegionKey}秘境掉落",
-                    $"- 当前经验：{state.Exp}　金币：{state.Credits}"],
-                ["/背包", "/状态"]);
+
+            List<string> lines =
+            [
+                $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合",
+                $"- 经验 +{exp} · 金币 +{credits}",
+                $"- 掉落：{GameplayRules.QualityName(quality)} · {run.RegionKey}秘境掉落",
+                $"- 当前经验：{state.Exp}　金币：{state.Credits}"
+            ];
+            lines.AddRange(battle.Tail(2)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+
+            return ActionResult.Success(win ? "🏆 秘境结算" : "🚪 秘境撤退",
+                win ? $"经验 +{exp} · 金币 +{credits}" : $"经验 +{exp} · 金币 +{credits}（半额）",
+                lines,
+                ["/背包", "/状态", "/秘境"]);
         }, cancellationToken);
 
     // ---------------- 决斗 / Boss / 排行 ----------------

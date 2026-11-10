@@ -167,8 +167,9 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        // 秘境结算现在打真实战斗：胜利给全额，失败给半额。
         Assert.True((await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller)).Exp
-                    >= GameplayRules.InstanceRewardExp);
+                    >= GameplayRules.InstanceRewardExp / 2);
         Assert.Single(await dbContext.LedgerEntries.Where(x => x.Reason == "instance_reward").ToListAsync());
     }
 
