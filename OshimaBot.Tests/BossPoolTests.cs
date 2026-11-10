@@ -52,6 +52,10 @@ public sealed class BossPoolTests
         Assert.Equal(0.25, boss.ExCDR, 6);
         Assert.Equal(0.25, boss.ExAccelerationCoefficient, 6);
 
+        // 旧版另挂 ExMDF：无属性魔法抗性 +0.15。红色装备本身也会加抗性，故只断言下限。
+        Assert.True(boss.MDF[FunGame.Core.Library.Constant.MagicType.None] >= 0.15,
+            $"无属性魔法抗性 {boss.MDF[FunGame.Core.Library.Constant.MagicType.None]:0.###}，应至少包含 ExMDF 的 0.15");
+
         // 5 件 Red 装备 + 金色魔法卡包
         Assert.NotNull(boss.EquipSlot.Weapon);
         Assert.NotNull(boss.EquipSlot.Armor);

@@ -195,6 +195,9 @@ public static class BossPool
         boss.ExCritDMG = 0.9;                            // excrd
         boss.ExCDR = 0.25;                               // excdr
         boss.ExAccelerationCoefficient = 0.25;           // exacc
+
+        // 旧版在 DynamicsEffect 之外另挂 ExMDF：mdftype=0（MagicType.None）、mdfvalue=0.15。
+        boss.MDF[MagicType.None] += 0.15;
     }
 
     /// <summary>旧版给 Boss 穿 5 件 Red 品质装备（武器/防具/鞋子/饰品×2），每类随机挑一件。</summary>
