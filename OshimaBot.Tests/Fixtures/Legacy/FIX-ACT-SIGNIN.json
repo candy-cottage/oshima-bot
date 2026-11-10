@@ -13,7 +13,17 @@
       "diamondEveryDays": 7,
       "diamondAmount": 5
     },
-    "legacy": null
+    "legacy": {
+      "model": "random",
+      "credits": { "baseRange": [1000, 2999], "perDay": 10 },
+      "materials": { "baseRange": [5, 14], "perWeek": 1 },
+      "extraItem": {
+        "kinds": 6,
+        "qualityBonusPerDayPercent": 3,
+        "qualityBonusCapPercent": 30
+      },
+      "note": "旧版是随机区间奖励，无法与新版固定值逐位比较；新版 100+20×连击约旧版 1/10"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:785",

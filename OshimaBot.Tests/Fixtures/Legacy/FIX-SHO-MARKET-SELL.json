@@ -15,7 +15,12 @@
       "maxListings": 5,
       "fee": [1, 1, 1, 5, 9, 50]
     },
-    "legacy": null
+    "legacy": {
+      "model": "formula",
+      "feeRatePercent": 15,
+      "rounding": "unknown",
+      "note": "费率来自帮助文本「市场出售…手续费15%」；取整方式待从 Controller.MarketSellItem 核实"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:3027",

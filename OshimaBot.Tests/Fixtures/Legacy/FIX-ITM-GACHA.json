@@ -16,7 +16,22 @@
       "pityQuality": 4,
       "weights": [60, 25, 10, 4, 1]
     },
-    "legacy": null
+    "legacy": {
+      "model": "random",
+      "credits": { "singleCost": 1000, "tenCost": 10000 },
+      "materials": { "singleCost": 5, "tenCost": 50 },
+      "winChance": 0.2,
+      "pity": null,
+      "qualityProbabilities": {
+        "white": 49.53,
+        "green": 19.35,
+        "blue": 13.48,
+        "purple": 8.25,
+        "orange": 6.33,
+        "red": 3.06
+      },
+      "note": "每次独立掷 dice>0.8 才中奖；十连无折扣无保底，可能全空；新版 100% 得物"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1016",
