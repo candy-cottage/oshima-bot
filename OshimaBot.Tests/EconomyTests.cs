@@ -170,8 +170,10 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        // 秘境打真实战斗：胜利全额、失败半额；「地区 3」给 300 经验 + 3 件掉落。
-        Assert.True((await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller)).Exp >= 150);
+        // 秘境经验记在角色身上（Core 模型），可能已经升级消耗掉，故断言「有进展」。
+        CoreCharacterRecord levelRow = await dbContext.CoreCharacters.FirstAsync(x => x.UserId == Seller);
+        Assert.True(levelRow.Level > 1 || levelRow.Exp > 0,
+            $"秘境结算后角色应有经验或升级，实际 Lv.{levelRow.Level} / Exp {levelRow.Exp}");
         Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "instance_start") >= 1);
     }
 

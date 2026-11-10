@@ -584,7 +584,16 @@ public sealed class EconomyService(
             long diamonds = (long)(fullDiamonds * rate);
             int itemCount = win ? fullItems : Math.Max(0, fullItems / 2);
 
-            state.Exp += exp;
+            PlayerCharacter? levelTarget = await PlayerService.MainCharacterAsync(db, userId, ct);
+            int levelGain = 0;
+            if (levelTarget is not null && exp > 0)
+            {
+                int beforeLevel = levelTarget.Level;
+                levelTarget.Exp += exp;
+                levelTarget.Core.OnLevelUp();
+                levelGain = levelTarget.Level - beforeLevel;
+                CharacterStore.Sync(levelTarget);
+            }
             if (credits > 0)
             {
                 PlayerService.ApplyCurrency(db, state, credits, "credits", "instance_reward", "instance", run.RegionKey);
@@ -607,7 +616,9 @@ public sealed class EconomyService(
                 $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level} · 出战 {party.Count} 人",
                 $"- 经验 +{exp}　金币 +{credits}　钻石 +{diamonds}",
                 $"- 掉落：{(drops.Count == 0 ? "无" : string.Join("、", drops))} · {kindName}秘境",
-                $"- 当前经验：{state.Exp}　金币：{state.Credits}　钻石：{state.Materials}"
+                levelTarget is null
+                    ? $"- 金币：{state.Credits}　钻石：{state.Materials}"
+                    : $"- {levelTarget.Name} 经验 +{exp}{(levelGain > 0 ? $" · 升 {levelGain} 级 → Lv.{levelTarget.Level}" : $"（Lv.{levelTarget.Level}）")}　金币：{state.Credits}　钻石：{state.Materials}"
             ];
             lines.AddRange(battle.Tail(2)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -795,15 +806,21 @@ public sealed class EconomyService(
 
             if (normalized == "level")
             {
-                List<PlayerState> states = await db.PlayerStates.AsNoTracking()
+                // 等级属于角色（Core 模型），取每个用户等级最高的角色上榜。
+                List<CoreCharacterRecord> rows = await db.CoreCharacters.AsNoTracking()
                     .OrderByDescending(x => x.Level).ThenByDescending(x => x.Exp)
-                    .Take(GameplayRules.RankingTop).ToListAsync(ct);
-                List<long> stateIds = states.Select(x => x.UserId).ToList();
-                Dictionary<long, string> stateHandles = await db.Users.AsNoTracking()
-                    .Where(x => stateIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
-                return states.Select((state, i) => new RankEntry(i + 1,
-                    stateHandles.GetValueOrDefault(state.UserId, $"旅人{state.UserId}"),
-                    state.Level)).ToArray();
+                    .Take(GameplayRules.RankingTop * 3).ToListAsync(ct);
+                List<CoreCharacterRecord> top = [.. rows
+                    .GroupBy(x => x.UserId)
+                    .Select(g => g.OrderByDescending(x => x.Level).ThenByDescending(x => x.Exp).First())
+                    .OrderByDescending(x => x.Level).ThenByDescending(x => x.Exp)
+                    .Take(GameplayRules.RankingTop)];
+                List<long> levelIds = top.Select(x => x.UserId).ToList();
+                Dictionary<long, string> levelHandles = await db.Users.AsNoTracking()
+                    .Where(x => levelIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
+                return top.Select((row, i) => new RankEntry(i + 1,
+                    levelHandles.GetValueOrDefault(row.UserId, $"旅人{row.UserId}"),
+                    row.Level)).ToArray();
             }
 
             // 金币榜直接读钱包（CorePlayers.Credits 为 double），不再依赖进度表。

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using FunGame.Core.Library.Constant;
 using OshimaBot.Gameplay;
 
 namespace OshimaBot.Tests;
@@ -112,7 +113,8 @@ public static class LegacyFixtureProbes
         int[] levels = IntArray(input, "levels");
         return new JsonObject
         {
-            ["expForLevel"] = new JsonArray(levels.Select(l => (JsonNode?)JsonValue.Create(GameplayRules.ExpForLevel(l))).ToArray())
+            ["expForLevel"] = new JsonArray(levels.Select(l => (JsonNode?)JsonValue.Create(
+                General.GameplayEquilibriumConstant.EXPUpperLimit.TryGetValue(l, out double need) ? need : 0)).ToArray())
         };
     }
 
@@ -121,7 +123,8 @@ public static class LegacyFixtureProbes
         int[] breaks = IntArray(input, "breakLevels");
         return new JsonObject
         {
-            ["levelCap"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(GameplayRules.LevelCap(b))).ToArray()),
+            ["levelCap"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(
+                GameplayRules.NextBreakLevel(b) ?? General.GameplayEquilibriumConstant.MaxLevel)).ToArray()),
             ["breakCost"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(GameplayRules.BreakCost(b))).ToArray())
         };
     }

@@ -32,18 +32,6 @@ public sealed class PlayerAccount(PlayerState state, CorePlayerRecord wallet)
         set => Wallet.Materials = value;
     }
 
-    public long Exp
-    {
-        get => State.Exp;
-        set => State.Exp = value;
-    }
-
-    public int Level
-    {
-        get => State.Level;
-        set => State.Level = value;
-    }
-
     public int SignInStreak
     {
         get => State.SignInStreak;

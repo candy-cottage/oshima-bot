@@ -1,4 +1,5 @@
 using System.Globalization;
+using FunGame.Core.Library.Constant;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -24,7 +25,6 @@ public static class GameplayRules
     public const int SignInDiamondEveryDays = 7;
     public const int SignInDiamondAmount = 5;
 
-    public const int LevelsPerBreak = 10;
     public const int BreakCreditsBase = 500;
     public const int SalvageValueBase = 20;
     public const int UseExpBase = 30;
@@ -77,11 +77,6 @@ public static class GameplayRules
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    public static long ExpForLevel(int level)
-        => (long)Math.Ceiling(100 * Math.Pow(Math.Max(1, level), 1.5));
-
-    public static int LevelCap(int breakLevel) => LevelsPerBreak * (breakLevel + 1);
-
     public static long SalvageValue(int quality, int quantity)
         => SalvageValueBase * (long)Math.Max(1, quality) * Math.Max(1, quality) * Math.Max(1, quantity);
 
@@ -89,6 +84,14 @@ public static class GameplayRules
         => UseExpBase * Math.Max(1, quality) * Math.Max(1, quantity);
 
     public static long BreakCost(int breakLevel) => BreakCreditsBase * (breakLevel + 1L);
+
+    /// <summary>下一次突破所需等级（取自 Core 的 <c>LevelBreakList</c>）；已无更高阶数时返回 null。</summary>
+    public static int? NextBreakLevel(int levelBreak)
+    {
+        int[] breaks = [.. General.GameplayEquilibriumConstant.LevelBreakList];
+        int next = levelBreak + 1;
+        return next < breaks.Length ? breaks[next] : null;
+    }
 
     public static long SignInCredits(int streak)
         => SignInBaseCredits + SignInStreakBonus * Math.Min(Math.Max(0, streak), SignInStreakCapDays);

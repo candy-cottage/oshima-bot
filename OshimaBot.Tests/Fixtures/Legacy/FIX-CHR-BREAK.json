@@ -5,19 +5,34 @@
   "probe": "break",
   "status": "current-locked",
   "input": {
-    "breakLevels": [0, 1, 2, 9]
+    "breakLevels": [
+      0,
+      1,
+      2,
+      9
+    ]
   },
   "expected": {
     "current": {
-      "levelCap": [10, 20, 30, 100],
-      "breakCost": [500, 1000, 1500, 5000]
+      "levelCap": [
+        20,
+        30,
+        40,
+        60
+      ],
+      "breakCost": [
+        500,
+        1000,
+        1500,
+        5000
+      ]
     },
     "legacy": null
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1498",
     "method": "RainBOTService 角色突破分支",
-    "note": "旧版消耗突破材料（GetLevelBreakNeedy），新版消耗金币 500×(阶+1)"
+    "note": "旧版消耗突破材料（GetLevelBreakNeedy）；新版调 Core 的 OnLevelBreak，上限取 LevelBreakList 下一档"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

@@ -1,9 +1,10 @@
 namespace OshimaBot.Gameplay;
 
 /// <summary>玩法层与指令层之间的纯数据契约，玩法层不依赖 Messaging/Models。</summary>
+/// <summary>玩家快照。等级/经验属于**角色**（Core 模型），这里只取主战角色的值用于展示。</summary>
 public sealed record PlayerSnapshot(
-    long UserId, int Level, long Exp, double Credits, double Materials,
-    int SignInStreak, string SignedOn, string? MainCharacter,
+    long UserId, double Credits, double Materials,
+    int SignInStreak, string SignedOn, string? MainCharacter, int MainLevel, double MainExp,
     int CharacterCount, int ItemCount, int SquadCount, int PendingTrainings);
 
 public sealed record BagEntry(

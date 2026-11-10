@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
 using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
+using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
 
 namespace OshimaBot.Gameplay;
@@ -70,8 +71,9 @@ public sealed class PlayerService(
                 .CountAsync(x => squadIds.Contains(x.SquadId), ct);
             int pendingTrainings = await db.TrainingSessions.AsNoTracking()
                 .CountAsync(x => x.UserId == userId && x.SettledAtUtc == null, ct);
-            return new PlayerSnapshot(userId, state.Level, state.Exp, state.Credits, state.Materials,
-                state.SignInStreak, state.SignedOn, characters.FirstOrDefault(x => x.IsMain)?.Name,
+            PlayerCharacter? main = characters.FirstOrDefault(x => x.IsMain) ?? characters.FirstOrDefault();
+            return new PlayerSnapshot(userId, state.Credits, state.Materials,
+                state.SignInStreak, state.SignedOn, main?.Name, main?.Level ?? 0, main?.Exp ?? 0,
                 characters.Count, itemCount, squadCount, pendingTrainings);
         }, cancellationToken);
 
@@ -198,7 +200,7 @@ public sealed class PlayerService(
             return ActionResult.Success("🎒 旅人登记",
                 existed ? "存档已存在，未重复发放初始资源" : "初始资源已发放",
                 [
-                    $"- 旅人等级：Lv.{state.Level}　经验：{state.Exp}",
+                    "- 等级与经验记在角色身上（Core 模型）",
                     $"- 金币：{state.Credits}　钻石：{state.Materials}",
                     $"- 角色：{await db.CoreCharacters.CountAsync(x => x.UserId == userId, ct)} 名",
                     $"- 物品：{await db.ItemInstances.CountAsync(x => x.UserId == userId, ct)} 格",
@@ -297,12 +299,24 @@ public sealed class PlayerService(
             }
             int amount = Math.Clamp(quantity, 1, item.Quantity);
             int exp = GameplayRules.UseExp(item.Quality, amount);
-            state.Exp += exp;
+            PlayerCharacter? target = await MainCharacterAsync(db, userId, ct);
+            string levelNote = "（无角色可加经验）";
+            if (target is not null)
+            {
+                int before = target.Level;
+                target.Exp += exp;
+                target.Core.OnLevelUp();          // Core 模型：经验够了立即升级
+                int gained = target.Level - before;
+                CharacterStore.Sync(target);
+                levelNote = gained > 0
+                    ? $"{target.Name} 升了 {gained} 级 → Lv.{target.Level}"
+                    : $"{target.Name} 经验 +{exp}（Lv.{target.Level}，还需 {NeedExp(target)}）";
+            }
             Consume(db, item, amount);
             return ActionResult.Success("🧪 使用物品",
-                $"{ReadName(item)} ×{amount} · 旅人经验 +{exp}",
-                [$"- 当前经验：{state.Exp}　等级：Lv.{state.Level}", "- 物品已扣除，未产生货币变动"],
-                ["/背包", "/状态"]);
+                $"{ReadName(item)} ×{amount}",
+                [$"- {levelNote}", "- 物品已扣除，未产生货币变动"],
+                ["/角色", "/状态"]);
         }, cancellationToken);
 
     public Task<ActionResult> SalvageAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
@@ -402,24 +416,20 @@ public sealed class PlayerService(
         {
             PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
-            int cap = GameplayRules.LevelCap(character.BreakLevel);
-            if (character.Level >= cap)
+            int before = character.Level;
+            character.Core.OnLevelUp();               // 消耗角色自身 EXP，受突破进度限制
+            if (character.Level == before)
             {
-                return ActionResult.Fail("已达当前等级上限", "没有消耗经验",
-                    $"上限 Lv.{cap}，先用 /突破 @编号 提升", "/角色");
+                return ActionResult.Fail("经验不足或需要突破", "等级未变",
+                    $"{character.Name} Lv.{character.Level} · 还需 {NeedExp(character)} 点经验"
+                    + (NeedBreak(character) is int need ? $"；或到 Lv.{need} 后用 /突破 @编号" : ""),
+                    "/练级 @1");
             }
-            long cost = GameplayRules.ExpForLevel(character.Level);
-            if (state.Exp < cost)
-            {
-                return ActionResult.Fail("旅人经验不足", "没有消耗经验，等级未变",
-                    $"升级需要 {cost} 经验，当前 {state.Exp}；练级或使用物品可获得经验", "/练级 @1");
-            }
-            state.Exp -= cost;
-            character.Level += 1;
-            character.Exp += cost;
             CharacterStore.Sync(character);
-            return ActionResult.Success("⬆️ 角色升级", $"{character.Name} → Lv.{character.Level}",
-                [$"- 消耗旅人经验 {cost}，剩余 {state.Exp}", $"- 当前上限 Lv.{cap}"],
+            return ActionResult.Success("⬆️ 角色升级",
+                $"{character.Name} → Lv.{character.Level}（+{character.Level - before}）",
+                [$"- 剩余经验：{character.Exp:0.##}",
+                    NeedBreak(character) is int next ? $"- 下一阶段：Lv.{next} 后可 /突破" : "- 已达等级上限"],
                 ["/角色", "/状态"]);
         }, cancellationToken);
 
@@ -428,23 +438,24 @@ public sealed class PlayerService(
         {
             PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
-            int cap = GameplayRules.LevelCap(character.BreakLevel);
-            if (character.Level < cap)
-            {
-                return ActionResult.Fail("尚未达到当前等级上限", "没有消耗金币",
-                    $"需要 Lv.{cap}，当前 Lv.{character.Level}", "/角色");
-            }
             long cost = GameplayRules.BreakCost(character.BreakLevel);
             if (state.Credits < cost)
             {
                 return ActionResult.Fail("金币不足", "没有消耗金币，突破等级未变",
                     $"需要 {cost} 金币，当前 {state.Credits}", "/签到");
             }
+            int before = character.BreakLevel;
+            character.Core.OnLevelBreak();            // Core 负责判定等级是否达标
+            if (character.BreakLevel == before)
+            {
+                return ActionResult.Fail("突破条件未满足", "没有消耗金币，突破等级未变",
+                    NeedBreak(character) is int need ? $"需要 Lv.{need}，当前 Lv.{character.Level}" : "无可突破的阶数",
+                    "/角色");
+            }
             ApplyCurrency(db, state, -cost, "credits", "break", "character", character.Id.ToString(CultureInfo.InvariantCulture));
-            character.BreakLevel += 1;
             CharacterStore.Sync(character);
             return ActionResult.Success("💥 突破成功",
-                $"{character.Name} · 突破 {character.BreakLevel} 阶 · 上限提升至 Lv.{GameplayRules.LevelCap(character.BreakLevel)}",
+                $"{character.Name} · 突破 {character.BreakLevel} 阶（上限 Lv.{character.Core.MaxLevel}）",
                 [$"- 消耗金币 {cost}，剩余 {state.Credits}", "- 已写入账本 ledger"],
                 ["/角色", "/状态"]);
         }, cancellationToken);
@@ -500,17 +511,22 @@ public sealed class PlayerService(
             List<PlayerCharacter> all = await CharacterStore.ListAsync(db, userId, mainGuid, ct);
             PlayerCharacter? character = all.FirstOrDefault(x => x.Id == session.CharacterId);
             long exp = GameplayRules.TrainExpBase + GameplayRules.TrainExpPerLevel * (character?.Level ?? 1);
-            state.Exp += exp;
+            string levelNote = "（角色已不存在）";
             if (character is not null)
             {
+                int before = character.Level;
                 character.Exp += exp;
+                character.Core.OnLevelUp();
                 CharacterStore.Sync(character);
+                int gained = character.Level - before;
+                levelNote = gained > 0
+                    ? $"{character.Name} 升了 {gained} 级 → Lv.{character.Level}"
+                    : $"{character.Name} 经验 +{exp}（Lv.{character.Level}，还需 {NeedExp(character)}）";
             }
             session.SettledAtUtc = DateTime.UtcNow;
-            return ActionResult.Success("🎓 练级结算",
-                $"{(character is null ? "角色" : character.Name)} · 旅人经验 +{exp}",
-                [$"- 当前经验：{state.Exp}　等级：Lv.{state.Level}", "- 经验可用于 /升级 @编号"],
-                ["/角色", "/升级 @1", "/状态"]);
+            return ActionResult.Success("🎓 练级结算", levelNote,
+                [$"- 金币：{state.Credits}", "- 经验记在角色身上，够了会自动升级"],
+                ["/角色", "/状态"]);
         }, cancellationToken);
 
     public Task<ActionResult> SquadAsync(long userId, string operation, int index, CancellationToken cancellationToken = default)
@@ -648,7 +664,7 @@ public sealed class PlayerService(
 
         state = new PlayerState
         {
-            UserId = userId, Level = 1,
+            UserId = userId,
             LogonOn = GameplayRules.Today(), UpdatedAtUtc = DateTime.UtcNow
         };
         db.PlayerStates.Add(state);
@@ -752,6 +768,20 @@ public sealed class PlayerService(
     internal static Task<string?> MainGuidAsync(BotDbContext db, long userId, CancellationToken ct)
         => db.CorePlayers.Where(x => x.UserId == userId)
             .Select(x => x.MainCharacterGuid).FirstOrDefaultAsync(ct);
+
+    /// <summary>距离下一级还差多少经验（取自 Core 的 <c>EXPUpperLimit</c>）。</summary>
+    private static string NeedExp(PlayerCharacter character)
+    {
+        var equilibrium = General.GameplayEquilibriumConstant;
+        if (character.Level >= equilibrium.MaxLevel) return "0";
+        return equilibrium.EXPUpperLimit.TryGetValue(character.Level, out double need)
+            ? Math.Max(0, need - character.Exp).ToString("0.##", CultureInfo.InvariantCulture)
+            : "?";
+    }
+
+    /// <summary>下一次突破所需等级；已无可突破阶数时返回 null。</summary>
+    private static int? NeedBreak(PlayerCharacter character)
+        => GameplayRules.NextBreakLevel(character.BreakLevel);
 
     internal static void Consume(BotDbContext db, ItemInstance item, int amount)
     {

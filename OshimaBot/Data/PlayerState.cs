@@ -8,8 +8,6 @@ namespace OshimaBot.Data.Entities;
 public sealed class PlayerState
 {
     public long UserId { get; set; }
-    public long Exp { get; set; }
-    public int Level { get; set; } = 1;
     public int SignInStreak { get; set; }
     public string SignedOn { get; set; } = "";
     public string LogonOn { get; set; } = "";

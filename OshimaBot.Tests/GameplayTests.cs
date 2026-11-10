@@ -158,12 +158,12 @@ public sealed class GameplayTests
         }
 
         Assert.True((await players.TrainClaimAsync(UserId)).Ok);
-        PlayerSnapshot snapshot = (await players.GetSnapshotAsync(UserId))!;
-        Assert.Equal(GameplayRules.TrainExpBase + GameplayRules.TrainExpPerLevel, snapshot.Exp);
 
-        Assert.True((await players.LevelUpAsync(UserId, 1)).Ok);
+        // Core 模型：经验记在角色身上，够了自动升级（不再有旅人经验中转）。
         IReadOnlyList<CharacterEntry> characters = await players.GetCharactersAsync(UserId);
-        Assert.Equal(2, Assert.Single(characters).Level);
+        CharacterEntry afterTrain = Assert.Single(characters);
+        Assert.True(afterTrain.Level > 1 || afterTrain.Exp > 0,
+            $"练级后应有经验或升级，实际 Lv.{afterTrain.Level} / Exp {afterTrain.Exp}");
     }
 
     [Fact]
@@ -260,9 +260,10 @@ public sealed class GameplayTests
     {
         Assert.Equal(GameplayRules.Fortune(7, "2026-11-10"), GameplayRules.Fortune(7, "2026-11-10"));
         Assert.Contains(GameplayRules.Fortune(8, "2026-11-10"), GameplayRules.FortuneTexts);
-        Assert.Equal(10, GameplayRules.LevelCap(0));
-        Assert.Equal(20, GameplayRules.LevelCap(1));
-        Assert.True(GameplayRules.ExpForLevel(10) > GameplayRules.ExpForLevel(1));
+        int? firstBreak = GameplayRules.NextBreakLevel(0);
+        Assert.NotNull(firstBreak);
+        Assert.True(firstBreak > 1);
+        Assert.True(GameplayRules.NextBreakLevel(1) > firstBreak);   // 阶数越高，所需等级越高
         Assert.InRange(GameplayRules.RollQuality(new SeededRandomSource(1)), 1, 5);
     }
 
@@ -349,8 +350,13 @@ public sealed class GameplayTests
             CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
             Assert.Equal(guid, wallet.MainCharacterGuid);   // 建档即设为主战
 
-            PlayerState progress = await context.PlayerStates.SingleAsync(x => x.UserId == UserId);
-            progress.Exp = 500;
+            // 直接把经验写进角色快照（Core 模型下经验属于角色）
+            CoreCharacterRecord progress = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            PlayerCharacter mutable = new(progress,
+                System.Text.Json.JsonSerializer.Deserialize<FunGame.Core.Entity.Character>(
+                    progress.SnapshotJson, FunGame.Core.Api.JsonTool.JsonSerializerOptions)!);
+            mutable.Exp += (long)FunGame.Core.Library.Constant.General.GameplayEquilibriumConstant.EXPUpperLimit[1];
+            CharacterStore.Sync(mutable);
             await context.SaveChangesAsync();
         }
 
@@ -362,7 +368,6 @@ public sealed class GameplayTests
             // 索引列与快照都要更新
             CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
             Assert.Equal(2, row.Level);
-            Assert.Equal(GameplayRules.ExpForLevel(1), (long)row.Exp);
 
             CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
             List<PlayerCharacter> loaded = await CharacterStore.ListAsync(

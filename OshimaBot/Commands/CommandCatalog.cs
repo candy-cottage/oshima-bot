@@ -585,7 +585,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 旅人档案",
-            $"Lv.{snapshot.Level}　金币 {snapshot.Credits}　钻石 {snapshot.Materials}　经验 {snapshot.Exp}",
+            $"主战 Lv.{snapshot.MainLevel}　金币 {snapshot.Credits}　钻石 {snapshot.Materials}　经验 {snapshot.MainExp:0.##}",
             [
                 "潮湿的石板路延伸到雾里，铁匠铺的锤声隔着两条街传来。",
                 "",
@@ -601,7 +601,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 中央广场",
-            $"Lv.{snapshot.Level} · 金币 {snapshot.Credits} · 钻石 {snapshot.Materials}",
+            $"主战 Lv.{snapshot.MainLevel} · 金币 {snapshot.Credits} · 钻石 {snapshot.Materials}",
             [
                 "雾气贴着石板路，北面的铁匠铺还亮着炉火。",
                 "",
@@ -653,7 +653,7 @@ public static class CommandCatalog
         IReadOnlyList<CharacterEntry> characters = await deps.Players.GetCharactersAsync(
             context.UserId, context.CancellationToken);
         List<string> lines = characters.Select(character =>
-            $"- @{character.Index} {character.Name}　Lv.{character.Level} / 上限 {GameplayRules.LevelCap(character.BreakLevel)}"
+            $"- @{character.Index} {character.Name}　Lv.{character.Level} / 上限 {GameplayRules.NextBreakLevel(character.BreakLevel).ToString() ?? "满级"}"
             + $"　突破 {character.BreakLevel} 阶　装备 {character.EquipmentCount} 件"
             + (character.IsMain ? " ⭐主战" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 还没有角色，输入 /注册 领取初始角色");

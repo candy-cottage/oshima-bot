@@ -610,9 +610,6 @@ namespace OshimaBot.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("Exp")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("ExploreTimes")
                         .HasColumnType("INTEGER");
 
@@ -620,9 +617,6 @@ namespace OshimaBot.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("HorseRacingPoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Level")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("LogonOn")
