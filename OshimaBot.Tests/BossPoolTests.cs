@@ -1,3 +1,7 @@
+using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
+using OshimaBot.Content.Effects;
+using OshimaBot.Content.Effects.OpenEffects;
 using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using Xunit;
@@ -36,25 +40,39 @@ public sealed class BossPoolTests
     public void Boss_CarriesDynamicsEffectAndFullGear()
     {
         BossPool.Reset();
-        var boss = BossPool.All[0].Character;
+        BossEntry entry = BossPool.All[0];
+        var boss = entry.Character;
+        int level = entry.Level;
+
+        // 强化以「BOSS专属被动」技能特效承载，而不是直接写角色字段。
+        Skill carrier = Assert.Single(boss.Skills.Where(s => s.Name == "BOSS专属被动"));
+        var dynamics = Assert.IsType<DynamicsEffect>(
+            Assert.Single(carrier.Effects.Where(e => e.Id == (long)EffectID.DynamicsEffect)));
 
         // 带 2 的参数是百分比（exhp2/exmp2），不带 2 的是加值（exatk/exdef）
-        Assert.Equal(3.4 * BossPool.All[0].Level, boss.ExATK2, 3);
-        Assert.Equal(3.4 * BossPool.All[0].Level, boss.ExDEF2, 3);
-        Assert.Equal(1.5, boss.ExHPPercentage, 6);
-        Assert.Equal(0.8, boss.ExMPPercentage, 6);
-        Assert.Equal(0.15 * BossPool.All[0].Level, boss.ExHR, 3);
-        Assert.Equal(0.1 * BossPool.All[0].Level, boss.ExMR, 3);
+        Assert.Equal(3.4 * level, dynamics.RealDynamicsValues["exatk"], 3);
+        Assert.Equal(3.4 * level, dynamics.RealDynamicsValues["exdef"], 3);
+        Assert.Equal(1.5, dynamics.RealDynamicsValues["exhp2"], 6);
+        Assert.Equal(0.8, dynamics.RealDynamicsValues["exmp2"], 6);
+        Assert.Equal(0.15 * level, dynamics.RealDynamicsValues["exhr"], 3);
+        Assert.Equal(0.1 * level, dynamics.RealDynamicsValues["exmr"], 3);
+        Assert.Equal(0.35, dynamics.RealDynamicsValues["excr"], 6);
+        Assert.Equal(0.9, dynamics.RealDynamicsValues["excrd"], 6);
+        Assert.Equal(0.25, dynamics.RealDynamicsValues["excdr"], 6);
+        Assert.Equal(0.25, dynamics.RealDynamicsValues["exacc"], 6);
 
-        // 旧版 excr / excrd / excdr / exacc
-        Assert.Equal(0.35, boss.ExCritRate, 6);
-        Assert.Equal(0.9, boss.ExCritDMG, 6);
-        Assert.Equal(0.25, boss.ExCDR, 6);
-        Assert.Equal(0.25, boss.ExAccelerationCoefficient, 6);
+        // 特效已真正生效：加成是**叠加**在装备之上的，所以只能断言下限。
+        Assert.True(boss.ExATK2 >= 3.4 * level, $"ExATK2={boss.ExATK2}");
+        Assert.True(boss.ExDEF2 >= 3.4 * level, $"ExDEF2={boss.ExDEF2}");
+        Assert.True(boss.ExHPPercentage >= 1.5, $"ExHPPercentage={boss.ExHPPercentage}");
+        Assert.True(boss.ExCritRate >= 0.35, $"ExCritRate={boss.ExCritRate}");
+        Assert.True(boss.ExCritDMG >= 0.9, $"ExCritDMG={boss.ExCritDMG}");
+        Assert.True(boss.ExAccelerationCoefficient >= 0.25, $"ExAccelerationCoefficient={boss.ExAccelerationCoefficient}");
 
-        // 旧版另挂 ExMDF：无属性魔法抗性 +0.15。红色装备本身也会加抗性，故只断言下限。
-        Assert.True(boss.MDF[FunGame.Core.Library.Constant.MagicType.None] >= 0.15,
-            $"无属性魔法抗性 {boss.MDF[FunGame.Core.Library.Constant.MagicType.None]:0.###}，应至少包含 ExMDF 的 0.15");
+        // 旧版另挂 ExMDF：无属性魔法抗性 +0.15（红色装备本身也会加，故只断言下限）。
+        Assert.Contains(carrier.Effects, e => e.Id == (long)EffectID.ExMDF);
+        Assert.True(boss.MDF[MagicType.None] >= 0.15,
+            $"无属性魔法抗性 {boss.MDF[MagicType.None]:0.###}，应至少包含 ExMDF 的 0.15");
 
         // 5 件 Red 装备 + 金色魔法卡包
         Assert.NotNull(boss.EquipSlot.Weapon);

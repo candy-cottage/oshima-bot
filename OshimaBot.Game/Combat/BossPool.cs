@@ -1,5 +1,7 @@
 using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
+using FunGame.Core.Model.EffectContext;
+using OshimaBot.Content.Effects.OpenEffects;
 using OshimaBot.Game.Services;
 using CoreCharacter = FunGame.Core.Entity.Character;
 
@@ -180,24 +182,41 @@ public static class BossPool
     }
 
     /// <summary>
-    /// 旧版 <c>DynamicsEffect</c> 的数值。**带 2 的参数（exhp2/exmp2）是百分比加成**，
-    /// 对应 Core 的 <c>Ex*Percentage</c>，不是 <c>Ex*2</c>（后者是加值）。不带 2 的 exatk/exdef 才是加值。
+    /// 旧版把强化做成挂在「BOSS专属被动」上的**技能特效**（`DynamicsEffect` + `ExMDF`），
+    /// 而不是直接改角色字段——这样角色信息里能看到加成，且随重建/复活一起恢复，符合 Core 的特效体系。
+    /// <para>**带 2 的参数（exhp2/exmp2）是百分比加成**，对应 `Ex*Percentage`；不带 2 的 exatk/exdef 才是加值。</para>
     /// </summary>
     private static void ApplyDynamicsEffect(CoreCharacter boss, int level)
     {
-        boss.ExATK2 = 3.4 * level;                       // exatk
-        boss.ExDEF2 = 3.4 * level;                       // exdef
-        boss.ExHPPercentage = 1.5;                       // exhp2
-        boss.ExMPPercentage = 0.8;                       // exmp2
-        boss.ExHR = 0.15 * level;                        // exhr
-        boss.ExMR = 0.1 * level;                         // exmr
-        boss.ExCritRate = 0.35;                          // excr
-        boss.ExCritDMG = 0.9;                            // excrd
-        boss.ExCDR = 0.25;                               // excdr
-        boss.ExAccelerationCoefficient = 0.25;           // exacc
+        Skill carrier = new OpenSkill(0, "BOSS专属被动", [], boss);
 
-        // 旧版在 DynamicsEffect 之外另挂 ExMDF：mdftype=0（MagicType.None）、mdfvalue=0.15。
-        boss.MDF[MagicType.None] += 0.15;
+        DynamicsEffect dynamics = new(carrier, new Dictionary<string, object>
+        {
+            ["exatk"] = 3.4 * level,       // 加值
+            ["exdef"] = 3.4 * level,       // 加值
+            ["exhp2"] = 1.5,               // 百分比
+            ["exmp2"] = 0.8,               // 百分比
+            ["exhr"] = 0.15 * level,
+            ["exmr"] = 0.1 * level,
+            ["excr"] = 0.35,
+            ["excrd"] = 0.9,
+            ["excdr"] = 0.25,
+            ["exacc"] = 0.25
+        }, boss);
+        HookContext context = new(null, boss);
+        dynamics.OnEffectGained(context);
+        carrier.Effects.Add(dynamics);
+
+        // 旧版另挂的 ExMDF：mdftype=0（MagicType.None）、mdfvalue=0.15。
+        ExMDF exMdf = new(carrier, new Dictionary<string, object>
+        {
+            ["mdftype"] = (int)MagicType.None,
+            ["mdfvalue"] = 0.15
+        }, boss);
+        exMdf.OnEffectGained(context);
+        carrier.Effects.Add(exMdf);
+
+        boss.Skills.Add(carrier);
     }
 
     /// <summary>旧版给 Boss 穿 5 件 Red 品质装备（武器/防具/鞋子/饰品×2），每类随机挑一件。</summary>
