@@ -45,9 +45,9 @@ public sealed class BossPoolTests
         int level = entry.Level;
 
         // 强化以「BOSS专属被动」技能特效承载，而不是直接写角色字段。
-        Skill carrier = Assert.Single(boss.Skills.Where(s => s.Name == "BOSS专属被动"));
+        Skill carrier = Assert.Single(boss.Skills, s => s.Name == "BOSS专属被动");
         var dynamics = Assert.IsType<DynamicsEffect>(
-            Assert.Single(carrier.Effects.Where(e => e.Id == (long)EffectID.DynamicsEffect)));
+            Assert.Single(carrier.Effects, e => e.Id == (long)EffectID.DynamicsEffect));
 
         // 带 2 的参数是百分比（exhp2/exmp2），不带 2 的是加值（exatk/exdef）
         Assert.Equal(3.4 * level, dynamics.RealDynamicsValues["exatk"], 3);

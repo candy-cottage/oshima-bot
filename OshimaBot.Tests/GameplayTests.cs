@@ -330,6 +330,50 @@ public sealed class GameplayTests
         Assert.NotEqual(await RunAsync(2026), await RunAsync(7));
     }
 
+    [Fact]
+    public async Task Characters_LiveInCoreSnapshotsAndPersistLevel()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        string guid;
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            Assert.Equal(1, row.Level);
+            Assert.False(string.IsNullOrWhiteSpace(row.SnapshotJson));
+            guid = row.Guid;
+
+            CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
+            Assert.Equal(guid, wallet.MainCharacterGuid);   // 建档即设为主战
+
+            PlayerState progress = await context.PlayerStates.SingleAsync(x => x.UserId == UserId);
+            progress.Exp = 500;
+            await context.SaveChangesAsync();
+        }
+
+        Assert.True((await players.LevelUpAsync(UserId, 1)).Ok);
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            // 索引列与快照都要更新
+            CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            Assert.Equal(2, row.Level);
+            Assert.Equal(GameplayRules.ExpForLevel(1), (long)row.Exp);
+
+            CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
+            List<PlayerCharacter> loaded = await CharacterStore.ListAsync(
+                context, UserId, wallet.MainCharacterGuid, CancellationToken.None);
+            PlayerCharacter reloaded = Assert.Single(loaded);
+            Assert.Equal(guid, reloaded.Guid);
+            Assert.Equal(2, reloaded.Level);
+            Assert.True(reloaded.IsMain);
+        }
+    }
+
     private static async Task SetDiamondsCoreAsync(GameplayDatabase db, int diamonds)
     {
         using IServiceScope scope = db.Provider.CreateScope();

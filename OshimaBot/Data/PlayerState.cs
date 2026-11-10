@@ -23,22 +23,6 @@ public sealed class PlayerState
     public int Version { get; set; }
 }
 
-/// <summary>只存 catalog_id + 版本 + 数值快照，不序列化 FunGame.Core 实体对象。</summary>
-public sealed class Character
-{
-    public long Id { get; set; }
-    public long UserId { get; set; }
-    public string CatalogId { get; set; } = "";
-    public string CatalogVersion { get; set; } = "";
-    public string Name { get; set; } = "";
-    public int Level { get; set; } = 1;
-    public long Exp { get; set; }
-    public int BreakLevel { get; set; }
-    public string AttrsJson { get; set; } = "{}";
-    public bool IsMain { get; set; }
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
-}
-
 public sealed class CharacterSkill
 {
     public long CharacterId { get; set; }

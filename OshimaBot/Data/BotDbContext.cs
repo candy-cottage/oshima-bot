@@ -19,7 +19,6 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public DbSet<PlayerState> PlayerStates => Set<PlayerState>();
-    public DbSet<Character> Characters => Set<Character>();
     public DbSet<CharacterSkill> CharacterSkills => Set<CharacterSkill>();
     public DbSet<CharacterEquipment> CharacterEquipment => Set<CharacterEquipment>();
     public DbSet<ItemInstance> ItemInstances => Set<ItemInstance>();
@@ -93,11 +92,6 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
         {
             entity.HasKey(x => x.UserId);
             entity.Property(x => x.Version).IsConcurrencyToken();
-        });
-        modelBuilder.Entity<Character>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.HasIndex(x => new { x.UserId, x.IsMain });
         });
         modelBuilder.Entity<CharacterSkill>().HasKey(x => new { x.CharacterId, x.SkillId, x.Slot });
         modelBuilder.Entity<CharacterEquipment>().HasKey(x => new { x.CharacterId, x.Slot });
@@ -196,7 +190,9 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
         });
         modelBuilder.Entity<CoreCharacterRecord>(entity =>
         {
-            entity.HasKey(x => x.Guid);
+            // 自增本地键用于关联表外键；业务身份是 Guid（唯一索引）。
+            entity.HasKey(x => x.LocalId);
+            entity.HasIndex(x => x.Guid).IsUnique();
             entity.HasIndex(x => new { x.UserId, x.Level });
             entity.HasIndex(x => new { x.UserId, x.Promotion });
             entity.Property(x => x.Version).IsConcurrencyToken();

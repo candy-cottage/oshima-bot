@@ -19,8 +19,9 @@ namespace OshimaBot.Data.Migrations
 
             modelBuilder.Entity("OshimaBot.Data.Core.CoreCharacterRecord", b =>
                 {
-                    b.Property<string>("Guid")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("LocalId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("CatalogId")
                         .IsRequired()
@@ -31,6 +32,10 @@ namespace OshimaBot.Data.Migrations
 
                     b.Property<double>("Exp")
                         .HasColumnType("REAL");
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Level")
                         .HasColumnType("INTEGER");
@@ -58,7 +63,10 @@ namespace OshimaBot.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Guid");
+                    b.HasKey("LocalId");
+
+                    b.HasIndex("Guid")
+                        .IsUnique();
 
                     b.HasIndex("UserId", "Level");
 
@@ -285,53 +293,6 @@ namespace OshimaBot.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("BindCodes");
-                });
-
-            modelBuilder.Entity("OshimaBot.Data.Entities.Character", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("AttrsJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("BreakLevel")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CatalogId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CatalogVersion")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("Exp")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsMain")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Level")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "IsMain");
-
-                    b.ToTable("Characters");
                 });
 
             modelBuilder.Entity("OshimaBot.Data.Entities.CharacterEquipment", b =>

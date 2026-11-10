@@ -8,7 +8,6 @@ using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using CoreCharacter = FunGame.Core.Entity.Character;
 using CoreTeam = FunGame.Core.Entity.Team;
-using DataCharacter = OshimaBot.Data.Entities.Character;
 
 namespace OshimaBot.Gameplay;
 
@@ -514,11 +513,7 @@ public sealed class EconomyService(
             if (run.EndsAtUtc > clock.UtcNow) return NotReady("探索", run.EndsAtUtc);
 
             // 结算时打一场真实战斗，胜负决定奖励倍率（胜：全额 + 掉落；负：半额 + 降档掉落）。
-            DataCharacter? mine = await db.Characters
-                .Where(x => x.UserId == userId)
-                .OrderByDescending(x => x.IsMain)
-                .ThenBy(x => x.Id)
-                .FirstOrDefaultAsync(ct);
+            PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
             if (mine is null)
             {
                 return ActionResult.Fail("没有可出战的角色", "没有结算任何奖励",
@@ -526,7 +521,7 @@ public sealed class EconomyService(
             }
 
             // 出战队伍：优先使用小队编成（最多 3 人），未编成则主战单刷。
-            List<DataCharacter> roster = [];
+            List<PlayerCharacter> roster = [];
             Squad? squad = await db.Squads.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
             if (squad is not null)
@@ -536,15 +531,16 @@ public sealed class EconomyService(
                     .Select(x => x.CharacterId).ToListAsync(ct);
                 if (memberIds.Count > 0)
                 {
-                    List<DataCharacter> loaded = await db.Characters.AsNoTracking()
-                        .Where(x => memberIds.Contains(x.Id)).ToListAsync(ct);
+                    string? mainGuid = state.Wallet.MainCharacterGuid;
+                    List<PlayerCharacter> loaded = (await CharacterStore.ListAsync(db, userId, mainGuid, ct))
+                        .Where(x => memberIds.Contains(x.Id)).ToList();
                     roster = [.. loaded.OrderBy(x => memberIds.IndexOf(x.Id))];
                 }
             }
             if (roster.Count == 0) roster = [mine];
 
             List<CoreCharacter> party = [];
-            foreach (DataCharacter member in roster)
+            foreach (PlayerCharacter member in roster)
             {
                 CoreCharacter? built = CombatCharacterFactory.FromCatalog(
                     member.CatalogId, member.Level, member.Exp, member.BreakLevel);
@@ -635,11 +631,7 @@ public sealed class EconomyService(
             }
 
             // 出战角色：优先主战，否则取第一个角色（与旧版「默认角色 1」一致）。
-            DataCharacter? mine = await db.Characters
-                .Where(x => x.UserId == userId)
-                .OrderByDescending(x => x.IsMain)
-                .ThenBy(x => x.Id)
-                .FirstOrDefaultAsync(ct);
+            PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
             if (mine is null)
             {
                 return ActionResult.Fail("没有可出战的角色", "没有扣除报名费",
@@ -707,11 +699,7 @@ public sealed class EconomyService(
                     $"需要 {GameplayRules.BossCostCredits} 金币，当前 {state.Credits}", "/状态");
             }
 
-            DataCharacter? mine = await db.Characters
-                .Where(x => x.UserId == userId)
-                .OrderByDescending(x => x.IsMain)
-                .ThenBy(x => x.Id)
-                .FirstOrDefaultAsync(ct);
+            PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
             if (mine is null)
             {
                 return ActionResult.Fail("没有可出战的角色", "没有扣除金币",

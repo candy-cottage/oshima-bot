@@ -32,7 +32,13 @@ public sealed class CorePlayerRecord
 /// </summary>
 public sealed class CoreCharacterRecord
 {
-    /// <summary><c>Character.Guid</c>，业务主键。</summary>
+    /// <summary>
+    /// 持久层自增键。小队 / 训练 / 装备等关联表沿用它做外键，
+    /// 业务身份仍是 <see cref="Guid"/>——这样关联表不必改成字符串键。
+    /// </summary>
+    public long LocalId { get; set; }
+
+    /// <summary><c>Character.Guid</c>，业务主键（唯一索引）。</summary>
     public string Guid { get; set; } = "";
 
     public long UserId { get; set; }

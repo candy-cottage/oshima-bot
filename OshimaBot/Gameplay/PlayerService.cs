@@ -5,7 +5,6 @@ using OshimaBot.Data;
 using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 using OshimaBot.Game.Services;
-using DataCharacter = OshimaBot.Data.Entities.Character;
 
 namespace OshimaBot.Gameplay;
 
@@ -62,8 +61,8 @@ public sealed class PlayerService(
         => userId <= 0 ? Task.FromResult<PlayerSnapshot?>(null) : ReadAsync<PlayerSnapshot?>(async (db, ct) =>
         {
             PlayerAccount state = await PlayerService.EnsureAsync(db, userId, ct);
-            List<DataCharacter> characters = await db.Characters.AsNoTracking()
-                .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(
+                db, userId, state.Wallet.MainCharacterGuid, ct);
             int itemCount = await db.ItemInstances.AsNoTracking().CountAsync(x => x.UserId == userId, ct);
             List<long> squadIds = await db.Squads.AsNoTracking()
                 .Where(x => x.UserId == userId).Select(x => x.Id).ToListAsync(ct);
@@ -94,9 +93,9 @@ public sealed class PlayerService(
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<IReadOnlyList<CharacterEntry>>([]) : ReadAsync(async (db, ct) =>
         {
-            await PlayerService.EnsureAsync(db, userId, ct);
-            List<DataCharacter> characters = await db.Characters.AsNoTracking()
-                .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
+            PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(
+                db, userId, account.Wallet.MainCharacterGuid, ct);
             Dictionary<long, int> equipment = await db.CharacterEquipment.AsNoTracking()
                 .GroupBy(x => x.CharacterId).Select(g => new { g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
@@ -201,7 +200,7 @@ public sealed class PlayerService(
                 [
                     $"- 旅人等级：Lv.{state.Level}　经验：{state.Exp}",
                     $"- 金币：{state.Credits}　钻石：{state.Materials}",
-                    $"- 角色：{await db.Characters.CountAsync(x => x.UserId == userId, ct)} 名",
+                    $"- 角色：{await db.CoreCharacters.CountAsync(x => x.UserId == userId, ct)} 名",
                     $"- 物品：{await db.ItemInstances.CountAsync(x => x.UserId == userId, ct)} 格",
                     "- 旧版 JSON 存档未迁移，所有旅人从今天重新开始"
                 ], ["/状态", "/签到", "/抽卡", "/背包"]);
@@ -344,7 +343,7 @@ public sealed class PlayerService(
             ItemInstance? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
             if (item.Bound) return ActionResult.Fail("该物品已装备", "没有重复装备", "先 /卸下 <槽位>", "/背包");
-            DataCharacter? main = await MainCharacterAsync(db, userId, ct);
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
             if (main is null) return NoMainCharacter();
             List<string> used = await db.CharacterEquipment.AsNoTracking()
                 .Where(x => x.CharacterId == main.Id).Select(x => x.Slot).ToListAsync(ct);
@@ -368,7 +367,7 @@ public sealed class PlayerService(
     public Task<ActionResult> UnequipAsync(long userId, string slot, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, _, ct) =>
         {
-            DataCharacter? main = await MainCharacterAsync(db, userId, ct);
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
             if (main is null) return NoMainCharacter();
             CharacterEquipment? equipment = await db.CharacterEquipment
                 .FirstOrDefaultAsync(x => x.CharacterId == main.Id && x.Slot == slot, ct);
@@ -387,14 +386,13 @@ public sealed class PlayerService(
         }, cancellationToken);
 
     public Task<ActionResult> SetMainAsync(long userId, int index, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, _, ct) =>
+        => MutateAsync(userId, async (db, state, ct) =>
         {
-            List<DataCharacter> characters = await db.Characters
-                .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(
+                db, userId, state.Wallet.MainCharacterGuid, ct);
             if (index <= 0 || index > characters.Count) return NoSuchCharacter(index);
-            foreach (DataCharacter character in characters) character.IsMain = false;
-            DataCharacter selected = characters[index - 1];
-            selected.IsMain = true;
+            PlayerCharacter selected = characters[index - 1];
+            state.Wallet.MainCharacterGuid = selected.Guid;
             return ActionResult.Success("⭐ 主战角色已更新", selected.Name,
                 ["- 装备、练级、突破都作用于当前主战角色"], ["/角色", "/状态"]);
         }, cancellationToken);
@@ -402,7 +400,7 @@ public sealed class PlayerService(
     public Task<ActionResult> LevelUpAsync(long userId, int index, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            DataCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
+            PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
             int cap = GameplayRules.LevelCap(character.BreakLevel);
             if (character.Level >= cap)
@@ -419,6 +417,7 @@ public sealed class PlayerService(
             state.Exp -= cost;
             character.Level += 1;
             character.Exp += cost;
+            CharacterStore.Sync(character);
             return ActionResult.Success("⬆️ 角色升级", $"{character.Name} → Lv.{character.Level}",
                 [$"- 消耗旅人经验 {cost}，剩余 {state.Exp}", $"- 当前上限 Lv.{cap}"],
                 ["/角色", "/状态"]);
@@ -427,7 +426,7 @@ public sealed class PlayerService(
     public Task<ActionResult> BreakAsync(long userId, int index, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            DataCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
+            PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
             int cap = GameplayRules.LevelCap(character.BreakLevel);
             if (character.Level < cap)
@@ -443,6 +442,7 @@ public sealed class PlayerService(
             }
             ApplyCurrency(db, state, -cost, "credits", "break", "character", character.Id.ToString(CultureInfo.InvariantCulture));
             character.BreakLevel += 1;
+            CharacterStore.Sync(character);
             return ActionResult.Success("💥 突破成功",
                 $"{character.Name} · 突破 {character.BreakLevel} 阶 · 上限提升至 Lv.{GameplayRules.LevelCap(character.BreakLevel)}",
                 [$"- 消耗金币 {cost}，剩余 {state.Credits}", "- 已写入账本 ledger"],
@@ -452,7 +452,7 @@ public sealed class PlayerService(
     public Task<ActionResult> TrainStartAsync(long userId, int index, int minutes, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            DataCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
+            PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
             if (await db.TrainingSessions.AnyAsync(x => x.UserId == userId && x.SettledAtUtc == null, ct))
             {
@@ -496,11 +496,16 @@ public sealed class PlayerService(
                 return ActionResult.Fail("练级尚未结束", "没有结算任何经验",
                     $"还需约 {seconds} 秒，稍后再用 /收取练级", "/收取练级");
             }
-            DataCharacter? character = await db.Characters
-                .FirstOrDefaultAsync(x => x.Id == session.CharacterId && x.UserId == userId, ct);
+            string? mainGuid = state.Wallet.MainCharacterGuid;
+            List<PlayerCharacter> all = await CharacterStore.ListAsync(db, userId, mainGuid, ct);
+            PlayerCharacter? character = all.FirstOrDefault(x => x.Id == session.CharacterId);
             long exp = GameplayRules.TrainExpBase + GameplayRules.TrainExpPerLevel * (character?.Level ?? 1);
             state.Exp += exp;
-            if (character is not null) character.Exp += exp;
+            if (character is not null)
+            {
+                character.Exp += exp;
+                CharacterStore.Sync(character);
+            }
             session.SettledAtUtc = DateTime.UtcNow;
             return ActionResult.Success("🎓 练级结算",
                 $"{(character is null ? "角色" : character.Name)} · 旅人经验 +{exp}",
@@ -509,7 +514,7 @@ public sealed class PlayerService(
         }, cancellationToken);
 
     public Task<ActionResult> SquadAsync(long userId, string operation, int index, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, _, ct) =>
+        => MutateAsync(userId, async (db, state, ct) =>
         {
             Squad? squad = await db.Squads.FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
             if (squad is null)
@@ -520,8 +525,8 @@ public sealed class PlayerService(
             }
             List<SquadMember> members = await db.SquadMembers
                 .Where(x => x.SquadId == squad.Id).OrderBy(x => x.Slot).ToListAsync(ct);
-            List<DataCharacter> characters = await db.Characters.AsNoTracking()
-                .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(
+                db, userId, state.Wallet.MainCharacterGuid, ct);
 
             string op = operation.ToLowerInvariant();
             if (op is "add" or "加入")
@@ -558,7 +563,7 @@ public sealed class PlayerService(
             foreach (int slot in Enumerable.Range(1, 3))
             {
                 SquadMember? member = members.FirstOrDefault(x => x.Slot == slot);
-                DataCharacter? character = member is null ? null : characters.FirstOrDefault(x => x.Id == member.CharacterId);
+                PlayerCharacter? character = member is null ? null : characters.FirstOrDefault(x => x.Id == member.CharacterId);
                 lines.Add($"- @{slot} {(character is null ? "（空）" : character.Name)}");
             }
             lines.Add("- /小队 加入 @编号　·　/小队 移除 @位置");
@@ -661,14 +666,9 @@ public sealed class PlayerService(
         if (characterTemplates.Count > 0)
         {
             var template = characterTemplates[0];
-            db.Characters.Add(new DataCharacter
-            {
-                UserId = userId,
-                CatalogId = template.Id.ToString(CultureInfo.InvariantCulture),
-                CatalogVersion = GameplayRules.CatalogVersion,
-                Name = template.GetName(), Level = 1, IsMain = true,
-                AttrsJson = "{}", CreatedAtUtc = DateTime.UtcNow
-            });
+            PlayerCharacter starter = CharacterStore.Create(
+                db, userId, template, template.Id.ToString(CultureInfo.InvariantCulture));
+            wallet.MainCharacterGuid = starter.Guid;
         }
         var itemTemplates = FunGameService.AllItems;
         for (int i = 0; i < Math.Min(GameplayRules.StartingItems, itemTemplates.Count); i++)
@@ -736,15 +736,22 @@ public sealed class PlayerService(
             .Where(x => x.UserId == userId).OrderBy(x => x.Id)
             .Skip(index - 1).FirstOrDefaultAsync(ct);
 
-    internal static async Task<DataCharacter?> CharacterByIndexAsync(
+    internal static async Task<PlayerCharacter?> CharacterByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
-        => index <= 0 ? null : await db.Characters
-            .Where(x => x.UserId == userId).OrderBy(x => x.Id)
-            .Skip(index - 1).FirstOrDefaultAsync(ct);
+    {
+        string? mainGuid = await MainGuidAsync(db, userId, ct);
+        return await CharacterStore.ByIndexAsync(db, userId, index, mainGuid, ct);
+    }
 
-    internal static async Task<DataCharacter?> MainCharacterAsync(BotDbContext db, long userId, CancellationToken ct)
-        => await db.Characters.Where(x => x.UserId == userId && x.IsMain)
-            .OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+    internal static async Task<PlayerCharacter?> MainCharacterAsync(BotDbContext db, long userId, CancellationToken ct)
+    {
+        string? mainGuid = await MainGuidAsync(db, userId, ct);
+        return await CharacterStore.MainAsync(db, userId, mainGuid, ct);
+    }
+
+    internal static Task<string?> MainGuidAsync(BotDbContext db, long userId, CancellationToken ct)
+        => db.CorePlayers.Where(x => x.UserId == userId)
+            .Select(x => x.MainCharacterGuid).FirstOrDefaultAsync(ct);
 
     internal static void Consume(BotDbContext db, ItemInstance item, int amount)
     {
