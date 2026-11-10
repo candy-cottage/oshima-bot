@@ -585,7 +585,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 旅人档案",
-            $"Lv.{snapshot.Level}　金币 {snapshot.Credits}　钻石 {snapshot.Diamonds}　经验 {snapshot.Exp}",
+            $"Lv.{snapshot.Level}　金币 {snapshot.Credits}　钻石 {snapshot.Materials}　经验 {snapshot.Exp}",
             [
                 "潮湿的石板路延伸到雾里，铁匠铺的锤声隔着两条街传来。",
                 "",
@@ -601,7 +601,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 中央广场",
-            $"Lv.{snapshot.Level} · 金币 {snapshot.Credits} · 钻石 {snapshot.Diamonds}",
+            $"Lv.{snapshot.Level} · 金币 {snapshot.Credits} · 钻石 {snapshot.Materials}",
             [
                 "雾气贴着石板路，北面的铁匠铺还亮着炉火。",
                 "",

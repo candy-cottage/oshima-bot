@@ -1,11 +1,13 @@
 namespace OshimaBot.Data.Entities;
 
-/// <summary>替代旧版 saved/{uid}.json 的主存档行。日期字段按 Asia/Shanghai 存 yyyy-MM-dd。</summary>
+/// <summary>
+/// 玩家进度存档（替代旧版 saved/{uid}.json）。
+/// <para>货币已迁到 <c>CorePlayers</c>（按 Core 语义用 <c>double</c> 存 Credits/Materials），
+/// 本表只保留 MUD 侧进度字段。日期字段按 Asia/Shanghai 存 yyyy-MM-dd。</para>
+/// </summary>
 public sealed class PlayerState
 {
     public long UserId { get; set; }
-    public long Credits { get; set; }
-    public long Diamonds { get; set; }
     public long Exp { get; set; }
     public int Level { get; set; } = 1;
     public int SignInStreak { get; set; }

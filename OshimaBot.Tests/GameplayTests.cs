@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
+using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
@@ -29,7 +30,7 @@ public sealed class GameplayTests
 
         Assert.NotNull(first);
         Assert.Equal(GameplayRules.StartingCredits, first.Credits);
-        Assert.Equal(GameplayRules.StartingDiamonds, first.Diamonds);
+        Assert.Equal(GameplayRules.StartingDiamonds, first.Materials);
         Assert.Equal(1, first.CharacterCount);
         Assert.Equal(GameplayRules.StartingItems, first.ItemCount);
         Assert.Equal(second!.Credits, first.Credits);
@@ -55,9 +56,9 @@ public sealed class GameplayTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState state = await context.PlayerStates.FirstAsync(x => x.UserId == UserId);
+        CorePlayerRecord state = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "signin");
-        Assert.Equal(state.Credits, entry.BalanceAfter);
+        Assert.Equal(state.Credits, entry.BalanceAfter, 3);
         Assert.Equal(GameplayRules.SignInCredits(0), entry.Delta);
         Assert.Equal(1, await context.SignInRecords.CountAsync());
         Assert.Equal(1, await context.LedgerEntries.CountAsync(x => x.Reason == "signin"));
@@ -76,7 +77,7 @@ public sealed class GameplayTests
         Assert.False(result.Ok);
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        Assert.Equal(0, (await context.PlayerStates.FirstAsync(x => x.UserId == UserId)).Diamonds);
+        Assert.Equal(0, (await context.CorePlayers.FirstAsync(x => x.UserId == UserId)).Materials);
         Assert.Empty(await context.LedgerEntries.Where(x => x.Reason == "gacha").ToListAsync());
         Assert.Equal(GameplayRules.StartingItems, await context.ItemInstances.CountAsync(x => x.UserId == UserId));
     }
@@ -94,11 +95,11 @@ public sealed class GameplayTests
         Assert.True(result.Ok, result.Title);
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState state = await context.PlayerStates.FirstAsync(x => x.UserId == UserId);
-        Assert.Equal(100 - GameplayRules.GachaTenCost, state.Diamonds);
+        CorePlayerRecord state = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
+        Assert.Equal(100 - GameplayRules.GachaTenCost, state.Materials, 3);
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "gacha");
         Assert.Equal(-GameplayRules.GachaTenCost, entry.Delta);
-        Assert.Equal(state.Diamonds, entry.BalanceAfter);
+        Assert.Equal(state.Materials, entry.BalanceAfter, 3);
         Assert.True(await context.ItemInstances.CountAsync(x => x.UserId == UserId) > GameplayRules.StartingItems);
         Assert.Contains(await context.ItemInstances.Where(x => x.CatalogId == "gacha").ToListAsync(),
             item => item.Quality >= 4); // 十连保底
@@ -188,7 +189,7 @@ public sealed class GameplayTests
         Assert.False((await players.ClaimQuestAsync(UserId, 2)).Ok); // 未完成
         PlayerSnapshot after = (await players.GetSnapshotAsync(UserId))!;
         Assert.Equal(before.Credits + GameplayRules.QuestRewardCredits, after.Credits);
-        Assert.Equal(before.Diamonds + GameplayRules.QuestRewardDiamonds, after.Diamonds);
+        Assert.Equal(before.Materials + GameplayRules.QuestRewardDiamonds, after.Materials);
         Assert.Equal(2, (await players.GetQuestsAsync(UserId))[0].Status);
     }
 
@@ -265,12 +266,38 @@ public sealed class GameplayTests
         Assert.InRange(GameplayRules.RollQuality(new Random(1)), 1, 5);
     }
 
+    [Fact]
+    public async Task Wallet_LivesInCorePlayersAndKeepsFractionalBalance()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
+            // Core 的货币是 double，这里写小数验证不会被整数截断
+            wallet.Credits = 1234.75;
+            wallet.Materials = 6.5;
+            await context.SaveChangesAsync();
+
+            // 进度表已不再持有货币列
+            Assert.False(context.Model.FindEntityType(typeof(PlayerState))!
+                .FindProperty("Credits") is not null);
+        }
+
+        PlayerSnapshot snapshot = (await players.GetSnapshotAsync(UserId))!;
+        Assert.Equal(1234.75, snapshot.Credits, 3);
+        Assert.Equal(6.5, snapshot.Materials, 3);
+    }
+
     private static async Task SetDiamondsAsync(GameplayDatabase db, int diamonds)
     {
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState state = await context.PlayerStates.FirstAsync(x => x.UserId == UserId);
-        state.Diamonds = diamonds;
+        CorePlayerRecord state = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
+        state.Materials = diamonds;
         await context.SaveChangesAsync();
     }
 

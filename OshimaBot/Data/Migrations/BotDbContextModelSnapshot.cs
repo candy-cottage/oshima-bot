@@ -15,7 +15,7 @@ namespace OshimaBot.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("OshimaBot.Data.Core.CoreCharacterRecord", b =>
                 {
@@ -530,8 +530,8 @@ namespace OshimaBot.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("BalanceAfter")
-                        .HasColumnType("INTEGER");
+                    b.Property<double>("BalanceAfter")
+                        .HasColumnType("REAL");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
@@ -540,8 +540,8 @@ namespace OshimaBot.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("Delta")
-                        .HasColumnType("INTEGER");
+                    b.Property<double>("Delta")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -643,12 +643,6 @@ namespace OshimaBot.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("CooperativePoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("Credits")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("Diamonds")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("DinnerClaimedOn")

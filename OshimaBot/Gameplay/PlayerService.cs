@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
+using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 using OshimaBot.Game.Services;
 using DataCharacter = OshimaBot.Data.Entities.Character;
@@ -56,7 +57,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public Task<PlayerSnapshot?> GetSnapshotAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<PlayerSnapshot?>(null) : ReadAsync<PlayerSnapshot?>(async (db, ct) =>
         {
-            PlayerState state = await EnsureAsync(db, userId, ct);
+            PlayerAccount state = await PlayerService.EnsureAsync(db, userId, ct);
             List<DataCharacter> characters = await db.Characters.AsNoTracking()
                 .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
             int itemCount = await db.ItemInstances.AsNoTracking().CountAsync(x => x.UserId == userId, ct);
@@ -66,7 +67,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
                 .CountAsync(x => squadIds.Contains(x.SquadId), ct);
             int pendingTrainings = await db.TrainingSessions.AsNoTracking()
                 .CountAsync(x => x.UserId == userId && x.SettledAtUtc == null, ct);
-            return new PlayerSnapshot(userId, state.Level, state.Exp, state.Credits, state.Diamonds,
+            return new PlayerSnapshot(userId, state.Level, state.Exp, state.Credits, state.Materials,
                 state.SignInStreak, state.SignedOn, characters.FirstOrDefault(x => x.IsMain)?.Name,
                 characters.Count, itemCount, squadCount, pendingTrainings);
         }, cancellationToken);
@@ -74,7 +75,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public Task<IReadOnlyList<BagEntry>> GetBagAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<IReadOnlyList<BagEntry>>([]) : ReadAsync(async (db, ct) =>
         {
-            await EnsureAsync(db, userId, ct);
+            await PlayerService.EnsureAsync(db, userId, ct);
             List<ItemInstance> items = await db.ItemInstances.AsNoTracking()
                 .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
             List<long> ids = items.Select(x => x.Id).ToList();
@@ -89,7 +90,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<IReadOnlyList<CharacterEntry>>([]) : ReadAsync(async (db, ct) =>
         {
-            await EnsureAsync(db, userId, ct);
+            await PlayerService.EnsureAsync(db, userId, ct);
             List<DataCharacter> characters = await db.Characters.AsNoTracking()
                 .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
             Dictionary<long, int> equipment = await db.CharacterEquipment.AsNoTracking()
@@ -146,7 +147,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
 
     private async Task<ActionResult> MutateAsync(
         long userId,
-        Func<BotDbContext, PlayerState, CancellationToken, Task<ActionResult>> body,
+        Func<BotDbContext, PlayerAccount, CancellationToken, Task<ActionResult>> body,
         CancellationToken cancellationToken)
     {
         if (userId <= 0) return NoIdentity;
@@ -157,14 +158,14 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
                 await db.Database.BeginTransactionAsync(cancellationToken);
 
-            PlayerState state = await EnsureAsync(db, userId, cancellationToken);
-            ActionResult result = await body(db, state, cancellationToken);
+            PlayerAccount account = await PlayerService.EnsureAsync(db, userId, cancellationToken);
+            ActionResult result = await body(db, account, cancellationToken);
             if (!result.Ok)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return result;
             }
-            state.UpdatedAtUtc = DateTime.UtcNow;
+            account.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return result;
@@ -190,12 +191,12 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         {
             // 读路径自己判断是否为首次建档，避免 EnsureAsync 已建档后误报「存档已存在」。
             bool existed = await db.PlayerStates.AsNoTracking().AnyAsync(x => x.UserId == userId, ct);
-            PlayerState state = await EnsureAsync(db, userId, ct);
+            PlayerAccount state = await PlayerService.EnsureAsync(db, userId, ct);
             return ActionResult.Success("🎒 旅人登记",
                 existed ? "存档已存在，未重复发放初始资源" : "初始资源已发放",
                 [
                     $"- 旅人等级：Lv.{state.Level}　经验：{state.Exp}",
-                    $"- 金币：{state.Credits}　钻石：{state.Diamonds}",
+                    $"- 金币：{state.Credits}　钻石：{state.Materials}",
                     $"- 角色：{await db.Characters.CountAsync(x => x.UserId == userId, ct)} 名",
                     $"- 物品：{await db.ItemInstances.CountAsync(x => x.UserId == userId, ct)} 格",
                     "- 旧版 JSON 存档未迁移，所有旅人从今天重新开始"
@@ -235,7 +236,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
             return ActionResult.Success("📅 签到成功",
                 $"连续 {state.SignInStreak} 天 · 金币 +{credits}{(diamonds > 0 ? $" · 钻石 +{diamonds}" : "")}",
                 [
-                    $"- 当前金币：{state.Credits}　钻石：{state.Diamonds}",
+                    $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
                     $"- 连续签到每满 {GameplayRules.SignInDiamondEveryDays} 天额外送 {GameplayRules.SignInDiamondAmount} 钻石",
                     "- 今日任务「今日签到」进度已更新"
                 ], ["/每日任务", "/状态", "/抽卡"]);
@@ -246,10 +247,10 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         {
             int pulls = Math.Clamp(count, 1, GameplayRules.MaxGachaPerCall);
             int cost = pulls == 10 ? GameplayRules.GachaTenCost : GameplayRules.GachaCost * pulls;
-            if (state.Diamonds < cost)
+            if (state.Materials < cost)
             {
                 return ActionResult.Fail("钻石不足", "没有扣除钻石，也没有生成物品",
-                    $"需要 {cost} 钻石，当前 {state.Diamonds}；可先签到或领取每日任务", "/签到");
+                    $"需要 {cost} 钻石，当前 {state.Materials}；可先签到或领取每日任务", "/签到");
             }
             ApplyCurrency(db, state, -cost, "diamonds", "gacha", "gacha", GameplayRules.Today());
 
@@ -273,7 +274,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
 
             List<string> lines = drawn.Select((item, i) =>
                 $"- {i + 1}. {GameplayRules.QualityName(item.Quality)} · {item.Name}").ToList();
-            lines.Add($"- 消耗钻石 {cost}，剩余 {state.Diamonds}");
+            lines.Add($"- 消耗钻石 {cost}，剩余 {state.Materials}");
             lines.Add("- 用 /背包 查看物品编号后再 @编号 使用或分解");
             return ActionResult.Success(pulls == 10 ? "🎰 十连抽卡" : "🎲 抽卡",
                 $"{pulls} 次抽取 · 已全部放入背包",
@@ -590,7 +591,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
             return ActionResult.Success("✅ 任务奖励已领取", name,
                 [
                     $"- 金币 +{GameplayRules.QuestRewardCredits}　钻石 +{GameplayRules.QuestRewardDiamonds}",
-                    $"- 当前金币：{state.Credits}　钻石：{state.Diamonds}",
+                    $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
                     "- 已写入账本 ledger"
                 ], ["/每日任务", "/状态"]);
         }, cancellationToken);
@@ -605,19 +606,52 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
 
     // ---------------- 内部工具 ----------------
 
-    /// <summary>首次访问懒建档：player_state + 初始角色 + 初始物品 + 初始资金流水，全部一次保存。</summary>
-    internal static async Task<PlayerState> EnsureAsync(BotDbContext db, long userId, CancellationToken ct)
+    /// <summary>
+    /// 首次访问懒建档：进度行 + 钱包行 + 初始角色 + 初始物品 + 初始资金流水，全部一次保存。
+    /// <para>已有进度但缺钱包行时补一行（旧库升级路径），按初始资金发放并记一笔流水。</para>
+    /// </summary>
+    internal static async Task<PlayerAccount> EnsureAsync(BotDbContext db, long userId, CancellationToken ct)
     {
         PlayerState? state = await db.PlayerStates.FirstOrDefaultAsync(x => x.UserId == userId, ct);
-        if (state is not null) return state;
+        CorePlayerRecord? wallet = await db.CorePlayers.FirstOrDefaultAsync(x => x.UserId == userId, ct);
+        if (state is not null && wallet is not null) return new PlayerAccount(state, wallet);
+
+        if (state is not null)
+        {
+            wallet = new CorePlayerRecord
+            {
+                UserId = userId,
+                Credits = GameplayRules.StartingCredits,
+                Materials = GameplayRules.StartingDiamonds,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
+            db.CorePlayers.Add(wallet);
+            db.LedgerEntries.Add(new LedgerEntry
+            {
+                UserId = userId, Currency = "credits", Delta = GameplayRules.StartingCredits,
+                BalanceAfter = GameplayRules.StartingCredits, Reason = "wallet_upgrade",
+                RefType = "player", RefId = userId.ToString(CultureInfo.InvariantCulture),
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync(ct);
+            return new PlayerAccount(state, wallet);
+        }
 
         state = new PlayerState
         {
-            UserId = userId, Credits = GameplayRules.StartingCredits,
-            Diamonds = GameplayRules.StartingDiamonds, Level = 1,
+            UserId = userId, Level = 1,
             LogonOn = GameplayRules.Today(), UpdatedAtUtc = DateTime.UtcNow
         };
         db.PlayerStates.Add(state);
+
+        wallet = new CorePlayerRecord
+        {
+            UserId = userId,
+            Credits = GameplayRules.StartingCredits,
+            Materials = GameplayRules.StartingDiamonds,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        db.CorePlayers.Add(wallet);
 
         var characterTemplates = FunGameService.Characters;
         if (characterTemplates.Count > 0)
@@ -651,21 +685,21 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
             CreatedAtUtc = DateTime.UtcNow
         });
         await db.SaveChangesAsync(ct);
-        return state;
+        return new PlayerAccount(state, wallet);
     }
 
     /// <summary>货币变动与 ledger 必须成对出现；Add 后由调用方的 SaveChanges 一次提交。</summary>
     internal static void ApplyCurrency(
-        BotDbContext db, PlayerState state, long delta, string currency,
+        BotDbContext db, PlayerAccount account, double delta, string currency,
         string reason, string refType, string refId)
     {
         if (delta == 0) return;
-        if (currency == "diamonds") state.Diamonds += delta;
-        else state.Credits += delta;
-        long balance = currency == "diamonds" ? state.Diamonds : state.Credits;
+        if (currency == "diamonds") account.Materials += delta;
+        else account.Credits += delta;
+        double balance = currency == "diamonds" ? account.Materials : account.Credits;
         db.LedgerEntries.Add(new LedgerEntry
         {
-            UserId = state.UserId, Currency = currency, Delta = delta, BalanceAfter = balance,
+            UserId = account.UserId, Currency = currency, Delta = delta, BalanceAfter = balance,
             Reason = reason, RefType = refType, RefId = refId, CreatedAtUtc = DateTime.UtcNow
         });
     }

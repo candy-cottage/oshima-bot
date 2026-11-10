@@ -6,8 +6,12 @@ public sealed class LedgerEntry
     public long Id { get; set; }
     public long UserId { get; set; }
     public string Currency { get; set; } = "credits";
-    public long Delta { get; set; }
-    public long BalanceAfter { get; set; }
+
+    /// <summary>变动量。与 Core 的 <c>double</c> 货币一致，不再截断为整数。</summary>
+    public double Delta { get; set; }
+
+    /// <summary>变动后余额，可与 <c>CorePlayers</c> 逐笔对账。</summary>
+    public double BalanceAfter { get; set; }
     public string Reason { get; set; } = "";
     public string RefType { get; set; } = "";
     public string RefId { get; set; } = "";

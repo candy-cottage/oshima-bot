@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
+using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
@@ -35,7 +36,7 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState state = await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller);
+        CorePlayerRecord state = await dbContext.CorePlayers.FirstAsync(x => x.UserId == Seller);
         LedgerEntry entry = await dbContext.LedgerEntries.FirstAsync(x => x.Reason == "store_buy");
         Assert.Equal(-goods[0].Price * 2, entry.Delta);
         Assert.Equal(state.Credits, entry.BalanceAfter);
@@ -86,8 +87,8 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState sellerState = await dbContext.PlayerStates.FirstAsync(x => x.UserId == Seller);
-        PlayerState buyerState = await dbContext.PlayerStates.FirstAsync(x => x.UserId == Buyer);
+        CorePlayerRecord sellerState = await dbContext.CorePlayers.FirstAsync(x => x.UserId == Seller);
+        CorePlayerRecord buyerState = await dbContext.CorePlayers.FirstAsync(x => x.UserId == Buyer);
         Assert.Equal(sellerState.Credits,
             (await dbContext.LedgerEntries.FirstAsync(x => x.Reason == "market_sale")).BalanceAfter);
         Assert.Equal(buyerState.Credits,
@@ -239,7 +240,7 @@ public sealed class EconomyTests
     {
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        PlayerState state = await context.PlayerStates.FirstAsync(x => x.UserId == userId);
+        CorePlayerRecord state = await context.CorePlayers.FirstAsync(x => x.UserId == userId);
         state.Credits = credits;
         await context.SaveChangesAsync();
     }

@@ -2,7 +2,7 @@ namespace OshimaBot.Gameplay;
 
 /// <summary>玩法层与指令层之间的纯数据契约，玩法层不依赖 Messaging/Models。</summary>
 public sealed record PlayerSnapshot(
-    long UserId, int Level, long Exp, long Credits, long Diamonds,
+    long UserId, int Level, long Exp, double Credits, double Materials,
     int SignInStreak, string SignedOn, string? MainCharacter,
     int CharacterCount, int ItemCount, int SquadCount, int PendingTrainings);
 
@@ -42,4 +42,4 @@ public sealed record MarketEntry(
 public sealed record OfferEntry(
     int Index, long Id, string ItemName, long Price, string SellerHandle, bool IsMine);
 
-public sealed record RankEntry(int Index, string Handle, long Value);
+public sealed record RankEntry(int Index, string Handle, double Value);

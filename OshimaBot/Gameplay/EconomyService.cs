@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
+using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
@@ -51,7 +52,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
 
     private async Task<ActionResult> MutateAsync(
         long userId,
-        Func<BotDbContext, PlayerState, CancellationToken, Task<ActionResult>> body,
+        Func<BotDbContext, PlayerAccount, CancellationToken, Task<ActionResult>> body,
         CancellationToken cancellationToken)
     {
         if (userId <= 0) return PlayerService.NoIdentity;
@@ -62,7 +63,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
                 await db.Database.BeginTransactionAsync(cancellationToken);
 
-            PlayerState state = await PlayerService.EnsureAsync(db, userId, cancellationToken);
+            PlayerAccount state = await PlayerService.EnsureAsync(db, userId, cancellationToken);
             ActionResult result = await body(db, state, cancellationToken);
             if (!result.Ok)
             {
@@ -257,7 +258,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             ItemInstance? item = await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == listing.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("挂单物品已丢失", "没有发生任何交易", "联系管理员核查", "/市场");
 
-            PlayerState seller = await PlayerService.EnsureAsync(db, listing.SellerUserId, ct);
+            PlayerAccount seller = await PlayerService.EnsureAsync(db, listing.SellerUserId, ct);
             string reference = listing.Id.ToString(CultureInfo.InvariantCulture);
             PlayerService.ApplyCurrency(db, state, -listing.Price, "credits", "market_buy", "listing", reference);
             PlayerService.ApplyCurrency(db, seller, listing.Price, "credits", "market_sale", "listing", reference);
@@ -351,7 +352,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             ItemInstance? item = await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == line.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("报价物品已丢失", "没有发生任何交易", "联系管理员核查", "/报价列表");
 
-            PlayerState seller = await PlayerService.EnsureAsync(db, trade.SellerUserId, ct);
+            PlayerAccount seller = await PlayerService.EnsureAsync(db, trade.SellerUserId, ct);
             string reference = trade.Id.ToString(CultureInfo.InvariantCulture);
             PlayerService.ApplyCurrency(db, state, -line.Price, "credits", "offer_buy", "trade", reference);
             PlayerService.ApplyCurrency(db, seller, line.Price, "credits", "offer_sale", "trade", reference);
@@ -606,7 +607,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level} · 出战 {party.Count} 人",
                 $"- 经验 +{exp}　金币 +{credits}　钻石 +{diamonds}",
                 $"- 掉落：{(drops.Count == 0 ? "无" : string.Join("、", drops))} · {kindName}秘境",
-                $"- 当前经验：{state.Exp}　金币：{state.Credits}　钻石：{state.Diamonds}"
+                $"- 当前经验：{state.Exp}　金币：{state.Credits}　钻石：{state.Materials}"
             ];
             lines.AddRange(battle.Tail(2)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -800,17 +801,28 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                         handles.GetValueOrDefault(x.UserId, $"旅人{x.UserId}"), x.Value)).ToArray();
             }
 
-            IQueryable<PlayerState> query = db.PlayerStates.AsNoTracking();
-            List<PlayerState> states = normalized == "level"
-                ? await query.OrderByDescending(x => x.Level).ThenByDescending(x => x.Exp)
-                    .Take(GameplayRules.RankingTop).ToListAsync(ct)
-                : await query.OrderByDescending(x => x.Credits).Take(GameplayRules.RankingTop).ToListAsync(ct);
-            List<long> userIds = states.Select(x => x.UserId).ToList();
-            Dictionary<long, string> stateHandles = await db.Users.AsNoTracking()
-                .Where(x => userIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
-            return states.Select((state, i) => new RankEntry(i + 1,
-                stateHandles.GetValueOrDefault(state.UserId, $"旅人{state.UserId}"),
-                normalized == "level" ? state.Level : state.Credits)).ToArray();
+            if (normalized == "level")
+            {
+                List<PlayerState> states = await db.PlayerStates.AsNoTracking()
+                    .OrderByDescending(x => x.Level).ThenByDescending(x => x.Exp)
+                    .Take(GameplayRules.RankingTop).ToListAsync(ct);
+                List<long> stateIds = states.Select(x => x.UserId).ToList();
+                Dictionary<long, string> stateHandles = await db.Users.AsNoTracking()
+                    .Where(x => stateIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
+                return states.Select((state, i) => new RankEntry(i + 1,
+                    stateHandles.GetValueOrDefault(state.UserId, $"旅人{state.UserId}"),
+                    state.Level)).ToArray();
+            }
+
+            // 金币榜直接读钱包（CorePlayers.Credits 为 double），不再依赖进度表。
+            List<CorePlayerRecord> wallets = await db.CorePlayers.AsNoTracking()
+                .OrderByDescending(x => x.Credits).Take(GameplayRules.RankingTop).ToListAsync(ct);
+            List<long> walletIds = wallets.Select(x => x.UserId).ToList();
+            Dictionary<long, string> walletHandles = await db.Users.AsNoTracking()
+                .Where(x => walletIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
+            return wallets.Select((wallet, i) => new RankEntry(i + 1,
+                walletHandles.GetValueOrDefault(wallet.UserId, $"旅人{wallet.UserId}"),
+                wallet.Credits)).ToArray();
         }, cancellationToken);
 
     // ---------------- 内部工具 ----------------
