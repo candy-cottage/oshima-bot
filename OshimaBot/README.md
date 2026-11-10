@@ -13,7 +13,7 @@
 | `OshimaBot` | ASP.NET Core WebAPI、QQ 事件管线、消息层、指令框架、玩法仓储、数据层 |
 | `OshimaBot.Game` | `FunGameService` 内容目录、模拟器、运行态上下文、统计仓储接口 |
 | `OshimaBot.Content` | 18 角色 / 118 技能 / 198 物品的内容定义 |
-| `OshimaBot.Tests` | xunit 单测（128 条，含真实 SQLite 端到端） |
+| `OshimaBot.Tests` | xunit 单测（144 条，含真实 SQLite 端到端与 10 个 Golden Fixture） |
 
 目录要点：`Commands/`（显式 `CommandCatalog` + Router）、`Messaging/`（QQ Markdown / 按钮 / 发送）、`Gameplay/`（规则、玩家存档、经济）、`Data/`（DbContext / Migration）、`Security/`（验签、身份、ApiKey）、`Services/Gateway/`（WebSocket 网关）。
 
@@ -117,6 +117,10 @@ dotnet user-secrets set "Server:ApiKey" "<third-party-api-key>" --project Oshima
 - 模拟统计与日志存 `simulation_statistics` / `simulation_runs`，启动时 `LoadAsync` 恢复，重启后 `/上次的日志` 与评分排行仍在；`rounds_archive.zip` 默认不再生成。
 - 备份：停服后直接复制 `oshimobot.db`（含 WAL 时一并复制 `-wal` / `-shm`），或用 `VACUUM INTO` 生成一致性快照。
 
-## 范围
+## 范围与迁移状态
 
-玩法交付 **P0（查询 / 模拟）→ P1（存档 / 养成）→ P2（经济 / 战斗）**。P3（社团、赛马、赛事预测、探索地图、私信）按计划不在本轮范围，相关表未建。完整迁移计划与运维说明见 `docs/`（本地资料，不纳入版本控制）。
+已交付 **P0（查询 / 模拟）→ P1（存档 / 养成）→ P2（经济 / 战斗）** 的**可用闭环**；P3（社团、赛马、赛事预测、探索地图、私信）未开始，相关表未建。
+
+需要区分两个目标：**新服务器可用**已经达到；**旧版行为等价**尚未完成 —— 163 个旧版命令入口中，当前仅 1 条达到等价，64 条是简化替代，93 条缺失（明细见 `docs/MIGRATION_MATRIX.md`）。行为等价迁移按 M0~M7 里程碑推进，`OshimaBot.Tests/Fixtures/Legacy/` 的 Golden Fixture 锁定当前数值并为旧版值预留回填位：**`dotnet test` 全绿只代表当前数值未被无意改动，不代表已与旧版等价**。
+
+完整迁移计划与运维说明见 `docs/`（本地资料，不纳入版本控制）。

@@ -1,0 +1,24 @@
+{
+  "id": "FIX-CHR-LEVELUP",
+  "behaviorId": "CHR-013",
+  "command": "角色升级",
+  "probe": "levelup",
+  "status": "current-locked",
+  "input": {
+    "levels": [1, 2, 10, 50, 99, 100]
+  },
+  "expected": {
+    "current": {
+      "expForLevel": [100, 283, 3163, 35356, 98504, 100000]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:1450",
+    "method": "RainBOTService 角色升级分支",
+    "note": "旧版按角色经验与等级表扣费，需逐级提取；新版 ceil(100×Lv^1.5) 消耗旅人经验"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

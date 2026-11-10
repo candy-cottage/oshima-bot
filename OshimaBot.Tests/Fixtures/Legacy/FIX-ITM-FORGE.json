@@ -1,0 +1,26 @@
+{
+  "id": "FIX-ITM-FORGE",
+  "behaviorId": "ITM-020",
+  "command": "锻造配方",
+  "probe": "forge",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "costCredits": 200,
+      "materialQuantity": 2,
+      "defaultMinutes": 5,
+      "maxMinutes": 120,
+      "outputQuality": 3
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:2951",
+    "method": "RainBOTService 锻造配方分支 + FunGameService.GenerateForgeResult",
+    "note": "旧版支持自定义配方、模拟与成功率；新版固定 2 个同类材料 + 200 金币 / 5 分钟，产出固定稀有品质"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

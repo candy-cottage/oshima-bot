@@ -1,0 +1,28 @@
+{
+  "id": "FIX-SHO-MARKET-SELL",
+  "behaviorId": "SHO-026",
+  "command": "市场出售",
+  "probe": "market-fee",
+  "status": "current-locked",
+  "input": {
+    "prices": [1, 19, 20, 100, 199, 1000]
+  },
+  "expected": {
+    "current": {
+      "feeRatePercent": 5,
+      "minPrice": 1,
+      "maxPrice": 1000000,
+      "maxListings": 5,
+      "fee": [1, 1, 1, 5, 9, 50]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:3027",
+    "method": "RainBOTService 市场出售分支",
+    "note": "旧版手续费 15%，新版 5%；取整为整数除法后下限 1。旧版费率与取整规则待核对，差异会影响所有价格边界"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

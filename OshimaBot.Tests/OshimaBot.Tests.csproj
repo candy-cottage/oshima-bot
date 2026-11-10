@@ -21,4 +21,9 @@
     <ProjectReference Include="..\OshimaBot\OshimaBot.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- M0：行为等价 Golden Fixture 随测试输出复制，测试从 AppContext.BaseDirectory 读取。 -->
+    <None Update="Fixtures\Legacy\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,26 @@
+{
+  "id": "FIX-ACT-SIGNIN",
+  "behaviorId": "ACT-001",
+  "command": "签到",
+  "probe": "signin",
+  "status": "current-locked",
+  "input": {
+    "streaks": [1, 2, 3, 8, 21]
+  },
+  "expected": {
+    "current": {
+      "creditsByStreak": [100, 120, 140, 240, 240],
+      "diamondEveryDays": 7,
+      "diamondAmount": 5
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:785",
+    "method": "RainBOTService 签到分支 + FunGameService.GetSignInResult",
+    "note": "新版 100+20×连击（连击上限 7 天）、每满 7 天 +5 钻；旧版奖励表待核对，连击中断规则也需确认"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

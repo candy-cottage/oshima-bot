@@ -1,0 +1,25 @@
+{
+  "id": "FIX-BAT-BOSS",
+  "behaviorId": "BAT-005",
+  "command": "讨伐boss",
+  "probe": "boss",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "costCredits": 100,
+      "rewardCredits": 300,
+      "rewardDiamonds": 3,
+      "winPoints": 25
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:1790",
+    "method": "RainBOTService 讨伐boss分支 + FunGameService.GenerateBoss / EnhanceBoss",
+    "note": "旧版有 Boss 池、等级、动态强化、伤害累计与掉落；新版每日一次抽象挑战，胜负由概率决定"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

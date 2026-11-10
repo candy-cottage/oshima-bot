@@ -1,0 +1,27 @@
+{
+  "id": "FIX-CHR-TRAIN",
+  "behaviorId": "CHR-005",
+  "command": "开启练级",
+  "probe": "train",
+  "status": "current-locked",
+  "input": {
+    "levels": [1, 10, 50]
+  },
+  "expected": {
+    "current": {
+      "costCredits": 50,
+      "defaultMinutes": 10,
+      "maxMinutes": 120,
+      "expByLevel": [140, 320, 1120]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:1270",
+    "method": "RainBOTService 开启练级分支 + FunGameService.GetTrainingInfo",
+    "note": "旧版收益随时间与小/中/大经验书换算，新版固定 120+20×等级，且费用与时长无关"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}

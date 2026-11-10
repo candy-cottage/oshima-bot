@@ -1,0 +1,25 @@
+{
+  "id": "FIX-CHR-BREAK",
+  "behaviorId": "CHR-014",
+  "command": "角色突破",
+  "probe": "break",
+  "status": "current-locked",
+  "input": {
+    "breakLevels": [0, 1, 2, 9]
+  },
+  "expected": {
+    "current": {
+      "levelCap": [10, 20, 30, 100],
+      "breakCost": [500, 1000, 1500, 5000]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaWebAPI/Services/RainBOTService.cs:1498",
+    "method": "RainBOTService 角色突破分支",
+    "note": "旧版消耗突破材料（GetLevelBreakNeedy），新版消耗金币 500×(阶+1)"
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-10T04:00:00+08:00"
+}
