@@ -689,12 +689,12 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
     public Task<ActionResult> BossAsync(long userId, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            string date = GameplayRules.Today();
-            string key = $"boss:{userId}:{date}";
-            if (await db.AppConfigs.AsNoTracking().AnyAsync(x => x.Key == key, ct))
+            // 全服共享一只残血目标：谁都能接着打，血量跨挑战累计。
+            BossEntry? bossEntry = BossPool.Current();
+            if (bossEntry is null)
             {
-                return ActionResult.Fail("今天已经挑战过 Boss", "没有扣除金币，也没有发放奖励",
-                    "明天再来，或先去 /决斗 练手", "/决斗");
+                return ActionResult.Fail("讨伐目标正在刷新", "没有扣除金币",
+                    "稍后再试，或先去 /决斗 练手", "/决斗");
             }
             if (state.Credits < GameplayRules.BossCostCredits)
             {
@@ -721,56 +721,58 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                     "内容包可能已更新，请反馈给管理员", "/状态");
             }
 
-            // Boss 池：当天固定一只，取副本作战，池内实例的 HP 不被改写。
-            BossEntry bossEntry = BossPool.ForDate(date);
+            // Boss 副本继承当前剩余生命，因此这次伤害会累计到全服共享的目标上。
+            string reference = $"boss-{bossEntry.Index}";
+            double maxHp = bossEntry.Character.MaxHP;
             CoreCharacter boss = BossPool.CreateFighter(bossEntry);
             BattleResult battle = FunGameActionQueue.RunMix([me, boss],
                 new BattleOptions { MaxRound = 150, UseRoundRewards = false });
 
-            bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
-            double damage = boss.MaxHP <= 0 ? 0 : Math.Clamp(1 - boss.HP / boss.MaxHP, 0, 1);
+            bool killed = boss.HP <= 0;
+            double damage = maxHp <= 0 ? 0 : Math.Clamp(1 - Math.Max(0, boss.HP) / maxHp, 0, 1);
+            if (killed) damage = 1;
+            BossPool.ApplyResult(bossEntry, boss.HP, boss.MP, boss.EP);
 
             PlayerService.ApplyCurrency(db, state, -GameplayRules.BossCostCredits,
-                "credits", "boss_entry", "boss", key);
-            int credits = win
+                "credits", "boss_entry", "boss", reference);
+            int credits = killed
                 ? GameplayRules.BossRewardCredits
                 : Math.Max(1, (int)(GameplayRules.BossRewardCredits * damage * 0.5));
-            int diamonds = win ? GameplayRules.BossRewardDiamonds : 0;
+            // 旧版等效奖励：击杀后 Inventory.Materials += boss.Level（材料在本作即钻石）。
+            int diamonds = killed ? bossEntry.Level : 0;
             if (credits > 0)
             {
-                PlayerService.ApplyCurrency(db, state, credits, "credits", "boss_reward", "boss", key);
+                PlayerService.ApplyCurrency(db, state, credits, "credits", "boss_reward", "boss", reference);
             }
             if (diamonds > 0)
             {
-                PlayerService.ApplyCurrency(db, state, diamonds, "diamonds", "boss_reward", "boss", key);
+                PlayerService.ApplyCurrency(db, state, diamonds, "diamonds", "boss_reward", "boss", reference);
             }
-            int gain = win
+            int gain = killed
                 ? GameplayRules.BossWinPoints
                 : Math.Max(1, (int)(GameplayRules.BossWinPoints * damage * 0.4));
             long points = await AddPointsAsync(db, userId, gain, ct);
-            db.AppConfigs.Add(new AppConfig
-            {
-                Key = key,
-                ValueJson = $"{{\"win\":{(win ? "true" : "false")},\"damage\":{damage:F4}}}",
-                UpdatedAtUtc = DateTime.UtcNow
-            });
 
             List<string> lines =
             [
-                $"- 目标：{bossEntry.Display}",
+                $"- 目标：{bossEntry.Display}　剩余 HP {bossEntry.HPPercent:P0}（全服共享）",
                 $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
-                $"- 伤害占比：{damage:P0} · {battle.Rounds} 回合",
+                $"- 本次伤害占比：{damage:P0} · {battle.Rounds} 回合",
                 $"- 结算：金币 +{credits}{(diamonds > 0 ? $"　钻石 +{diamonds}" : "")} · 战绩 +{gain}",
                 $"- 当前战绩：{points}　金币：{state.Credits}"
             ];
             lines.AddRange(battle.Tail(2)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+            if (damage <= 0 && !killed)
+            {
+                lines.Add("- 提示：本次未对目标造成伤害，先 /练级 提升角色或 /背包 更换装备再来");
+            }
 
-            return ActionResult.Success(win ? "🐉 Boss 讨伐成功" : "🛡️ Boss 讨伐失败",
-                win
+            return ActionResult.Success(killed ? "🐉 Boss 讨伐成功" : "🛡️ Boss 讨伐失败",
+                killed
                     ? $"击败 {bossEntry.Name} · 金币 +{credits} · 钻石 +{diamonds} · 战绩 +{gain}"
-                    : $"{bossEntry.Name} 剩 {boss.HP:F0} HP · 按伤害结算 {credits} 金币",
+                    : $"{bossEntry.Name} 剩 {Math.Max(0, boss.HP):F0} HP · 按伤害结算 {credits} 金币",
                 lines,
                 ["/排行榜 战绩", "/决斗", "/状态"]);
         }, cancellationToken);

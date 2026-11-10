@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
 using OshimaBot.Data.Entities;
+using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Models;
@@ -13,6 +14,7 @@ using Xunit;
 namespace OshimaBot.Tests;
 
 /// <summary>P2 经济仓储：跨用户交易、托管、双边账本、定时结算与排行榜。</summary>
+[Collection(BossPoolCollection.Name)]
 public sealed class EconomyTests
 {
     private const long Seller = 42;
@@ -173,27 +175,32 @@ public sealed class EconomyTests
     }
 
     [Fact]
-    public async Task Boss_OncePerGameDayAndRankingReflectsPoints()
+    public async Task Boss_SharedTargetAllowsRepeatAndAccumulatesLedger()
     {
+        BossPool.Reset();
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
 
+        // 旧版 Boss 是全服共享的持久实体：没有「每人每日一次」的限制，可以反复挑战。
         Assert.True((await economy.BossAsync(Seller)).Ok);
-        Assert.False((await economy.BossAsync(Seller)).Ok);
+        Assert.True((await economy.BossAsync(Seller)).Ok);
         Assert.True((await economy.DuelAsync(Seller)).Ok);
 
         IReadOnlyList<RankEntry> points = await economy.GetRankingAsync("战绩");
         IReadOnlyList<RankEntry> credits = await economy.GetRankingAsync("credits");
         Assert.Single(points);
-        // Boss 现在是真实战斗：胜利给满分，失败按伤害占比给部分战绩。
+        // Boss 是真实战斗：击杀给满分，未击杀按伤害占比给部分战绩。
         Assert.True(points[0].Value >= 1);
         Assert.NotEmpty(credits);
 
+        // 池子始终保持 10 只（未击杀时不会减少，击杀后会补充）。
+        Assert.Equal(BossPool.PoolSize, BossPool.All.Count);
+
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        Assert.Single(await dbContext.AppConfigs.Where(x => x.Key.StartsWith("boss:")).ToListAsync());
-        // 胜利才发钻石，失败只有金币一条；至少应有一条奖励流水。
-        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward") >= 1);
+        // 每次挑战都会扣费并结算，因此两次挑战应有两笔奖励流水。
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward") >= 2);
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_entry") >= 2);
     }
 
     [Fact]

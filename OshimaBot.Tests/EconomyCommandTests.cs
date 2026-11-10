@@ -16,6 +16,7 @@ using Xunit;
 namespace OshimaBot.Tests;
 
 /// <summary>P2 指令层：真实 SQLite + CommandRouter 的端到端验证。</summary>
+[Collection(BossPoolCollection.Name)]
 public sealed class EconomyCommandTests
 {
     private const long UserId = 42;
@@ -69,9 +70,10 @@ public sealed class EconomyCommandTests
         Assert.Contains("进入秘境", await RouteAsync(router, "/秘境 精英"));
         Assert.Contains("尚未结束", await RouteAsync(router, "/收取秘境"));
 
-        // Boss 已是真实战斗，胜负都可能；标题固定包含「Boss 讨伐」。
-        Assert.Contains("Boss 讨伐", await RouteAsync(router, "/Boss"));
-        Assert.Contains("今天已经挑战过", await RouteAsync(router, "/Boss"));
+        // Boss 是全服共享的持久目标：没有每日次数限制，重复挑战会继续累计伤害。
+        string bossReply = await RouteAsync(router, "/Boss");
+        Assert.Contains("Boss 讨伐", bossReply);
+        Assert.Contains("全服共享", bossReply);
         Assert.Contains("决斗", await RouteAsync(router, "/决斗"));
 
         string rank = await RouteAsync(router, "/排行榜 战绩");
