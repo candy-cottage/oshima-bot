@@ -263,7 +263,7 @@ public sealed class GameplayTests
         Assert.Equal(10, GameplayRules.LevelCap(0));
         Assert.Equal(20, GameplayRules.LevelCap(1));
         Assert.True(GameplayRules.ExpForLevel(10) > GameplayRules.ExpForLevel(1));
-        Assert.InRange(GameplayRules.RollQuality(new Random(1)), 1, 5);
+        Assert.InRange(GameplayRules.RollQuality(new SeededRandomSource(1)), 1, 5);
     }
 
     [Fact]
@@ -292,6 +292,53 @@ public sealed class GameplayTests
         Assert.Equal(6.5, snapshot.Materials, 3);
     }
 
+    [Fact]
+    public async Task Training_UsesInjectedClockForCooldown()
+    {
+        FakeClock clock = new(new DateTime(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc));
+        using GameplayDatabase db = new(clock);
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        Assert.True((await players.TrainStartAsync(UserId, 1, 10)).Ok);
+        // 未到结束时间：不能结算
+        Assert.False((await players.TrainClaimAsync(UserId)).Ok);
+
+        clock.Advance(TimeSpan.FromMinutes(11));
+        ActionResult claim = await players.TrainClaimAsync(UserId);
+        Assert.True(claim.Ok, claim.Title);
+    }
+
+    [Fact]
+    public async Task Gacha_UsesInjectedRandomSource()
+    {
+        static async Task<string> RunAsync(int seed)
+        {
+            using GameplayDatabase db = new(random: new SeededRandomSource(seed));
+            IPlayerService players = db.Get<IPlayerService>();
+            await players.GetSnapshotAsync(UserId);
+            await SetDiamondsCoreAsync(db, 100);
+            Assert.True((await players.GachaAsync(UserId, 10)).Ok);
+            using IServiceScope scope = db.Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            List<string> names = await context.ItemInstances.AsNoTracking()
+                .OrderBy(x => x.Id).Select(x => x.PayloadJson).ToListAsync();
+            return string.Join("|", names);
+        }
+
+        Assert.Equal(await RunAsync(2026), await RunAsync(2026));
+        Assert.NotEqual(await RunAsync(2026), await RunAsync(7));
+    }
+
+    private static async Task SetDiamondsCoreAsync(GameplayDatabase db, int diamonds)
+    {
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
+        wallet.Materials = diamonds;
+        await context.SaveChangesAsync();
+    }
+
     private static async Task SetDiamondsAsync(GameplayDatabase db, int diamonds)
     {
         using IServiceScope scope = db.Provider.CreateScope();
@@ -306,7 +353,7 @@ public sealed class GameplayTests
         public SqliteConnection Connection { get; }
         public ServiceProvider Provider { get; }
 
-        public GameplayDatabase()
+        public GameplayDatabase(IGameClock? clock = null, IRandomSource? random = null)
         {
             FunGameRuntime.EnsureInitialized();
             Connection = new SqliteConnection("Data Source=:memory:");
@@ -318,6 +365,7 @@ public sealed class GameplayTests
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
             services.AddSingleton<ApiKeyAuthenticator>();
+            services.AddGameplayRuntime(clock, random);
             services.AddSingleton<IPlayerService, PlayerService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();

@@ -76,6 +76,10 @@ builder.Services.AddSingleton<FunGameSimulationService>();
 builder.Services.AddSingleton<FunGameQueryService>();
 builder.Services.AddScoped<MessageSender>();
 builder.Services.AddSingleton<IUserSessionService, UserSessionService>();
+// 业务时间与随机源：业务判定统一走 IGameClock / IRandomSource，便于用假时钟与定种子验证。
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IGameClock, GameClock>();
+builder.Services.AddSingleton<IRandomSource, SystemRandomSource>();
 builder.Services.AddSingleton<IPlayerService, PlayerService>();
 builder.Services.AddSingleton<IEconomyService, EconomyService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。

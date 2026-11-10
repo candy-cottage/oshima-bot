@@ -168,6 +168,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
             services.AddSingleton<IUserSessionService, UserSessionService>();
+            services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();

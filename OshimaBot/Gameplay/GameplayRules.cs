@@ -70,8 +70,11 @@ public static class GameplayRules
             : TimeZoneInfo.FindSystemTimeZoneById("China Standard Time");
 
     /// <summary>游戏日（Asia/Shanghai），签到/任务/运势全部以它为准，避免 UTC 跨日。</summary>
-    public static string Today()
-        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, GameTimeZone))
+    public static string Today() => GameDay(DateTime.UtcNow);
+
+    /// <summary>把 UTC 时间换算成游戏日字符串；纯函数，便于配假时钟测试。</summary>
+    public static string GameDay(DateTime utcNow)
+        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     public static long ExpForLevel(int level)
@@ -91,7 +94,7 @@ public static class GameplayRules
         => SignInBaseCredits + SignInStreakBonus * Math.Min(Math.Max(0, streak), SignInStreakCapDays);
 
     /// <summary>品质权重：普通 60 / 精良 25 / 稀有 10 / 史诗 4 / 传说 1。</summary>
-    public static int RollQuality(Random random)
+    public static int RollQuality(IRandomSource random)
     {
         int roll = random.Next(100);
         return roll switch

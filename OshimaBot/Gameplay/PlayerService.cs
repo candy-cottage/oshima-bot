@@ -39,7 +39,11 @@ public interface IPlayerService
 /// P1 玩法仓储：所有「改货币 + 改物品 + 写 ledger」在一个 SQLite 事务内完成。
 /// singleton（与 CommandCatalog 生命周期一致），每次操作自己开 scope；userId&lt;=0 一律拒绝。
 /// </summary>
-public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<PlayerService> logger) : IPlayerService
+public sealed class PlayerService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<PlayerService> logger,
+    IGameClock clock,
+    IRandomSource random) : IPlayerService
 {
     internal static ActionResult NoIdentity => ActionResult.Fail(
         "身份尚未就绪", "没有读写任何存档", "请通过 QQ 消息触发注册，或稍后重试", "/状态");
@@ -104,7 +108,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public async Task<IReadOnlyList<QuestEntry>> GetQuestsAsync(long userId, CancellationToken cancellationToken = default)
     {
         if (userId <= 0) return [];
-        string date = GameplayRules.Today();
+        string date = clock.Today();
         return await ReadAsync(async (db, ct) =>
         {
             Dictionary<string, DailyQuest> rows = await db.DailyQuests.AsNoTracking()
@@ -141,7 +145,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public Task<string> GetFortuneAsync(long userId, CancellationToken cancellationToken = default)
         => Task.FromResult(userId <= 0
             ? "身份尚未就绪，无法占卜。"
-            : GameplayRules.Fortune(userId, GameplayRules.Today()));
+            : GameplayRules.Fortune(userId, clock.Today()));
 
     // ---------------- 写（事务） ----------------
 
@@ -206,7 +210,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
     public Task<ActionResult> SignInAsync(long userId, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            string today = GameplayRules.Today();
+            string today = clock.Today();
             if (string.Equals(state.SignedOn, today, StringComparison.Ordinal))
             {
                 return ActionResult.Fail("今天已经签到过了", "没有重复发放奖励",
@@ -252,18 +256,18 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
                 return ActionResult.Fail("钻石不足", "没有扣除钻石，也没有生成物品",
                     $"需要 {cost} 钻石，当前 {state.Materials}；可先签到或领取每日任务", "/签到");
             }
-            ApplyCurrency(db, state, -cost, "diamonds", "gacha", "gacha", GameplayRules.Today());
+            ApplyCurrency(db, state, -cost, "diamonds", "gacha", "gacha", clock.Today());
 
             var catalog = FunGameService.AllItems;
             List<(string Name, int Quality)> drawn = [];
             for (int i = 0; i < pulls; i++)
             {
-                int quality = GameplayRules.RollQuality(Random.Shared);
+                int quality = GameplayRules.RollQuality(random);
                 // 十连保底至少一件史诗及以上。
                 if (pulls == 10 && i == pulls - 1 && drawn.All(x => x.Quality < 4)) quality = 4;
                 string name = catalog.Count == 0
                     ? "无名的遗物"
-                    : catalog[Random.Shared.Next(catalog.Count)].Name;
+                    : catalog[random.Next(catalog.Count)].Name;
                 drawn.Add((name, quality));
             }
             foreach ((string name, int quality) in drawn)
@@ -461,7 +465,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
                     $"需要 {GameplayRules.TrainCostCredits} 金币，当前 {state.Credits}", "/签到");
             }
             int duration = Math.Clamp(minutes, 1, GameplayRules.TrainMaxMinutes);
-            DateTime now = DateTime.UtcNow;
+            DateTime now = clock.UtcNow;
             ApplyCurrency(db, state, -GameplayRules.TrainCostCredits, "credits", "train_start", "character", character.Id.ToString(CultureInfo.InvariantCulture));
             db.TrainingSessions.Add(new TrainingSession
             {
@@ -486,9 +490,9 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
                 return ActionResult.Fail("当前没有练级中的角色", "没有结算任何经验",
                     "先用 /练级 @编号 [分钟] 开始", "/练级 @1 1");
             }
-            if (session.EndsAtUtc > DateTime.UtcNow)
+            if (session.EndsAtUtc > clock.UtcNow)
             {
-                int seconds = (int)Math.Ceiling((session.EndsAtUtc - DateTime.UtcNow).TotalSeconds);
+                int seconds = (int)Math.Ceiling((session.EndsAtUtc - clock.UtcNow).TotalSeconds);
                 return ActionResult.Fail("练级尚未结束", "没有结算任何经验",
                     $"还需约 {seconds} 秒，稍后再用 /收取练级", "/收取练级");
             }
@@ -571,7 +575,7 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
                     "用 /每日任务 查看编号", "/每日任务");
             }
             (string key, string name, int target) = GameplayRules.DailyQuests[index - 1];
-            string date = GameplayRules.Today();
+            string date = clock.Today();
             DailyQuest? quest = await db.DailyQuests
                 .FirstOrDefaultAsync(x => x.UserId == userId && x.QuestKey == key && x.QuestDate == date, ct);
             if (quest is null || ReadProgress(quest) < target || quest.Status == 0)
@@ -748,10 +752,10 @@ public sealed class PlayerService(IServiceScopeFactory scopeFactory, ILogger<Pla
         else item.Quantity -= amount;
     }
 
-    internal static async Task AdvanceQuestAsync(BotDbContext db, long userId, string key, CancellationToken ct)
+    internal async Task AdvanceQuestAsync(BotDbContext db, long userId, string key, CancellationToken ct)
     {
         (string _, string _, int target) = GameplayRules.DailyQuests.First(x => x.Key == key);
-        string date = GameplayRules.Today();
+        string date = clock.Today();
         DailyQuest? quest = await db.DailyQuests.FirstOrDefaultAsync(
             x => x.UserId == userId && x.QuestKey == key && x.QuestDate == date, ct);
         if (quest is null)

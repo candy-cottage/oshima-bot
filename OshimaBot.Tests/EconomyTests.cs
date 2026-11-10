@@ -290,6 +290,7 @@ public sealed class EconomyTests
             services.AddSingleton(Options.Create(new ServerOptions()));
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
+            services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
             services.AddSingleton<IEconomyService, EconomyService>();
             Provider = services.BuildServiceProvider();

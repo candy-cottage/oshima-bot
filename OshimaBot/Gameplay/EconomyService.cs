@@ -37,7 +37,11 @@ public interface IEconomyService
 /// P2 经济与战斗仓储。所有货币变动（含跨用户买卖）都在同一个 SQLite 事务内完成，
 /// 买卖双方各自写一条 ledger；市场上架/报价的物品托管到 EscrowUserId，不出现在任何玩家背包。
 /// </summary>
-public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<EconomyService> logger) : IEconomyService
+public sealed class EconomyService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<EconomyService> logger,
+    IGameClock clock,
+    IRandomSource random) : IEconomyService
 {
     private const string StoreKey = "system";
     private const string PointsKey = "p2_points";
@@ -416,7 +420,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             int duration = Math.Clamp(minutes, 1, GameplayRules.ForgeMaxMinutes);
             PlayerService.ApplyCurrency(db, state, -GameplayRules.ForgeCostCredits, "credits", "forge_start", "forge", userId.ToString(CultureInfo.InvariantCulture));
             PlayerService.Consume(db, material, GameplayRules.ForgeMaterialQuantity);
-            DateTime now = DateTime.UtcNow;
+            DateTime now = clock.UtcNow;
             db.ForgingJobs.Add(new ForgingJob
             {
                 UserId = userId, RecipeKey = "standard",
@@ -437,7 +441,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 .Where(x => x.UserId == userId && x.SettledAtUtc == null)
                 .OrderBy(x => x.EndsAtUtc).FirstOrDefaultAsync(ct);
             if (job is null) return ActionResult.Fail("没有进行中的锻造", "没有产出任何物品", "先用 /锻造 @编号 [分钟] 开始", "/锻造 @1 1");
-            if (job.EndsAtUtc > DateTime.UtcNow) return NotReady("锻造", job.EndsAtUtc);
+            if (job.EndsAtUtc > clock.UtcNow) return NotReady("锻造", job.EndsAtUtc);
             await PlayerService.AddItemAsync(db, userId, "锻造·精制装备",
                 GameplayRules.ForgeOutputQuality, 1, ct, "forge");
             job.SettledAtUtc = DateTime.UtcNow;
@@ -482,7 +486,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             string kindName = GameplayRules.InstanceKindName(kind);
             string region = $"{kindName}:{level}";
 
-            DateTime now = DateTime.UtcNow;
+            DateTime now = clock.UtcNow;
             PlayerService.ApplyCurrency(db, state, -GameplayRules.InstanceCostCredits, "credits", "instance_start", "instance", region);
             db.ExplorationRuns.Add(new ExplorationRun
             {
@@ -507,7 +511,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
                 .Where(x => x.UserId == userId && x.SettledAtUtc == null)
                 .OrderBy(x => x.EndsAtUtc).FirstOrDefaultAsync(ct);
             if (run is null) return ActionResult.Fail("没有进行中的探索", "没有结算任何奖励", "先用 /秘境 开始", "/秘境");
-            if (run.EndsAtUtc > DateTime.UtcNow) return NotReady("探索", run.EndsAtUtc);
+            if (run.EndsAtUtc > clock.UtcNow) return NotReady("探索", run.EndsAtUtc);
 
             // 结算时打一场真实战斗，胜负决定奖励倍率（胜：全额 + 掉落；负：半额 + 降档掉落）。
             DataCharacter? mine = await db.Characters
@@ -596,7 +600,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
             List<string> drops = [];
             for (int i = 0; i < itemCount; i++)
             {
-                int quality = Math.Clamp(GameplayRules.RollQuality(Random.Shared) - (win ? 0 : 2), 1, 5);
+                int quality = Math.Clamp(GameplayRules.RollQuality(random) - (win ? 0 : 2), 1, 5);
                 await PlayerService.AddItemAsync(db, userId, $"{kindName}秘境掉落", quality, 1, ct, "instance");
                 drops.Add(GameplayRules.QualityName(quality));
             }
@@ -864,7 +868,7 @@ public sealed class EconomyService(IServiceScopeFactory scopeFactory, ILogger<Ec
         => ActionResult.Fail($"{what} @编号 不存在", "没有改动任何数据",
             "先查看列表确认编号（编号按列表顺序稳定排列）", "/状态");
 
-    private static ActionResult NotReady(string what, DateTime endsAtUtc)
+    private ActionResult NotReady(string what, DateTime endsAtUtc)
         => ActionResult.Fail($"{what}尚未结束", "没有结算任何奖励",
-            $"还需约 {(int)Math.Ceiling((endsAtUtc - DateTime.UtcNow).TotalSeconds)} 秒，稍后再收取", "/状态");
+            $"还需约 {(int)Math.Ceiling((endsAtUtc - clock.UtcNow).TotalSeconds)} 秒，稍后再收取", "/状态");
 }

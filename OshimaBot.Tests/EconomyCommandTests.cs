@@ -134,6 +134,7 @@ public sealed class EconomyCommandTests
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
             services.AddSingleton<IUserSessionService, UserSessionService>();
+            services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
             services.AddSingleton<IEconomyService, EconomyService>();
             Provider = services.BuildServiceProvider();
