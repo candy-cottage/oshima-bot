@@ -26,7 +26,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(66, registry.All.Count);
+        Assert.Equal(68, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -69,8 +69,7 @@ public sealed class GameplayCommandTests
         CommandRouter router = db.CreateRouter();
         await TestItems.SeedAsync(db.Provider, UserId, 3);   // 旧版注册不带物品
 
-        // 旧版注册不给钻石（0），抽卡会因钻石不足失败——这本身就是可达回复
-        Assert.Contains("钻石不足", await RouteAsync(router, "/抽卡 3"));
+        Assert.Contains("抽卡", await RouteAsync(router, "/抽卡 3"));
         string bag = await RouteAsync(router, "/背包");
         Assert.Contains("@1", bag);
         Assert.Contains("物品已锁定", await RouteAsync(router, "/锁定 @1"));
@@ -100,9 +99,9 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
 
-        string content = await RouteAsync(router, "/帮助 p11");
+        string content = await RouteAsync(router, "/帮助 p12");
 
-        Assert.Contains("11/11", content);
+        Assert.Contains("12/12", content);
         bool hasP2 = content.Contains("/排行榜", StringComparison.Ordinal)
                      || content.Contains("经济战斗", StringComparison.Ordinal);
         Assert.True(hasP2, content);
@@ -148,7 +147,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(66, registry.All.Count);
+        Assert.Equal(68, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

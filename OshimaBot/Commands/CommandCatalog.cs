@@ -24,7 +24,7 @@ public static class CommandCatalog
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
         "register", "status", "look", "notice", "fortune", "signin",
-        "quests", "quest-claim", "gacha", "gacha-ten", "bag",
+        "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "lock", "unlock", "equip", "unequip",
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
         // ---- P2：经济与战斗 ----
@@ -163,17 +163,38 @@ public static class CommandCatalog
             handler: async context => CommandReplies.FromResult(
                 await deps.Players.ClaimQuestAsync(context.UserId, RefIndex(context), context.CancellationToken))),
 
+        // 旧版是 4 条独立通道：金币抽卡/十连、钻石抽卡/十连，费用都是单价 × 次数（无折扣）
         "gacha" => new DelegateCommand(
             key: "gacha", name: "抽卡", aliases: ["gacha"], usage: "/抽卡 [数量]",
-            description: "消耗钻石抽取物品（最多 10 连）", group: CommandGroups.Player, audit: true,
+            description: $"消耗金币抽取（{GameplayRules.GachaCostCredits}/次）",
+            group: CommandGroups.Player, audit: true,
             handler: async context => CommandReplies.FromResult(
-                await deps.Players.GachaAsync(context.UserId, Quantity(context, 0, 1), context.CancellationToken))),
+                await deps.Players.GachaAsync(context.UserId, Quantity(context, 0, 1), false,
+                    context.CancellationToken))),
 
         "gacha-ten" => new DelegateCommand(
             key: "gacha-ten", name: "十连抽卡", aliases: ["十连", "gacha10"], usage: "/十连抽卡",
-            description: "十连抽卡（折扣价 + 史诗保底）", group: CommandGroups.Player, audit: true,
+            description: $"金币十连（{GameplayRules.GachaTenCostCredits} 金币，无保底）",
+            group: CommandGroups.Player, audit: true,
             handler: async context => CommandReplies.FromResult(
-                await deps.Players.GachaAsync(context.UserId, 10, context.CancellationToken))),
+                await deps.Players.GachaAsync(context.UserId, 10, false, context.CancellationToken))),
+
+        "gacha-material" => new DelegateCommand(
+            key: "gacha-material", name: "钻石抽卡", aliases: ["钻石单抽", "diamond-gacha"],
+            usage: "/钻石抽卡 [数量]",
+            description: $"消耗钻石抽取（{GameplayRules.GachaCost}/次）",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.GachaAsync(context.UserId, Quantity(context, 0, 1), true,
+                    context.CancellationToken))),
+
+        "gacha-ten-material" => new DelegateCommand(
+            key: "gacha-ten-material", name: "钻石十连抽卡", aliases: ["钻石十连", "gacha10m"],
+            usage: "/钻石十连抽卡",
+            description: $"钻石十连（{GameplayRules.GachaTenCost} 钻石，无保底）",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.GachaAsync(context.UserId, 10, true, context.CancellationToken))),
 
         "bag" => new DelegateCommand(
             key: "bag", name: "背包", aliases: ["查看库存", "bag", "inventory"], usage: "/背包 [p2]",

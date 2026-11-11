@@ -75,7 +75,7 @@ public sealed class GameplayTests
         await players.GetSnapshotAsync(UserId);
         await SetDiamondsAsync(db, 0);
 
-        ActionResult result = await players.GachaAsync(UserId, 10);
+        ActionResult result = await players.GachaAsync(UserId, 10, useMaterial: true);
 
         Assert.False(result.Ok);
         using IServiceScope scope = db.Provider.CreateScope();
@@ -94,7 +94,7 @@ public sealed class GameplayTests
         await players.GetSnapshotAsync(UserId);
         await SetDiamondsAsync(db, 100);
 
-        ActionResult result = await players.GachaAsync(UserId, 10);
+        ActionResult result = await players.GachaAsync(UserId, 10, useMaterial: true);
 
         Assert.True(result.Ok, result.Title);
         using IServiceScope scope = db.Provider.CreateScope();
@@ -104,8 +104,8 @@ public sealed class GameplayTests
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "gacha");
         Assert.Equal(-GameplayRules.GachaTenCost, entry.Delta);
         Assert.Equal(state.Materials, entry.BalanceAfter, 3);
-        // 每次必中，十连就是 10 件；旧版没有「保底史诗」
-        Assert.Equal(10, await context.CoreItems.CountAsync(x => x.UserId == UserId && x.CatalogId == "gacha"));
+        // 每次必中，十连就是 10 件；旧版没有「保底史诗」，且产出按 8 类分配（catalogId 是物品模板 Id）
+        Assert.Equal(10, await context.CoreItems.CountAsync(x => x.UserId == UserId));
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public sealed class GameplayTests
         IPlayerService players = db.Get<IPlayerService>();
 
         Assert.False((await players.SignInAsync(0)).Ok);
-        Assert.False((await players.GachaAsync(0, 1)).Ok);
+        Assert.False((await players.GachaAsync(0, 1, useMaterial: true)).Ok);
         Assert.Null(await players.GetSnapshotAsync(0));
         Assert.Empty(await players.GetBagAsync(0));
 
@@ -426,7 +426,7 @@ public sealed class GameplayTests
             IPlayerService players = db.Get<IPlayerService>();
             await players.GetSnapshotAsync(UserId);
             await SetDiamondsCoreAsync(db, 100);
-            Assert.True((await players.GachaAsync(UserId, 10)).Ok);
+            Assert.True((await players.GachaAsync(UserId, 10, useMaterial: true)).Ok);
             using IServiceScope scope = db.Provider.CreateScope();
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             List<string> names = await context.CoreItems.AsNoTracking()

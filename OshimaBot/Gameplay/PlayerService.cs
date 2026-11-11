@@ -15,7 +15,8 @@ public interface IPlayerService
     Task<PlayerSnapshot?> GetSnapshotAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> RegisterAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> SignInAsync(long userId, CancellationToken cancellationToken = default);
-    Task<ActionResult> GachaAsync(long userId, int count, CancellationToken cancellationToken = default);
+    /// <param name="useMaterial">true = 钻石抽卡（5/次），false = 金币抽卡（1000/次）；旧版是两条独立通道。</param>
+    Task<ActionResult> GachaAsync(long userId, int count, bool useMaterial, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BagEntry>> GetBagAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
     Task<ActionResult> SalvageAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
@@ -240,47 +241,101 @@ public sealed class PlayerService(
                 ], ["/每日任务", "/状态", "/抽卡"]);
         }, cancellationToken);
 
-    public Task<ActionResult> GachaAsync(long userId, int count, CancellationToken cancellationToken = default)
+    public Task<ActionResult> GachaAsync(long userId, int count, bool useMaterial,
+        CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
             int pulls = Math.Clamp(count, 1, GameplayRules.MaxGachaPerCall);
-            int cost = pulls == 10 ? GameplayRules.GachaTenCost : GameplayRules.GachaCost * pulls;
-            if (state.Materials < cost)
+            string currencyName = useMaterial ? "钻石" : "金币";
+            int unitCost = useMaterial ? GameplayRules.GachaCost : GameplayRules.GachaCostCredits;
+            int cost = unitCost * pulls;         // 旧版十连按 10 倍直乘，没有折扣
+            double balance = useMaterial ? state.Materials : state.Credits;
+            if (balance < cost)
             {
-                return ActionResult.Fail("钻石不足", "没有扣除钻石，也没有生成物品",
-                    $"需要 {cost} 钻石，当前 {state.Materials}；可先签到或领取每日任务", "/签到");
+                return ActionResult.Fail($"{currencyName}不足", $"没有扣除{currencyName}，也没有生成物品",
+                    $"需要 {cost} {currencyName}，当前 {balance:0.##}；可先 /签到 或 /领奖",
+                    useMaterial ? "/签到" : "/签到");
             }
-            ApplyCurrency(db, state, -cost, "diamonds", "gacha", "gacha", clock.Today());
+            ApplyCurrency(db, state, -cost, useMaterial ? "diamonds" : "credits",
+                "gacha", "gacha", clock.Today());
 
-            var catalog = FunGameService.AllItems;
-            List<(string Name, int Quality)> drawn = [];
+            List<string> lines = [];
             int hits = 0;
             for (int i = 0; i < pulls; i++)
             {
                 // 旧版：每次独立掷 NextDouble()，> 0.8 才中奖；十连无保底、可能全空。
                 if (!GameplayRules.RollGachaHit(random)) continue;
                 hits++;
-                int quality = GameplayRules.RollGachaQuality(random);
-                string name = catalog.Count == 0
-                    ? "无名的遗物"
-                    : catalog[random.Next(catalog.Count)].Name;
-                drawn.Add((name, quality));
-            }
-            foreach ((string name, int quality) in drawn)
-            {
-                await AddItemAsync(db, userId, name, quality, 1, ct);
+                string detail = await DrawGachaOnceAsync(db, state, ct);
+                lines.Add($"- {lines.Count + 1}. {detail}");
             }
             await AdvanceQuestAsync(db, userId, "gacha", ct);
 
-            List<string> lines = [.. drawn.Select((item, i) =>
-                $"- {i + 1}. {GameplayRules.QualityName(item.Quality)} · {item.Name}")];
             if (hits == 0) lines.Add($"- {pulls} 次都没抽中，什么也没得到");
-            lines.Add($"- 消耗钻石 {cost}，剩余 {state.Materials}（命中 {hits}/{pulls}）");
+            lines.Add($"- 消耗{currencyName} {cost}，剩余 {(useMaterial ? state.Materials : state.Credits):0.##}（命中 {hits}/{pulls}）");
             lines.Add("- 用 /背包 查看物品编号后再 @编号 使用或分解");
             return ActionResult.Success(pulls == 10 ? "🎰 十连抽卡" : "🎲 抽卡",
                 hits == 0 ? "什么也没抽中" : $"抽中 {hits} 件 · 已放入背包",
-                lines, ["/背包", "/状态", "/抽卡"]);
+                lines, ["/背包", "/状态", "/抽卡", "/钻石抽卡"]);
         }, cancellationToken);
+
+    /// <summary>
+    /// 抽卡单次结算（旧版 <c>GetDrawCardResult</c>）：先掷品质，再掷 8 类产出之一。
+    /// 装备类按「该品质的同类型装备」挑，找不到则放宽到任意品质，避免旧版那种空数组越界。
+    /// </summary>
+    private async Task<string> DrawGachaOnceAsync(BotDbContext db, PlayerAccount state, CancellationToken ct)
+    {
+        int quality = GameplayRules.RollGachaQuality(random);
+        GameplayRules.GachaKind kind = GameplayRules.RollGachaKind(random);
+        string qualityName = GameplayRules.QualityName(quality);
+
+        if (kind == GameplayRules.GachaKind.Character)
+        {
+            List<FunGame.Core.Entity.Character> characters = FunGameService.Characters;
+            if (characters.Count == 0) return $"{qualityName} · 角色（内容包为空）";
+
+            FunGame.Core.Entity.Character template = characters[random.Next(characters.Count)];
+            string catalogId = template.Id.ToString(CultureInfo.InvariantCulture);
+            bool owned = await db.CoreCharacters.AnyAsync(
+                x => x.UserId == state.UserId && x.CatalogId == catalogId, ct);
+            if (owned)
+            {
+                ApplyCurrency(db, state, GameplayRules.GachaDuplicateCharacterMaterials,
+                    "diamonds", "gacha_duplicate", "character", catalogId);
+                return $"重复角色【{template.GetName()}】→ 钻石 +{GameplayRules.GachaDuplicateCharacterMaterials}";
+            }
+            PlayerCharacter created = CharacterStore.Create(db, state.UserId, template, catalogId);
+            return $"{qualityName} · 角色【{created.Name}】";
+        }
+
+        ItemType? wanted = kind switch
+        {
+            GameplayRules.GachaKind.MagicCardPack => ItemType.MagicCardPack,
+            GameplayRules.GachaKind.Weapon => ItemType.Weapon,
+            GameplayRules.GachaKind.Armor => ItemType.Armor,
+            GameplayRules.GachaKind.Shoes => ItemType.Shoes,
+            GameplayRules.GachaKind.Accessory => ItemType.Accessory,
+            GameplayRules.GachaKind.MagicCard => ItemType.MagicCard,
+            _ => null
+        };
+
+        List<Item> pool = FunGameService.AllItems
+            .Where(GameplayRules.IsDrawable)
+            .Where(i => wanted is null || i.ItemType == wanted)
+            .ToList();
+        if (pool.Count == 0) pool = FunGameService.AllItems.Where(GameplayRules.IsDrawable).ToList();
+        if (pool.Count == 0) return $"{qualityName} · 无名的遗物（内容包为空）";
+
+        List<Item> exact = pool.Where(i => GameplayRules.QualityTierOf(i.QualityType) == quality).ToList();
+        List<Item> candidates = exact.Count > 0 ? exact : pool;
+        Item pick = candidates[random.Next(candidates.Count)];
+
+        // 物品品质由模板决定（旧版就是按品质筛出模板再挑），不要用掷出的档位覆盖。
+        await AddItemAsync(db, state.UserId, pick.Name,
+            GameplayRules.QualityTierOf(pick.QualityType), 1, ct,
+            pick.Id.ToString(CultureInfo.InvariantCulture));
+        return $"{GameplayRules.QualityName(GameplayRules.QualityTierOf(pick.QualityType))} · {pick.Name}";
+    }
 
     public Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>

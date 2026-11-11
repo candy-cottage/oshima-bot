@@ -1,4 +1,5 @@
 using System.Globalization;
+using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
 using System.Security.Cryptography;
 using System.Text;
@@ -186,6 +187,31 @@ public static class GameplayRules
         }
         return 1;
     }
+
+    /// <summary>
+    /// 旧版抽卡产出类型：<c>Random.Shared.Next(8)</c> 均匀落在 8 类上
+    /// （0 魔法卡包 / 1 武器 / 2 防具 / 3 鞋子 / 4 饰品 / 5 角色 / 6 魔法卡 / 7 随机物品）。
+    /// </summary>
+    public enum GachaKind
+    {
+        MagicCardPack,
+        Weapon,
+        Armor,
+        Shoes,
+        Accessory,
+        Character,
+        MagicCard,
+        AnyItem
+    }
+
+    public static GachaKind RollGachaKind(IRandomSource random) => (GachaKind)random.Next(8);
+
+    /// <summary>旧版抽到已拥有的角色时，折算成 50 材料。</summary>
+    public const int GachaDuplicateCharacterMaterials = 50;
+
+    /// <summary>旧版 <c>ItemCanNotDrawCard</c>：这些类型不进抽卡池。</summary>
+    public static bool IsDrawable(Item item) => item.ItemType is not (
+        ItemType.Collectible or ItemType.QuestItem or ItemType.GiftBox or ItemType.Others);
 
     /// <summary>旧版抽卡命中阈值：<c>NextDouble() &gt; 0.8</c> 才出东西，否则「什么也没抽中」。</summary>
     public const double GachaHitThreshold = 0.8;

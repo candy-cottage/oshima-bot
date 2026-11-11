@@ -27,7 +27,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(66, registry.All.Count);
+        Assert.Equal(68, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -92,8 +92,8 @@ public sealed class EconomyCommandTests
         Assert.Contains("补给站", look);
         Assert.Contains("交易摊", look);
 
-        string help = await RouteAsync(router, "/帮助 p11");
-        Assert.Contains("11/11", help);
+        string help = await RouteAsync(router, "/帮助 p12");
+        Assert.Contains("12/12", help);
         Assert.Contains("经济战斗", help);
 
         string legacy = await RouteAsync(router, "/玩法帮助");
