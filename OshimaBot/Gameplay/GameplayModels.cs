@@ -22,6 +22,15 @@ public sealed record CharacterEntry(
 public sealed record QuestEntry(int Index, string Key, string Name, int Status, int Progress, int Target);
 
 /// <summary>
+/// 带完整战报的战斗结果：<see cref="Result"/> 是摘要（复用四段式渲染），
+/// <see cref="Log"/> 是逐回合战报，供「完整决斗」这类入口分页展示（单条消息放不下）。
+/// </summary>
+public sealed record BattleReport(ActionResult Result, IReadOnlyList<string> Log)
+{
+    public static BattleReport Empty(ActionResult result) => new(result, []);
+}
+
+/// <summary>
 /// 统一的玩法结果。Ok=true 时按 4 段式渲染（Title / Status / Lines / Actions）；
 /// Ok=false 时按错误三段式渲染（发生了什么 / 没有发生什么 / 下一步）。
 /// </summary>

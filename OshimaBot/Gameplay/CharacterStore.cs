@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FunGame.Core.Api;
+using FunGame.Core.Library.Constant;
 using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
 using OshimaBot.Data.Core;
@@ -103,7 +104,8 @@ public static class CharacterStore
         character.Level = 1;
         character.EXP = 0;
         character.LevelBreak = -1;           // Core 语义：-1 表示还没突破过，第一次突破是 -1 → 0
-        character.HP = character.MaxHP;
+        character.HP = character.MaxHP;      // 旧版抽到角色时也是 AddCharacterSkills(character, 1, 0, 0)：
+        AttachSignatureSkills(character);    // 被动 1 级、绝招 0 级（未学），靠 /技能升级 往上点
 
         CoreCharacterRecord record = new()
         {
@@ -144,11 +146,26 @@ public static class CharacterStore
             CoreCharacter? character = JsonSerializer.Deserialize<CoreCharacter>(row.SnapshotJson, Options);
             if (character is null) return null;
             character.User = new FunGame.Core.Entity.User(row.UserId);
+            // 懒补签：老存档（本切片之前建的）没挂签名技能，读出来时补上，下一次 Sync 就会落库。
+            AttachSignatureSkills(character);
             return character;
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// 挂上角色的签名技能（内容包 <c>AddCharacterSkills</c>：1 个被动 + 1 个绝招），只在完全没有技能时补，
+    /// 避免每次都把同一批技能重复塞进去。
+    /// </summary>
+    private static void AttachSignatureSkills(CoreCharacter character)
+    {
+        if (character.Skills.Any(skill => skill.SkillType is SkillType.Skill or SkillType.SuperSkill))
+        {
+            return;
+        }
+        OshimaBot.Game.Services.FunGameService.AddCharacterSkills(character, 1, 0, 0);
     }
 }

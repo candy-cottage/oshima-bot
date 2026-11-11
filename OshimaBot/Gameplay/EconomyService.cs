@@ -29,7 +29,21 @@ public interface IEconomyService
     Task<ActionResult> InstanceAsync(long userId, string difficulty, CancellationToken cancellationToken = default);
     Task<ActionResult> ClaimInstanceAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> DuelAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>指定对手的单挑（旧版 <c>完整决斗/决斗 &lt;对方&gt;</c>）：对方可以用 UID、Handle 或昵称指定。</summary>
+    Task<BattleReport> DuelWithAsync(long userId, string target, CancellationToken cancellationToken = default);
+
+    /// <summary>指定对手的小队对战（旧版 <c>小队决斗</c>）：双方都用小队编成，未编成则退回主战。</summary>
+    Task<BattleReport> TeamDuelWithAsync(long userId, string target, CancellationToken cancellationToken = default);
+
     Task<ActionResult> BossAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>指定编号讨伐（旧版 <c>讨伐boss &lt;编号&gt;</c>）；编号来自 <see cref="BossPool.All"/>。</summary>
+    Task<ActionResult> BossAtAsync(long userId, int index, CancellationToken cancellationToken = default);
+
+    /// <summary>小队讨伐指定编号的 Boss（旧版 <c>小队讨伐boss</c>）。</summary>
+    Task<BattleReport> BossTeamAsync(long userId, int index, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<RankEntry>> GetRankingAsync(string board, CancellationToken cancellationToken = default);
 }
 
@@ -54,12 +68,27 @@ public sealed class EconomyService(
         return await body(db, cancellationToken);
     }
 
-    private async Task<ActionResult> MutateAsync(
+    private Task<ActionResult> MutateAsync(
         long userId,
         Func<BotDbContext, PlayerAccount, CancellationToken, Task<ActionResult>> body,
         CancellationToken cancellationToken)
+        => MutateCoreAsync(userId, body, static result => result, static result => result, cancellationToken);
+
+    /// <summary>同 <see cref="MutateAsync"/>，但返回带完整战报的结果（事务判定用摘要的 Ok）。</summary>
+    private Task<BattleReport> MutateReportAsync(
+        long userId,
+        Func<BotDbContext, PlayerAccount, CancellationToken, Task<BattleReport>> body,
+        CancellationToken cancellationToken)
+        => MutateCoreAsync(userId, body, static report => report.Result, BattleReport.Empty, cancellationToken);
+
+    private async Task<T> MutateCoreAsync<T>(
+        long userId,
+        Func<BotDbContext, PlayerAccount, CancellationToken, Task<T>> body,
+        Func<T, ActionResult> toResult,
+        Func<ActionResult, T> fromResult,
+        CancellationToken cancellationToken)
     {
-        if (userId <= 0) return PlayerService.NoIdentity;
+        if (userId <= 0) return fromResult(PlayerService.NoIdentity);
         try
         {
             using IServiceScope scope = scopeFactory.CreateScope();
@@ -68,8 +97,8 @@ public sealed class EconomyService(
                 await db.Database.BeginTransactionAsync(cancellationToken);
 
             PlayerAccount state = await PlayerService.EnsureAsync(db, userId, cancellationToken);
-            ActionResult result = await body(db, state, cancellationToken);
-            if (!result.Ok)
+            T result = await body(db, state, cancellationToken);
+            if (!toResult(result).Ok)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return result;
@@ -81,13 +110,72 @@ public sealed class EconomyService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            return ActionResult.Fail("存档正被另一条消息修改", "本次操作已回滚", "稍等一秒后重试", "/状态");
+            return fromResult(ActionResult.Fail("存档正被另一条消息修改", "本次操作已回滚", "稍等一秒后重试", "/状态"));
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "P2 经济操作失败：UserId={UserId}", userId);
-            return ActionResult.Fail("操作出现异常", "本次操作已回滚", "稍后重试", "/状态");
+            return fromResult(ActionResult.Fail("操作出现异常", "本次操作已回滚", "稍后重试", "/状态"));
         }
+    }
+
+    // ---------------- 战斗辅助 ----------------
+
+    /// <summary>战报尾部 N 行，单行超长截断——QQ 侧单条消息放不下完整回合日志。</summary>
+    private static IEnumerable<string> BattleTail(BattleResult battle, int lines)
+        => battle.Tail(lines)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => "  " + (line.Length > 120 ? line[..120] + "…" : line));
+
+    /// <summary>按 UID / Handle / 昵称找对手；数值 UID 允许只有存档没有 Users 行。</summary>
+    private static async Task<(long UserId, string Display)?> FindUserAsync(
+        BotDbContext db, string target, CancellationToken ct)
+    {
+        string key = target.Trim().TrimStart('@').Trim();
+        if (key.Length == 0) return null;
+
+        if (long.TryParse(key, out long id) && id > 0)
+        {
+            User? byId = await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (byId is not null) return (byId.Id, UserDisplay(byId));
+            bool hasSave = await db.CorePlayers.AsNoTracking().AnyAsync(x => x.UserId == id, ct);
+            if (hasSave) return (id, $"旅人{id}");
+        }
+
+        User? byName = await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Handle == key || x.Nickname == key, ct);
+        return byName is null ? null : (byName.Id, UserDisplay(byName));
+    }
+
+    private static string UserDisplay(User user)
+        => !string.IsNullOrWhiteSpace(user.Nickname) ? user.Nickname
+            : !string.IsNullOrWhiteSpace(user.Handle) ? user.Handle
+            : $"旅人{user.Id}";
+
+    /// <summary>主战单刷的队伍：只有主战角色（没有角色时返回空）。</summary>
+    private static async Task<List<PlayerCharacter>> LoadMainRosterAsync(
+        BotDbContext db, long userId, CancellationToken ct)
+    {
+        PlayerCharacter? main = await PlayerService.MainCharacterAsync(db, userId, ct);
+        return main is null ? [] : [main];
+    }
+
+    /// <summary>小队编成（按槽位排序）；未编成返回空列表，与旧版「Squad.Count == 0」一致。</summary>
+    private static async Task<List<PlayerCharacter>> LoadSquadAsync(
+        BotDbContext db, long userId, CancellationToken ct)
+    {
+        Squad? squad = await db.Squads.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
+        if (squad is null) return [];
+
+        List<long> memberIds = await db.SquadMembers.AsNoTracking()
+            .Where(x => x.SquadId == squad.Id).OrderBy(x => x.Slot)
+            .Select(x => x.CharacterId).ToListAsync(ct);
+        if (memberIds.Count == 0) return [];
+
+        string? mainGuid = await PlayerService.MainGuidAsync(db, userId, ct);
+        List<PlayerCharacter> loaded = await CharacterStore.ListAsync(db, userId, mainGuid, ct);
+        return [.. loaded.Where(x => memberIds.Contains(x.Id)).OrderBy(x => memberIds.IndexOf(x.Id))];
     }
 
     // ---------------- 商店 ----------------
@@ -735,29 +823,13 @@ public sealed class EconomyService(
             }
 
             // 出战队伍：优先使用小队编成（最多 3 人），未编成则主战单刷。
-            List<PlayerCharacter> roster = [];
-            Squad? squad = await db.Squads.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
-            if (squad is not null)
-            {
-                List<long> memberIds = await db.SquadMembers.AsNoTracking()
-                    .Where(x => x.SquadId == squad.Id).OrderBy(x => x.Slot)
-                    .Select(x => x.CharacterId).ToListAsync(ct);
-                if (memberIds.Count > 0)
-                {
-                    string? mainGuid = state.Wallet.MainCharacterGuid;
-                    List<PlayerCharacter> loaded = (await CharacterStore.ListAsync(db, userId, mainGuid, ct))
-                        .Where(x => memberIds.Contains(x.Id)).ToList();
-                    roster = [.. loaded.OrderBy(x => memberIds.IndexOf(x.Id))];
-                }
-            }
+            List<PlayerCharacter> roster = await LoadSquadAsync(db, userId, ct);
             if (roster.Count == 0) roster = [mine];
 
             List<CoreCharacter> party = [];
             foreach (PlayerCharacter member in roster)
             {
-                CoreCharacter? built = CombatCharacterFactory.FromCatalog(
-                    member.CatalogId, member.Level, member.Exp, member.BreakLevel);
+                CoreCharacter? built = CombatUnits.FromPlayer(member);
                 if (built is not null) party.Add(built);
             }
             if (party.Count == 0)
@@ -863,8 +935,7 @@ public sealed class EconomyService(
                     "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
             }
 
-            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
-                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
+            CoreCharacter? me = CombatUnits.FromPlayer(mine);
             CoreCharacter? opponentTemplate = CombatCharacterFactory.PickOpponent(mine.CatalogId);
             if (me is null || opponentTemplate is null)
             {
@@ -872,8 +943,11 @@ public sealed class EconomyService(
                     "内容包可能已更新，请反馈给管理员", "/状态");
             }
 
-            // 真实战斗：复用 Core 的 GamingQueue 生命周期，不再用概率结算。
+            // 随机对手按与新角色相同的口径装配（模板 + 签名技能），双方都不只是普攻对拼。
             CoreCharacter enemy = CombatCharacterFactory.Build(opponentTemplate, mine.Level, 0, mine.BreakLevel);
+            FunGameService.AddCharacterSkills(enemy, 1, 0, 0);
+
+            // 真实战斗：复用 Core 的 GamingQueue 生命周期，不再用概率结算。
             BattleResult battle = FunGameActionQueue.RunMix([me, enemy],
                 new BattleOptions { MaxRound = 100, UseRoundRewards = false });
             bool win = battle.Winner is not null && ReferenceEquals(battle.Winner, me);
@@ -896,9 +970,7 @@ public sealed class EconomyService(
                 $"- 当前战绩积分：{points}　金币：{state.Credits}",
                 "- 战斗摘要："
             ];
-            lines.AddRange(battle.Tail(3)
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+            lines.AddRange(BattleTail(battle, 3));
 
             return ActionResult.Success(win ? "⚔️ 决斗胜利" : "🛡️ 决斗失利",
                 win
@@ -908,46 +980,176 @@ public sealed class EconomyService(
                 ["/决斗", "/排行榜 战绩", "/状态"]);
         }, cancellationToken);
 
-    public Task<ActionResult> BossAsync(long userId, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, state, ct) =>
+    public Task<BattleReport> DuelWithAsync(long userId, string target, CancellationToken cancellationToken = default)
+        => DuelReportAsync(userId, target, team: false, cancellationToken);
+
+    public Task<BattleReport> TeamDuelWithAsync(long userId, string target, CancellationToken cancellationToken = default)
+        => DuelReportAsync(userId, target, team: true, cancellationToken);
+
+    /// <summary>
+    /// 指定对手的单挑 / 小队对战（旧版 <c>FightCustom</c> / <c>FightCustomTeam</c>）。
+    /// <para>旧版两边都做 <c>Recovery(EP: 200)</c>、都不收费也不发钱，只有战绩积分；结算口径沿用本作的战绩榜。</para>
+    /// </summary>
+    private Task<BattleReport> DuelReportAsync(long userId, string target, bool team, CancellationToken cancellationToken)
+        => MutateReportAsync(userId, async (db, state, ct) =>
         {
-            // 全服共享一只残血目标：谁都能接着打，血量跨挑战累计。
-            BossEntry? bossEntry = BossPool.Current();
-            if (bossEntry is null)
+            (long TargetId, string Display)? found = await FindUserAsync(db, target, ct);
+            if (found is null)
             {
-                return ActionResult.Fail("讨伐目标正在刷新", "没有扣除金币",
-                    "稍后再试，或先去 /决斗 练手", "/决斗");
+                return BattleReport.Empty(ActionResult.Fail("找不到对方", "没有开始战斗",
+                    $"用 UID、Handle 或昵称指定对手；你输入的是「{target}」", "/排行榜"));
             }
-            PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
-            if (mine is null)
+            (long targetId, string display) = found.Value;
+            if (targetId == userId)
             {
-                return ActionResult.Fail("没有可出战的角色", "没有扣除金币",
-                    "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
+                return BattleReport.Empty(ActionResult.Fail("不能和自己打", "没有开始战斗",
+                    "用 /决斗 打随机对手，或换成别人的 UID / 昵称", "/决斗"));
             }
 
-            CoreCharacter? me = CombatCharacterFactory.FromCatalog(
-                mine.CatalogId, mine.Level, mine.Exp, mine.BreakLevel);
-            if (me is null)
+            List<PlayerCharacter> mine = team
+                ? await LoadSquadAsync(db, userId, ct)
+                : await LoadMainRosterAsync(db, userId, ct);
+            if (mine.Count == 0)
             {
-                return ActionResult.Fail("角色数据缺失", "没有扣除金币",
-                    "内容包可能已更新，请反馈给管理员", "/状态");
+                return BattleReport.Empty(team
+                    ? ActionResult.Fail("你还没有编成小队", "没有开始战斗",
+                        "用 /小队 加入 @编号 编成 1–3 人后再来", "/小队")
+                    : ActionResult.Fail("没有可出战的角色", "没有开始战斗",
+                        "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态"));
+            }
+
+            List<PlayerCharacter> theirs = team
+                ? await LoadSquadAsync(db, targetId, ct)
+                : await LoadMainRosterAsync(db, targetId, ct);
+            if (theirs.Count == 0)
+            {
+                return BattleReport.Empty(team
+                    ? ActionResult.Fail("对方尚未编成小队", "没有开始战斗", $"{display} 的小队是空的", "/排行榜")
+                    : ActionResult.Fail("对方还没有角色", "没有开始战斗", $"{display} 还没抽到角色", "/排行榜"));
+            }
+
+            List<CoreCharacter> party = [.. mine.Select(CombatUnits.FromPlayer).OfType<CoreCharacter>()];
+            List<CoreCharacter> enemies = [.. theirs.Select(CombatUnits.FromPlayer).OfType<CoreCharacter>()];
+            if (party.Count == 0 || enemies.Count == 0)
+            {
+                return BattleReport.Empty(ActionResult.Fail("角色数据缺失", "没有开始战斗",
+                    "内容包可能已更新，请反馈给管理员", "/状态"));
+            }
+
+            BattleOptions options = new() { MaxRound = 150, UseRoundRewards = false };
+            BattleResult battle;
+            bool win;
+            int gain;
+            if (team)
+            {
+                CoreTeam mineTeam = new("我方小队", party);
+                CoreTeam theirTeam = new("对方小队", enemies);
+                battle = FunGameActionQueue.RunTeam([mineTeam, theirTeam], options);
+                win = battle.Winner is not null && party.Any(x => ReferenceEquals(x, battle.Winner));
+            }
+            else
+            {
+                battle = FunGameActionQueue.RunMix([party[0], enemies[0]], options);
+                win = battle.Winner is not null && ReferenceEquals(battle.Winner, party[0]);
+            }
+            gain = win ? GameplayRules.DuelWinPoints : GameplayRules.DuelLosePoints;
+            long points = await AddPointsAsync(db, userId, gain, ct);
+
+            List<string> lines =
+            [
+                team
+                    ? $"- 我方：{party.Count} 人（{string.Join("、", party.Select(x => $"{x.Name} Lv.{x.Level}"))}）"
+                    : $"- 我方：{party[0].Name} Lv.{party[0].Level}　HP {party[0].HP:F0}/{party[0].MaxHP:F0}",
+                team
+                    ? $"- 对方：{enemies.Count} 人（{string.Join("、", enemies.Select(x => $"{x.Name} Lv.{x.Level}"))}）"
+                    : $"- 对方：{enemies[0].Name} Lv.{enemies[0].Level}　HP {enemies[0].HP:F0}/{enemies[0].MaxHP:F0}",
+                $"- 对手：{display}　{battle.Rounds} 回合 · 耗时 {battle.TotalTime:F1}",
+                $"- 战绩 +{gain}　当前战绩：{points}　金币：{state.Credits}",
+                "- 战斗摘要："
+            ];
+            lines.AddRange(BattleTail(battle, 3));
+
+            return new BattleReport(
+                ActionResult.Success(win ? (team ? "⚔️ 小队对战胜利" : "⚔️ 决斗胜利")
+                                          : (team ? "🛡️ 小队对战失利" : "🛡️ 决斗失利"),
+                    win ? $"击败 {display} · 战绩 +{gain}" : $"不敌 {display} · 战绩 +{gain}",
+                    lines,
+                    ["/决斗", "/小队", "/排行榜 战绩"]),
+                battle.Log);
+        }, cancellationToken);
+
+    public async Task<ActionResult> BossAsync(long userId, CancellationToken cancellationToken = default)
+        => (await BossFightAsync(userId, index: null, team: false, cancellationToken)).Result;
+
+    public async Task<ActionResult> BossAtAsync(long userId, int index, CancellationToken cancellationToken = default)
+        => (await BossFightAsync(userId, index, team: false, cancellationToken)).Result;
+
+    public Task<BattleReport> BossTeamAsync(long userId, int index, CancellationToken cancellationToken = default)
+        => BossFightAsync(userId, index, team: true, cancellationToken);
+
+    /// <summary>
+    /// 讨伐的核心流程：单人与小队共用一个结算（旧版 <c>FightBoss</c> / <c>FightBossTeam</c> 的差别只在出战单位）。
+    /// <para>Boss 是全服共享的持久实体：副本继承剩余生命，打完写回；击杀后移出池并补一只新的。</para>
+    /// </summary>
+    private Task<BattleReport> BossFightAsync(long userId, int? index, bool team, CancellationToken cancellationToken)
+        => MutateReportAsync(userId, async (db, state, ct) =>
+        {
+            BossEntry? entry = index is null ? BossPool.Current() : BossPool.Get(index.Value);
+            if (entry is null)
+            {
+                return BattleReport.Empty(index is null
+                    ? ActionResult.Fail("讨伐目标正在刷新", "没有扣除金币",
+                        "稍后再试，或先去 /决斗 练手", "/决斗")
+                    : ActionResult.Fail($"没有编号 {index} 的讨伐目标", "没有扣除金币",
+                        "用 /查询Boss 查看当前编号", "/查询Boss"));
+            }
+
+            List<PlayerCharacter> roster;
+            if (team)
+            {
+                roster = await LoadSquadAsync(db, userId, ct);
+                if (roster.Count == 0)
+                {
+                    return BattleReport.Empty(ActionResult.Fail("没有小队编成", "没有开始讨伐",
+                        "先用 /小队 加入 @编号 编成 1–3 人", "/小队"));
+                }
+            }
+            else
+            {
+                PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
+                if (mine is null)
+                {
+                    return BattleReport.Empty(ActionResult.Fail("没有可出战的角色", "没有扣除金币",
+                        "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态"));
+                }
+                roster = [mine];
+            }
+
+            List<CoreCharacter> party = [.. roster.Select(CombatUnits.FromPlayer).OfType<CoreCharacter>()];
+            if (party.Count == 0)
+            {
+                return BattleReport.Empty(ActionResult.Fail("角色数据缺失", "没有扣除金币",
+                    "内容包可能已更新，请反馈给管理员", "/状态"));
             }
 
             // Boss 副本继承当前剩余生命，因此这次伤害会累计到全服共享的目标上。
-            string reference = $"boss-{bossEntry.Index}";
-            double maxHp = bossEntry.Character.MaxHP;
-            CoreCharacter boss = BossPool.CreateFighter(bossEntry);
-            BattleResult battle = FunGameActionQueue.RunMix([me, boss],
-                new BattleOptions { MaxRound = 150, UseRoundRewards = false });
+            string reference = $"boss-{entry.Index}";
+            double maxHp = entry.Character.MaxHP;
+            CoreCharacter boss = BossPool.CreateFighter(entry);
+            BattleOptions options = new() { MaxRound = 150, UseRoundRewards = false };
+            BattleResult battle = team
+                ? FunGameActionQueue.RunTeam(
+                    [new CoreTeam("小队", party), new CoreTeam("讨伐目标", [boss])], options)
+                : FunGameActionQueue.RunMix([party[0], boss], options);
 
             bool killed = boss.HP <= 0;
             double damage = maxHp <= 0 ? 0 : Math.Clamp(1 - Math.Max(0, boss.HP) / maxHp, 0, 1);
             if (killed) damage = 1;
-            BossPool.ApplyResult(bossEntry, boss.HP, boss.MP, boss.EP);
+            BossPool.ApplyResult(entry, boss.HP, boss.MP, boss.EP);
 
             // 旧版 FightBoss 不收入场费；击杀只做 Inventory.Materials += boss.Level（材料在本作即钻石）。
             int credits = 0;
-            int diamonds = killed ? bossEntry.Level : 0;
+            int diamonds = killed ? entry.Level : 0;
             if (credits > 0)
             {
                 PlayerService.ApplyCurrency(db, state, credits, "credits", "boss_reward", "boss", reference);
@@ -961,30 +1163,33 @@ public sealed class EconomyService(
                 : Math.Max(1, (int)(GameplayRules.BossWinPoints * damage * 0.4));
             long points = await AddPointsAsync(db, userId, gain, ct);
 
+            string partyText = team
+                ? $"{party.Count} 人（{string.Join("、", party.Select(x => $"{x.Name} Lv.{x.Level}"))}）"
+                : $"{party[0].Name} Lv.{party[0].Level}　HP {party[0].HP:F0}/{party[0].MaxHP:F0}";
             List<string> lines =
             [
-                $"- 目标：{bossEntry.Display}　剩余 HP {bossEntry.HPPercent:P0}（全服共享）",
-                $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
+                $"- 目标：#{entry.Index} {entry.Display}　剩余 HP {entry.HPPercent:P0}（全服共享）",
+                $"- 我方：{partyText}",
                 $"- 本次伤害占比：{damage:P0} · {battle.Rounds} 回合",
                 diamonds > 0
                     ? $"- 结算：钻石 +{diamonds}（= 目标等级）· 战绩 +{gain}"
                     : $"- 结算：本次未击杀，只有战绩 +{gain}（击杀才发钻石）",
                 $"- 当前战绩：{points}　金币：{state.Credits}"
             ];
-            lines.AddRange(battle.Tail(2)
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(x => "  " + (x.Length > 120 ? x[..120] + "…" : x)));
+            lines.AddRange(BattleTail(battle, 2));
             if (damage <= 0 && !killed)
             {
                 lines.Add("- 提示：本次未对目标造成伤害，先 /练级 提升角色或 /背包 更换装备再来");
             }
 
-            return ActionResult.Success(killed ? "🐉 Boss 讨伐成功" : "🛡️ Boss 讨伐失败",
-                killed
-                    ? $"击败 {bossEntry.Name} · 金币 +{credits} · 钻石 +{diamonds} · 战绩 +{gain}"
-                    : $"{bossEntry.Name} 剩 {Math.Max(0, boss.HP):F0} HP · 按伤害结算 {credits} 金币",
-                lines,
-                ["/排行榜 战绩", "/决斗", "/状态"]);
+            return new BattleReport(
+                ActionResult.Success(killed ? "🐉 Boss 讨伐成功" : "🛡️ Boss 讨伐失败",
+                    killed
+                        ? $"击败 {entry.Name} · 钻石 +{diamonds} · 战绩 +{gain}"
+                        : $"{entry.Name} 剩 {Math.Max(0, boss.HP):F0} HP · 按伤害结算战绩 +{gain}",
+                    lines,
+                    ["/排行榜 战绩", "/决斗", "/状态"]),
+                battle.Log);
         }, cancellationToken);
 
     public Task<IReadOnlyList<RankEntry>> GetRankingAsync(string board, CancellationToken cancellationToken = default)

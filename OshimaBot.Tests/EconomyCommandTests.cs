@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OshimaBot.Commands;
 using OshimaBot.Data;
+using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Models;
@@ -27,7 +28,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(85, registry.All.Count);
+        Assert.Equal(89, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -58,6 +59,33 @@ public sealed class EconomyCommandTests
         Assert.Contains("不能购买自己的挂单", await RouteAsync(router, "/购买市场 @1"));
         Assert.Contains("已下架", await RouteAsync(router, "/下架 @1"));
         Assert.Contains("市场暂时空着", await RouteAsync(router, "/市场"));
+    }
+
+    [Fact]
+    public async Task Router_BattleExpansionCommandsWork()
+    {
+        using EconomyCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        // 查询Boss：列表 → 单只详情 → 不存在的编号
+        string list = await RouteAsync(router, "/查询Boss");
+        Assert.Contains("讨伐目标", list);
+        Assert.Contains("剩余 HP", list);
+
+        int index = BossPool.All.Min(x => x.Index);
+        string detail = await RouteAsync(router, $"/查询Boss {index}");
+        Assert.Contains("攻击：", detail);
+        Assert.Contains("全服共享", detail);
+        Assert.Contains("没有编号 9999", await RouteAsync(router, "/查询Boss 9999"));
+
+        // 决斗：缺对手 / 找不到对手 都要给三段式错误，而不是异常
+        Assert.Contains("没有指定对手", await RouteAsync(router, "/完整决斗"));
+        Assert.Contains("找不到对方", await RouteAsync(router, "/完整决斗 999999"));
+        Assert.Contains("找不到对方", await RouteAsync(router, "/小队决斗 999999"));
+        Assert.Contains("Boss 编号", await RouteAsync(router, "/小队讨伐Boss"));
+
+        // 指定编号讨伐：走的是同一场真实战斗
+        Assert.Contains("Boss 讨伐", await RouteAsync(router, $"/Boss {index}"));
     }
 
     [Fact]

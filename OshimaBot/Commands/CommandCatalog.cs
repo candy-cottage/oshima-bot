@@ -1,4 +1,5 @@
 using System.Globalization;
+using OshimaBot.Game.Combat;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
@@ -35,7 +36,7 @@ public static class CommandCatalog
         "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
         "forge", "forge-claim", "instance", "instance-claim",
-        "duel", "boss", "rank"
+        "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -483,16 +484,84 @@ public static class CommandCatalog
                 await deps.Economy.ClaimInstanceAsync(context.UserId, context.CancellationToken))),
 
         "duel" => new DelegateCommand(
-            key: "duel", name: "决斗", aliases: ["duel"], usage: "/决斗",
-            description: "即时决斗，胜负都累计战绩", group: CommandGroups.Economy, audit: true,
-            handler: async context => CommandReplies.FromResult(
-                await deps.Economy.DuelAsync(context.UserId, context.CancellationToken))),
+            key: "duel", name: "决斗", aliases: ["duel"], usage: "/决斗 [UID|昵称]",
+            description: "即时决斗，胜负都累计战绩；不给对手就打随机对手", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                return target is null
+                    ? CommandReplies.FromResult(await deps.Economy.DuelAsync(
+                        context.UserId, context.CancellationToken))
+                    : CommandReplies.FromResult((await deps.Economy.DuelWithAsync(
+                        context.UserId, target, context.CancellationToken)).Result);
+            }),
+
+        "full-duel" => new DelegateCommand(
+            key: "full-duel", name: "完整决斗", aliases: ["完整战斗"], usage: "/完整决斗 <UID|昵称> [p2]",
+            description: "与指定旅人单挑，并附逐回合完整战报", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                if (target is null)
+                {
+                    return CommandReplies.Error("没有指定对手", "没有开始战斗",
+                        "用法：/完整决斗 123456　（UID / Handle / 昵称都行）", "/排行榜");
+                }
+                BattleReport report = await deps.Economy.DuelWithAsync(
+                    context.UserId, target, context.CancellationToken);
+                return Report(report, context.Page, $"/完整决斗 {target}");
+            }),
+
+        "team-duel" => new DelegateCommand(
+            key: "team-duel", name: "小队决斗", aliases: ["小队对战"], usage: "/小队决斗 <UID|昵称> [p2]",
+            description: "双方小队对战，附逐回合战报", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                if (target is null)
+                {
+                    return CommandReplies.Error("没有指定对手", "没有开始战斗",
+                        "用法：/小队决斗 123456　先 /小队 编成 1–3 人", "/小队");
+                }
+                BattleReport report = await deps.Economy.TeamDuelWithAsync(
+                    context.UserId, target, context.CancellationToken);
+                return Report(report, context.Page, $"/小队决斗 {target}");
+            }),
 
         "boss" => new DelegateCommand(
-            key: "boss", name: "Boss", aliases: ["挑战Boss"], usage: "/Boss",
-            description: "每日一次 Boss 讨伐", group: CommandGroups.Economy, audit: true,
+            key: "boss", name: "Boss", aliases: ["挑战Boss"], usage: "/Boss [编号]",
+            description: "讨伐 Boss；不给编号就打当前残血的那只", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
             handler: async context => CommandReplies.FromResult(
-                await deps.Economy.BossAsync(context.UserId, context.CancellationToken))),
+                context.TryInt(0, out int index)
+                    ? await deps.Economy.BossAtAsync(context.UserId, index, context.CancellationToken)
+                    : await deps.Economy.BossAsync(context.UserId, context.CancellationToken))),
+
+        "boss-info" => new DelegateCommand(
+            key: "boss-info", name: "查询Boss", aliases: ["Boss列表", "bossinfo"], usage: "/查询Boss [编号]",
+            description: "查看讨伐目标列表，或某只目标的详细属性", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: context => Task.FromResult(BossInfo(context))),
+
+        "boss-team" => new DelegateCommand(
+            key: "boss-team", name: "小队讨伐Boss", aliases: ["Boss小队讨伐", "小队讨伐"],
+            usage: "/小队讨伐Boss <编号> [p2]",
+            description: "用小队编成讨伐指定编号的 Boss", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int index) || index <= 0)
+                {
+                    return CommandReplies.Error("缺少或无效的 Boss 编号", "没有开始讨伐",
+                        "用 /查询Boss 查看编号", "/查询Boss");
+                }
+                BattleReport report = await deps.Economy.BossTeamAsync(
+                    context.UserId, index, context.CancellationToken);
+                return Report(report, context.Page, $"/小队讨伐Boss {index}");
+            }),
 
         "rank" => new DelegateCommand(
             key: "rank", name: "排行榜", aliases: ["rank", "ranklist"], usage: "/排行榜 [金币|等级|战绩]",
@@ -821,6 +890,76 @@ public static class CommandCatalog
     }
 
     // ---- P2 指令辅助 ----
+
+    /// <summary>决斗类指令的对手参数：UID / Handle / 昵称，允许写成 @123。</summary>
+    private static string? Target(CommandContext context)
+    {
+        string? raw = context.FirstArgument;
+        if (string.IsNullOrWhiteSpace(raw) || raw.StartsWith('-')) return null;
+        string value = raw.Trim().TrimStart('@').Trim();
+        return value.Length == 0 ? null : value;
+    }
+
+    /// <summary>带完整战报的回复：摘要走四段式，逐回合日志交给分页（一条消息装不下）。</summary>
+    private static BotReply Report(BattleReport report, int page, string command)
+    {
+        if (!report.Result.Ok) return CommandReplies.FromResult(report.Result);
+
+        List<string> lines = [.. report.Result.Lines];
+        if (report.Log.Count > 0)
+        {
+            lines.Add("");
+            lines.Add($"**逐回合战报（{report.Log.Count} 行）**");
+            lines.AddRange(report.Log);
+        }
+        return CommandReplies.ListPage(report.Result.Title, report.Result.Status, lines, page, command,
+            report.Result.Actions);
+    }
+
+    /// <summary>Boss 列表 / 单只详情。Boss 池是进程内的静态池，直接读，不需要开事务。</summary>
+    private static BotReply BossInfo(CommandContext context)
+    {
+        if (context.TryInt(0, out int index) && index > 0)
+        {
+            BossEntry? entry = BossPool.Get(index);
+            if (entry is null)
+            {
+                return CommandReplies.Error($"没有编号 {index} 的讨伐目标", "没有显示任何信息",
+                    "用 /查询Boss 查看当前编号", "/查询Boss");
+            }
+            FunGame.Core.Entity.Character boss = entry.Character;
+            string gear = string.Join("、", new[]
+                {
+                    boss.EquipSlot.Weapon?.Name, boss.EquipSlot.Armor?.Name, boss.EquipSlot.Shoes?.Name,
+                    boss.EquipSlot.Accessory1?.Name, boss.EquipSlot.Accessory2?.Name,
+                    boss.EquipSlot.MagicCardPack?.Name
+                }.OfType<string>());
+            return CommandReplies.Compose($"🐉 {entry.Display}", $"编号 {entry.Index} · 剩余 HP {entry.HPPercent:P0}",
+                [
+                    $"- 生命：{boss.HP:0.##}/{boss.MaxHP:0.##}　魔法：{boss.MP:0.##}/{boss.MaxMP:0.##}",
+                    $"- 攻击：{boss.ATK:0.##}　防御：{boss.DEF:0.##}　速度：{boss.SPD:0.##}",
+                    $"- 命中：{boss.HR:0.##}　闪避：{boss.EvadeRate:P0}　暴击：{boss.CritRate:P0}",
+                    $"- 技能：{boss.Skills.Count} 个" + (boss.Skills.Count == 0 ? "" : $"（{string.Join("、", boss.Skills.Take(4).Select(x => x.Name))}）"),
+                    $"- 装备：{(string.IsNullOrEmpty(gear) ? "无" : gear)}",
+                    "- 全服共享：你打掉的 HP 会累计到这只目标上"
+                ],
+                [$"/小队讨伐Boss {entry.Index}", $"/Boss {entry.Index}", "/查询Boss"]);
+        }
+
+        IReadOnlyList<BossEntry> all = BossPool.All;
+        if (all.Count == 0)
+        {
+            return CommandReplies.Compose("🐉 讨伐目标", "池已空",
+                ["- 当前没有任何讨伐目标，等刷新后再来"], ["/Boss", "/状态"]);
+        }
+        List<string> lines = [.. all.Select(entry =>
+            $"- {entry.Index}. {entry.Display}　剩余 HP {entry.HPPercent:P0}"
+            + $"　（/Boss {entry.Index} 讨伐 · /小队讨伐Boss {entry.Index} 小队出战）")];
+        lines.Add("- HP 百分比是全服共享的剩余量，越低的越容易收掉");
+        return CommandReplies.ListPage("🐉 讨伐目标", $"共 {all.Count} 只", lines, context.Page, "/查询Boss",
+            ["/Boss", "/状态"]);
+    }
+
 
     /// <summary>把从 <paramref name="start"/> 开始的参数拼回一个字符串（技能名/角色名可能含空格）。</summary>
     private static string JoinFrom(CommandContext context, int start)
