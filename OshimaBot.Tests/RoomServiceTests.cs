@@ -103,6 +103,22 @@ public sealed class RoomServiceTests
     }
 
     [Fact]
+    public async Task JoinHorseRoom_FindsGroupRoomWithoutCode()
+    {
+        using RoomDatabase db = new();
+        IRoomService rooms = db.Get<IRoomService>();
+
+        ActionResult none = await rooms.JoinHorseRoomAsync(Guest, GroupA);
+        Assert.False(none.Ok);
+        Assert.Contains("还没有赛马房间", none.Title);
+
+        await rooms.CreateAsync(Host, GroupA, "赛马", null);
+        ActionResult joined = await rooms.JoinHorseRoomAsync(Guest, GroupA);
+        Assert.True(joined.Ok, joined.Title);
+        Assert.Equal(2, rooms.Info(GroupA, null, Guest)!.Members.Count);
+    }
+
+    [Fact]
     public async Task Quit_TransfersMasterThenDisbands()
     {
         using RoomDatabase db = new();
@@ -150,14 +166,14 @@ public sealed class RoomServiceTests
         await rooms.CreateAsync(Host, GroupA, "混战", null);
         string code = rooms.List(GroupA)[0].Code;
 
-        ActionResult alone = await rooms.StartAsync(Host, GroupA);
-        Assert.False(alone.Ok);
-        Assert.Contains("人数不足", alone.Title);
+        BattleReport alone = await rooms.StartAsync(Host, GroupA);
+        Assert.False(alone.Result.Ok);
+        Assert.Contains("人数不足", alone.Result.Title);
 
         await rooms.JoinAsync(Guest, GroupA, code, null);
-        ActionResult notMaster = await rooms.StartAsync(Guest, GroupA);
-        Assert.False(notMaster.Ok);
-        Assert.Contains("房主", notMaster.Title);
+        BattleReport notMaster = await rooms.StartAsync(Guest, GroupA);
+        Assert.False(notMaster.Result.Ok);
+        Assert.Contains("房主", notMaster.Result.Title);
     }
 
     [Fact]
@@ -171,10 +187,10 @@ public sealed class RoomServiceTests
         string code = rooms.List(GroupA)[0].Code;
         await rooms.JoinAsync(Guest, GroupA, code, null);
 
-        ActionResult report = await rooms.StartAsync(Host, GroupA);
+        BattleReport report = await rooms.StartAsync(Host, GroupA);
 
-        Assert.True(report.Ok, report.Title);
-        Assert.Contains("参战 2 人", string.Join(" ", report.Lines));
+        Assert.True(report.Result.Ok, report.Result.Title);
+        Assert.Contains("参战 2 人", string.Join(" ", report.Result.Lines));
         RoomDetail? detail = rooms.Info(GroupA, code, Host);
         Assert.NotNull(detail);
         Assert.False(detail!.Playing);                       // 打完回到等待状态，可以再开
@@ -192,10 +208,10 @@ public sealed class RoomServiceTests
         string code = rooms.List(GroupA)[0].Code;
         await rooms.JoinAsync(Guest, GroupA, code, null);
 
-        ActionResult report = await rooms.StartAsync(Host, GroupA);
+        BattleReport report = await rooms.StartAsync(Host, GroupA);
 
-        Assert.True(report.Ok, report.Title);
-        string content = string.Join(" ", report.Lines);
+        Assert.True(report.Result.Ok, report.Result.Title);
+        string content = string.Join(" ", report.Result.Lines);
         Assert.Contains("红队", content);
         Assert.Contains("蓝队", content);
     }
@@ -207,17 +223,45 @@ public sealed class RoomServiceTests
         IRoomService rooms = db.Get<IRoomService>();
         await db.CreateSaveAsync(Host, "甲");
         await db.CreateSaveAsync(Guest, "乙");
+        await rooms.CreateAsync(Host, GroupA, "共斗", null);   // 共斗玩法还没接
+        string code = rooms.List(GroupA)[0].Code;
+        await rooms.JoinAsync(Guest, GroupA, code, null);
+
+        BattleReport report = await rooms.StartAsync(Host, GroupA);
+
+        Assert.False(report.Result.Ok);
+        Assert.Contains("还没接上玩法", report.Result.Title);
+        RoomDetail? detail = rooms.Info(GroupA, code, Host);
+        Assert.NotNull(detail);
+        Assert.False(detail!.Playing);                                 // 状态没被锁死
+    }
+
+    [Fact]
+    public async Task Start_HorseRaceAwardsPersonalPointsAndAnyMemberCanStart()
+    {
+        using RoomDatabase db = new();
+        IRoomService rooms = db.Get<IRoomService>();
+        await db.CreateSaveAsync(Host, "骑手甲");
+        await db.CreateSaveAsync(Guest, "骑手乙");
         await rooms.CreateAsync(Host, GroupA, "赛马", null);
         string code = rooms.List(GroupA)[0].Code;
         await rooms.JoinAsync(Guest, GroupA, code, null);
 
-        ActionResult report = await rooms.StartAsync(Guest, GroupA);   // 赛马房任何人都能开
+        // 赛马房间任何人都能开局
+        BattleReport report = await rooms.StartAsync(Guest, GroupA);
 
-        Assert.False(report.Ok);
-        Assert.Contains("还没接上玩法", report.Title);
-        RoomDetail? detail = rooms.Info(GroupA, code, Host);
-        Assert.NotNull(detail);
-        Assert.False(detail!.Playing);                                 // 状态没被锁死
+        Assert.True(report.Result.Ok, report.Result.Title);
+        Assert.NotEmpty(report.Log);                                    // 逐回合战报
+        Assert.Contains("赛马积分", string.Join(" ", report.Result.Lines));
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        List<CorePlayerRecord> wallets = await context.CorePlayers
+            .Where(x => x.UserId == Host || x.UserId == Guest).ToListAsync();
+        Assert.Equal(2, wallets.Count);
+        Assert.All(wallets, wallet => Assert.True(wallet.HorseRacingPoints > 0,
+            $"{wallet.UserId} 应有赛马积分，实际 {wallet.HorseRacingPoints}"));
+        Assert.Equal(2, await context.LedgerEntries.CountAsync(x => x.Currency == "horse_points"));
     }
 
     private sealed class RoomDatabase : IDisposable

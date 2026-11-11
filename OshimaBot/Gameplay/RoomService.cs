@@ -32,10 +32,16 @@ public interface IRoomService
     Task<ActionResult> JoinAsync(long userId, string scope, string code, string? password,
         CancellationToken cancellationToken = default);
 
+    /// <summary>旧版「加入赛马」：直接加入本群那个赛马房间，不用记房号。</summary>
+    Task<ActionResult> JoinHorseRoomAsync(long userId, string scope, CancellationToken cancellationToken = default);
+
     Task<ActionResult> QuitAsync(long userId, string scope, CancellationToken cancellationToken = default);
 
-    /// <summary>开一局。只有房主能开（赛马房间例外），开局期间房间被锁在 <c>Gaming</c>。</summary>
-    Task<ActionResult> StartAsync(long userId, string scope, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 开一局。只有房主能开（赛马房间例外），开局期间房间被锁在 <c>Gaming</c>。
+    /// <para>返回摘要 + 逐回合日志：房间对局与赛马战报都可能上百行，交给指令层分页。</para>
+    /// </summary>
+    Task<BattleReport> StartAsync(long userId, string scope, CancellationToken cancellationToken = default);
 
     IReadOnlyList<RoomSummary> List(string scope);
 
@@ -215,6 +221,31 @@ public sealed class RoomService(
             ["/房间信息", "/退出房间", "/开始游戏"]);
     }
 
+    public async Task<ActionResult> JoinHorseRoomAsync(long userId, string scope, CancellationToken cancellationToken = default)
+    {
+        if (userId <= 0) return PlayerService.NoIdentity;
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return ActionResult.Fail("请先在群里发起", "没有加入任何房间",
+                "多人房间只能在群聊里使用", "/帮助");
+        }
+
+        string? code;
+        lock (_sync)
+        {
+            Sweep(clock.UtcNow);
+            code = _rooms.Values
+                .FirstOrDefault(room => room.Kind == RoomKind.HorseRacing
+                                        && string.Equals(room.Scope, scope, StringComparison.Ordinal))?.Code;
+        }
+        if (code is null)
+        {
+            return ActionResult.Fail("本群还没有赛马房间", "没有加入任何房间",
+                "先让人 /创建赛马 开一间", "/创建赛马");
+        }
+        return await JoinAsync(userId, scope, code, null, cancellationToken);
+    }
+
     public Task<ActionResult> QuitAsync(long userId, string scope, CancellationToken cancellationToken = default)
     {
         if (userId <= 0) return Task.FromResult(PlayerService.NoIdentity);
@@ -261,9 +292,9 @@ public sealed class RoomService(
             ["/房间列表", "/状态"]));
     }
 
-    public async Task<ActionResult> StartAsync(long userId, string scope, CancellationToken cancellationToken = default)
+    public async Task<BattleReport> StartAsync(long userId, string scope, CancellationToken cancellationToken = default)
     {
-        if (userId <= 0) return PlayerService.NoIdentity;
+        if (userId <= 0) return BattleReport.Empty(PlayerService.NoIdentity);
 
         GameRoom room;
         List<RoomMemberInfo> members;
@@ -272,33 +303,33 @@ public sealed class RoomService(
             Sweep(clock.UtcNow);
             if (!_userRoom.TryGetValue(userId, out string? code) || !_rooms.TryGetValue(code, out GameRoom? found))
             {
-                return ActionResult.Fail("你当前不在任何房间中", "没有开始游戏",
-                    "先 /创建房间 或 /加入房间", "/房间列表");
+                return BattleReport.Empty(ActionResult.Fail("你当前不在任何房间中", "没有开始游戏",
+                    "先 /创建房间 或 /加入房间", "/房间列表"));
             }
             room = found;
             if (!string.Equals(room.Scope, scope, StringComparison.Ordinal))
             {
-                return ActionResult.Fail("房间不属于本群", "没有开始游戏", "请回到建房的群里操作", "/帮助");
+                return BattleReport.Empty(ActionResult.Fail("房间不属于本群", "没有开始游戏", "请回到建房的群里操作", "/帮助"));
             }
             if (room.State != RoomState.Created)
             {
-                return ActionResult.Fail("这一局正在进行中", "没有重复开局",
-                    "等战报出来再开下一局", "/房间信息");
+                return BattleReport.Empty(ActionResult.Fail("这一局正在进行中", "没有重复开局",
+                    "等战报出来再开下一局", "/房间信息"));
             }
             if (room.MasterId != userId && room.Kind != RoomKind.HorseRacing)
             {
-                return ActionResult.Fail("你不是房主，无法开始游戏", "没有开始游戏",
-                    "让房主说 /开始游戏，赛马房间除外", "/房间信息");
+                return BattleReport.Empty(ActionResult.Fail("你不是房主，无法开始游戏", "没有开始游戏",
+                    "让房主说 /开始游戏，赛马房间除外", "/房间信息"));
             }
             if (room.Members.Count < RoomRules.MinMembers)
             {
-                return ActionResult.Fail("房间人数不足", "没有开始游戏",
-                    $"至少要 {RoomRules.MinMembers} 人，现在 {room.Members.Count} 人", "/加入房间 " + room.Code);
+                return BattleReport.Empty(ActionResult.Fail("房间人数不足", "没有开始游戏",
+                    $"至少要 {RoomRules.MinMembers} 人，现在 {room.Members.Count} 人", "/加入房间 " + room.Code));
             }
             if (!RoomRules.IsPlayable(room.Kind))
             {
-                return ActionResult.Fail($"{RoomRules.Name(room.Kind)}还没接上玩法", "没有开始游戏",
-                    "房间可以先建着，混战 / 团战现在就能打；赛马与共斗在后续切片接入", "/帮助");
+                return BattleReport.Empty(ActionResult.Fail($"{RoomRules.Name(room.Kind)}还没接上玩法", "没有开始游戏",
+                    "房间可以先建着，混战 / 团战现在就能打；赛马与共斗在后续切片接入", "/帮助"));
             }
 
             room.State = RoomState.Gaming;   // 单飞锁：并发开赛只有第一个能进到战斗
@@ -309,15 +340,16 @@ public sealed class RoomService(
         {
             return room.Kind switch
             {
+                RoomKind.HorseRacing => await RunHorseRaceAsync(room, members, cancellationToken),
                 RoomKind.Mix => await RunMixRoomAsync(room, members, cancellationToken),
                 RoomKind.Team => await RunTeamRoomAsync(room, members, cancellationToken),
-                _ => ActionResult.Fail("玩法尚未接入", "没有开始游戏", "后续切片会补上", "/帮助")
+                _ => BattleReport.Empty(ActionResult.Fail("玩法尚未接入", "没有开始游戏", "后续切片会补上", "/帮助"))
             };
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "房间对局失败：Room={Code}", room.Code);
-            return ActionResult.Fail("对局出现异常", "这一局已作废", "稍后重试，或 /退出房间", "/房间列表");
+            return BattleReport.Empty(ActionResult.Fail("对局出现异常", "这一局已作废", "稍后重试，或 /退出房间", "/房间列表"));
         }
         finally
         {
@@ -378,14 +410,64 @@ public sealed class RoomService(
 
     // ---------------- 内部 ----------------
 
-    private async Task<ActionResult> RunMixRoomAsync(
+    /// <summary>
+    /// 赛马：不打架，跑一场。积分按名次记到**个人**的赛马积分（旧版按群存在 PluginConfig，本作改个人）。
+    /// <para>参赛者是房间成员本身，与角色无关——马匹的步数/生命/回血由小游戏自己生成。</para>
+    /// </summary>
+    private async Task<BattleReport> RunHorseRaceAsync(
+        GameRoom room, IReadOnlyList<RoomMemberInfo> members, CancellationToken ct)
+    {
+        HorseRaceOutcome outcome = HorseRace.Run([.. members.Select(x => (x.UserId, x.Display))], random);
+        long awarded = await AwardHorsePointsAsync(room.Code, outcome.Ranking, ct);
+
+        List<string> lines =
+        [
+            $"- 房间：[ {room.Code} ] {RoomRules.Name(room.Kind)}　赛道 {outcome.TrackLength} 步"
+            + (outcome.Finished ? "" : "（跑满回合，按最终位置排名）"),
+            $"- 参赛：{members.Count} 人",
+            "- 名次与积分："
+        ];
+        lines.AddRange(outcome.Ranking.Select(entry =>
+            $"  · {(entry.Tied ? "并列" : "")}第 {entry.Rank} 名 {entry.Name}：{entry.Position} 步 · 积分 +{entry.Points}"));
+        lines.Add($"- 本局共发放 {awarded} 点赛马积分（记在个人账户），可到 /商店6 兑换");
+
+        HorseRaceEntry champion = outcome.Ranking[0];
+        return new BattleReport(
+            ActionResult.Success("🐎 赛马结束",
+                $"{champion.Name} 冲线 · 赛马积分 +{champion.Points}",
+                lines, ["/开始游戏", "/商店6", "/房间信息"]),
+            outcome.Log);
+    }
+
+    /// <summary>按名次发放赛马积分；走 <c>ApplyCurrency</c> 所以每笔都有 ledger。</summary>
+    private async Task<long> AwardHorsePointsAsync(
+        string roomCode, IReadOnlyList<HorseRaceEntry> ranking, CancellationToken ct)
+    {
+        List<HorseRaceEntry> rewarded = [.. ranking.Where(entry => entry.Points > 0)];
+        if (rewarded.Count == 0) return 0;
+
+        using IServiceScope scope = scopeFactory.CreateScope();
+        BotDbContext db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        long total = 0;
+        foreach (HorseRaceEntry entry in rewarded)
+        {
+            PlayerAccount account = await PlayerService.EnsureAsync(db, entry.UserId, ct);
+            PlayerService.ApplyCurrency(db, account, entry.Points, "horse_points", "horse_racing", "room", roomCode);
+            account.UpdatedAtUtc = clock.UtcNow;
+            total += entry.Points;
+        }
+        await db.SaveChangesAsync(ct);
+        return total;
+    }
+
+    private async Task<BattleReport> RunMixRoomAsync(
         GameRoom room, IReadOnlyList<RoomMemberInfo> members, CancellationToken ct)
     {
         List<(RoomMemberInfo Member, CoreCharacter Fighter)> fighters = await LoadFightersAsync(members, ct);
         if (fighters.Count < RoomRules.MinMembers)
         {
-            return ActionResult.Fail("参战角色不足", "没有开始游戏",
-                $"至少需要 {RoomRules.MinMembers} 名成员有主战角色，现在只有 {fighters.Count} 名", "/我的角色");
+            return BattleReport.Empty(ActionResult.Fail("参战角色不足", "没有开始游戏",
+                $"至少需要 {RoomRules.MinMembers} 名成员有主战角色，现在只有 {fighters.Count} 名", "/我的角色"));
         }
 
         BattleResult battle = FunGameActionQueue.RunMix(
@@ -407,19 +489,21 @@ public sealed class RoomService(
         lines.Add("- 战报摘要：");
         lines.AddRange(BattleTail(battle, 4));
 
-        return ActionResult.Success("⚔️ 混战结束",
-            winner is null ? "平局" : $"{NameOf(fighters, winner)} 笑到最后",
-            lines, ["/开始游戏", "/房间信息", "/退出房间"]);
+        return new BattleReport(
+            ActionResult.Success("⚔️ 混战结束",
+                winner is null ? "平局" : $"{NameOf(fighters, winner)} 笑到最后",
+                lines, ["/开始游戏", "/房间信息", "/退出房间"]),
+            battle.Log);
     }
 
-    private async Task<ActionResult> RunTeamRoomAsync(
+    private async Task<BattleReport> RunTeamRoomAsync(
         GameRoom room, IReadOnlyList<RoomMemberInfo> members, CancellationToken ct)
     {
         List<(RoomMemberInfo Member, CoreCharacter Fighter)> fighters = await LoadFightersAsync(members, ct);
         if (fighters.Count < RoomRules.MinMembers)
         {
-            return ActionResult.Fail("参战角色不足", "没有开始游戏",
-                $"至少需要 {RoomRules.MinMembers} 名成员有主战角色，现在只有 {fighters.Count} 名", "/我的角色");
+            return BattleReport.Empty(ActionResult.Fail("参战角色不足", "没有开始游戏",
+                $"至少需要 {RoomRules.MinMembers} 名成员有主战角色，现在只有 {fighters.Count} 名", "/我的角色"));
         }
 
         // 按加入顺序交替分队（旧版团队死斗没有实现分队规则，这里取最直观的均分方式）。
@@ -431,7 +515,8 @@ public sealed class RoomService(
         }
         if (red.Count == 0 || blue.Count == 0)
         {
-            return ActionResult.Fail("无法分队", "没有开始游戏", "至少需要 2 名参战角色", "/房间信息");
+            return BattleReport.Empty(ActionResult.Fail("无法分队", "没有开始游戏",
+                "至少需要 2 名参战角色", "/房间信息"));
         }
 
         CoreTeam redTeam = new("红队", red);
@@ -458,9 +543,11 @@ public sealed class RoomService(
         ];
         lines.AddRange(BattleTail(battle, 4));
 
-        return ActionResult.Success("⚔️ 团队死斗结束",
-            winner is null ? "平局" : $"{WinnerTeam(winner)} 获胜",
-            lines, ["/开始游戏", "/房间信息", "/退出房间"]);
+        return new BattleReport(
+            ActionResult.Success("⚔️ 团队死斗结束",
+                winner is null ? "平局" : $"{WinnerTeam(winner)} 获胜",
+                lines, ["/开始游戏", "/房间信息", "/退出房间"]),
+            battle.Log);
     }
 
     private static string JoinTeam(List<CoreCharacter> team, List<(RoomMemberInfo Member, CoreCharacter Fighter)> fighters)

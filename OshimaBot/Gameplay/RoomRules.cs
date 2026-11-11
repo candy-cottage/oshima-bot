@@ -36,11 +36,12 @@ public static class RoomRules
     public static int MaxUsers(RoomKind kind) => Kinds.First(x => x.Kind == kind).MaxUsers;
 
     /// <summary>
-    /// 玩法是否已经接入。<see cref="RoomKind.Mix"/> / <see cref="RoomKind.Team"/> 直接复用
+    /// 玩法是否已经接入。<see cref="RoomKind.Mix"/> / <see cref="RoomKind.Team"/> 复用
     /// <c>FunGameActionQueue</c> 的混战与分队战（旧版这两条其实是空壳）；
-    /// 赛马与共斗的房间可以先建出来，开赛要等各自的玩法模块（S2 / S3）。
+    /// <see cref="RoomKind.HorseRacing"/> 是独立的跑马小游戏；共斗房间可以先建，开赛等后续切片。
     /// </summary>
-    public static bool IsPlayable(RoomKind kind) => kind is RoomKind.Mix or RoomKind.Team;
+    public static bool IsPlayable(RoomKind kind)
+        => kind is RoomKind.Mix or RoomKind.Team or RoomKind.HorseRacing;
 
     /// <summary>房号字符集：去掉容易看错的 0/O/1/I。</summary>
     public const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

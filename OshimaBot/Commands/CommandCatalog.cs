@@ -38,7 +38,7 @@ public static class CommandCatalog
         "forge", "forge-claim", "instance", "instance-claim",
         "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
         // ---- 多人房间 ----
-        "room-create", "room-join", "room-quit", "room-start", "room-list", "room-info"
+        "room-create", "room-join", "horse-join", "room-quit", "room-start", "room-list", "room-info"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -615,6 +615,12 @@ public static class CommandCatalog
                     context.CancellationToken));
             }),
 
+        "horse-join" => new DelegateCommand(
+            key: "horse-join", name: "加入赛马", aliases: ["进入赛马"], usage: "/加入赛马",
+            description: "直接加入本群的赛马房间，不用记房号", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(await deps.Rooms.JoinHorseRoomAsync(
+                context.UserId, Scope(context), context.CancellationToken))),
+
         "room-quit" => new DelegateCommand(
             key: "room-quit", name: "退出房间", aliases: ["离开房间"], usage: "/退出房间",
             description: "离开当前房间；房主离开会自动转让", group: CommandGroups.Economy,
@@ -625,8 +631,12 @@ public static class CommandCatalog
             key: "room-start", name: "开始游戏", aliases: ["开始赛马"], usage: "/开始游戏",
             description: "房主开一局（赛马房间任何人都能开）", group: CommandGroups.Economy,
             audit: true,
-            handler: async context => CommandReplies.FromResult(await deps.Rooms.StartAsync(
-                context.UserId, Scope(context), context.CancellationToken))),
+            handler: async context =>
+            {
+                BattleReport report = await deps.Rooms.StartAsync(
+                    context.UserId, Scope(context), context.CancellationToken);
+                return Report(report, context.Page, "/开始游戏");
+            }),
 
         "room-list" => new DelegateCommand(
             key: "room-list", name: "房间列表", aliases: ["房间"], usage: "/房间列表 [p2]",
