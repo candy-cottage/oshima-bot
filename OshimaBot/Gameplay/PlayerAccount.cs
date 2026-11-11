@@ -1,22 +1,20 @@
 using OshimaBot.Data.Core;
-using OshimaBot.Data.Entities;
 
 namespace OshimaBot.Gameplay;
 
 /// <summary>
-/// 玩家账户聚合：进度（<see cref="PlayerState"/>）+ 钱包（<see cref="CorePlayerRecord"/>）。
+/// 玩家账户：一张 <c>CorePlayers</c> 行同时承载钱包与玩法进度（签到）。
 /// <para>钱包按 Core 语义用 <see cref="double"/> 存 <c>Inventory.Credits</c> / <c>Inventory.Materials</c>，
-/// 不再用 <c>long</c> 截断；进度字段暂时仍留在 <c>player_states</c>，随 M1.5 后续切片继续迁移。</para>
+/// 不再用 <c>long</c> 截断。原 <c>PlayerStates</c> 表已在 M1.5 切片③并入本表——
+/// 它剩下的字段里只有签到是真在用的，其余（午餐/晚餐/探索次数/赛马/协作/锻造点数）从来没有业务代码读写。</para>
 /// <para>暴露同名转发属性，是为了让既有的 <c>(db, state, ct)</c> 业务 lambda 不需要改写——
-/// 变量名叫 <c>state</c>，但类型已经是账户聚合。</para>
+/// 变量名叫 <c>state</c>，但类型是账户聚合。</para>
 /// </summary>
-public sealed class PlayerAccount(PlayerState state, CorePlayerRecord wallet)
+public sealed class PlayerAccount(CorePlayerRecord wallet)
 {
-    public PlayerState State { get; } = state;
-
     public CorePlayerRecord Wallet { get; } = wallet;
 
-    public long UserId => State.UserId;
+    public long UserId => Wallet.UserId;
 
     /// <summary>对应 <c>Inventory.Credits</c>（金币）。</summary>
     public double Credits
@@ -34,24 +32,19 @@ public sealed class PlayerAccount(PlayerState state, CorePlayerRecord wallet)
 
     public int SignInStreak
     {
-        get => State.SignInStreak;
-        set => State.SignInStreak = value;
+        get => Wallet.SignInStreak;
+        set => Wallet.SignInStreak = value;
     }
 
     public string SignedOn
     {
-        get => State.SignedOn;
-        set => State.SignedOn = value;
+        get => Wallet.SignedOn;
+        set => Wallet.SignedOn = value;
     }
 
-    /// <summary>同时刷新进度行与钱包行的更新时间。</summary>
     public DateTime UpdatedAtUtc
     {
-        get => State.UpdatedAtUtc;
-        set
-        {
-            State.UpdatedAtUtc = value;
-            Wallet.UpdatedAtUtc = value;
-        }
+        get => Wallet.UpdatedAtUtc;
+        set => Wallet.UpdatedAtUtc = value;
     }
 }

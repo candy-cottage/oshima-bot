@@ -18,8 +18,6 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<BindCode> BindCodes => Set<BindCode>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
-    public DbSet<PlayerState> PlayerStates => Set<PlayerState>();
-    public DbSet<CharacterSkill> CharacterSkills => Set<CharacterSkill>();
     public DbSet<Squad> Squads => Set<Squad>();
     public DbSet<SquadMember> SquadMembers => Set<SquadMember>();
     public DbSet<TrainingSession> TrainingSessions => Set<TrainingSession>();
@@ -85,13 +83,7 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
             entity.HasIndex(x => new { x.ActorUserId, x.CreatedAtUtc });
         });
 
-        // ---- 玩家存档 ----
-        modelBuilder.Entity<PlayerState>(entity =>
-        {
-            entity.HasKey(x => x.UserId);
-            entity.Property(x => x.Version).IsConcurrencyToken();
-        });
-        modelBuilder.Entity<CharacterSkill>().HasKey(x => new { x.CharacterId, x.SkillId, x.Slot });
+        // ---- 玩家存档（进度已并入 CorePlayers，这里只剩队伍/训练等玩法表）----
         modelBuilder.Entity<Squad>(entity =>
         {
             entity.HasKey(x => x.Id);

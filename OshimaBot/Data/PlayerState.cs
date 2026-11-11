@@ -1,34 +1,5 @@
 namespace OshimaBot.Data.Entities;
 
-/// <summary>
-/// 玩家进度存档（替代旧版 saved/{uid}.json）。
-/// <para>货币已迁到 <c>CorePlayers</c>（按 Core 语义用 <c>double</c> 存 Credits/Materials），
-/// 本表只保留 MUD 侧进度字段。日期字段按 Asia/Shanghai 存 yyyy-MM-dd。</para>
-/// </summary>
-public sealed class PlayerState
-{
-    public long UserId { get; set; }
-    public int SignInStreak { get; set; }
-    public string SignedOn { get; set; } = "";
-    public string LogonOn { get; set; } = "";
-    public string LunchClaimedOn { get; set; } = "";
-    public string DinnerClaimedOn { get; set; } = "";
-    public int ExploreTimes { get; set; }
-    public long HorseRacingPoints { get; set; }
-    public long CooperativePoints { get; set; }
-    public long ForgePoints { get; set; }
-    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
-    public int Version { get; set; }
-}
-
-public sealed class CharacterSkill
-{
-    public long CharacterId { get; set; }
-    public string SkillId { get; set; } = "";
-    public int Level { get; set; } = 1;
-    public int Slot { get; set; }
-}
-
 public sealed class Squad
 {
     public long Id { get; set; }

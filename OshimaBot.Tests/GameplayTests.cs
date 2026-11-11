@@ -37,7 +37,7 @@ public sealed class GameplayTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        Assert.Equal(1, await context.PlayerStates.CountAsync());
+        Assert.Equal(1, await context.CorePlayers.CountAsync());   // 进度与钱包同一张表
         Assert.Equal(1, await context.LedgerEntries.CountAsync(x => x.Reason == "register"));
     }
 
@@ -241,7 +241,7 @@ public sealed class GameplayTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        Assert.Equal(0, await context.PlayerStates.CountAsync());
+        Assert.Equal(0, await context.CorePlayers.CountAsync());
         Assert.Equal(0, await context.LedgerEntries.CountAsync());
     }
 
@@ -377,9 +377,8 @@ public sealed class GameplayTests
             wallet.Materials = 6.5;
             await context.SaveChangesAsync();
 
-            // 进度表已不再持有货币列
-            Assert.False(context.Model.FindEntityType(typeof(PlayerState))!
-                .FindProperty("Credits") is not null);
+            // 进度表已整表并入 CorePlayers（钱包 + 签到同一行）
+            Assert.Null(context.Model.FindEntityType("OshimaBot.Data.Entities.PlayerState"));
         }
 
         PlayerSnapshot snapshot = (await players.GetSnapshotAsync(UserId))!;

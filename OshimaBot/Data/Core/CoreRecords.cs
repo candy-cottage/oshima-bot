@@ -20,6 +20,12 @@ public sealed class CorePlayerRecord
     /// <summary>对应 <c>Inventory.MainCharacter.Guid</c>。</summary>
     public string? MainCharacterGuid { get; set; }
 
+    /// <summary>连续签到天数（本作玩法，Core 无此概念）。</summary>
+    public int SignInStreak { get; set; }
+
+    /// <summary>最近一次签到日期，<c>yyyy-MM-dd</c>（Asia/Shanghai）。</summary>
+    public string SignedOn { get; set; } = "";
+
     public DateTime UpdatedAtUtc { get; set; }
 
     public int Version { get; set; }

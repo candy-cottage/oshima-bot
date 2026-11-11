@@ -189,7 +189,7 @@ public sealed class PlayerService(
         => userId <= 0 ? Task.FromResult(NoIdentity) : ReadAsync<ActionResult>(async (db, ct) =>
         {
             // 读路径自己判断是否为首次建档，避免 EnsureAsync 已建档后误报「存档已存在」。
-            bool existed = await db.PlayerStates.AsNoTracking().AnyAsync(x => x.UserId == userId, ct);
+            bool existed = await db.CorePlayers.AsNoTracking().AnyAsync(x => x.UserId == userId, ct);
             PlayerAccount state = await PlayerService.EnsureAsync(db, userId, ct);
             return ActionResult.Success("🎒 旅人登记",
                 existed ? "存档已存在，未重复发放初始资源" : "初始资源已发放",
@@ -708,42 +708,13 @@ public sealed class PlayerService(
     // ---------------- 内部工具 ----------------
 
     /// <summary>
-    /// 首次访问懒建档：进度行 + 钱包行 + 初始角色 + 初始物品 + 初始资金流水，全部一次保存。
-    /// <para>已有进度但缺钱包行时补一行（旧库升级路径），按初始资金发放并记一笔流水。</para>
+    /// 首次访问懒建档：<c>CorePlayers</c> 一行 + 初始角色 + 初始物品 + 初始资金流水，全部一次保存。
+    /// <para>钱包与签到进度同表（M1.5 切片③把 <c>PlayerStates</c> 并进来了），所以只查一次。</para>
     /// </summary>
     internal static async Task<PlayerAccount> EnsureAsync(BotDbContext db, long userId, CancellationToken ct)
     {
-        PlayerState? state = await db.PlayerStates.FirstOrDefaultAsync(x => x.UserId == userId, ct);
         CorePlayerRecord? wallet = await db.CorePlayers.FirstOrDefaultAsync(x => x.UserId == userId, ct);
-        if (state is not null && wallet is not null) return new PlayerAccount(state, wallet);
-
-        if (state is not null)
-        {
-            wallet = new CorePlayerRecord
-            {
-                UserId = userId,
-                Credits = GameplayRules.StartingCredits,
-                Materials = GameplayRules.StartingDiamonds,
-                UpdatedAtUtc = DateTime.UtcNow
-            };
-            db.CorePlayers.Add(wallet);
-            db.LedgerEntries.Add(new LedgerEntry
-            {
-                UserId = userId, Currency = "credits", Delta = GameplayRules.StartingCredits,
-                BalanceAfter = GameplayRules.StartingCredits, Reason = "wallet_upgrade",
-                RefType = "player", RefId = userId.ToString(CultureInfo.InvariantCulture),
-                CreatedAtUtc = DateTime.UtcNow
-            });
-            await db.SaveChangesAsync(ct);
-            return new PlayerAccount(state, wallet);
-        }
-
-        state = new PlayerState
-        {
-            UserId = userId,
-            LogonOn = GameplayRules.Today(), UpdatedAtUtc = DateTime.UtcNow
-        };
-        db.PlayerStates.Add(state);
+        if (wallet is not null) return new PlayerAccount(wallet);
 
         wallet = new CorePlayerRecord
         {
@@ -777,7 +748,7 @@ public sealed class PlayerService(
             CreatedAtUtc = DateTime.UtcNow
         });
         await db.SaveChangesAsync(ct);
-        return new PlayerAccount(state, wallet);
+        return new PlayerAccount(wallet);
     }
 
     /// <summary>货币变动与 ledger 必须成对出现；Add 后由调用方的 SaveChanges 一次提交。</summary>

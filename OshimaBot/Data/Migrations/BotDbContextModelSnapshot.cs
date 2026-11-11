@@ -159,6 +159,13 @@ namespace OshimaBot.Data.Migrations
                     b.Property<double>("Materials")
                         .HasColumnType("REAL");
 
+                    b.Property<int>("SignInStreak")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SignedOn")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -307,25 +314,6 @@ namespace OshimaBot.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("BindCodes");
-                });
-
-            modelBuilder.Entity("OshimaBot.Data.Entities.CharacterSkill", b =>
-                {
-                    b.Property<long>("CharacterId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SkillId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Slot")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Level")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("CharacterId", "SkillId", "Slot");
-
-                    b.ToTable("CharacterSkills");
                 });
 
             modelBuilder.Entity("OshimaBot.Data.Entities.DailyQuest", b =>
@@ -550,55 +538,6 @@ namespace OshimaBot.Data.Migrations
                     b.HasIndex("Status", "CreatedAtUtc");
 
                     b.ToTable("MarketListings");
-                });
-
-            modelBuilder.Entity("OshimaBot.Data.Entities.PlayerState", b =>
-                {
-                    b.Property<long>("UserId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("CooperativePoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("DinnerClaimedOn")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ExploreTimes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("ForgePoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("HorseRacingPoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("LogonOn")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LunchClaimedOn")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SignInStreak")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SignedOn")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("UserId");
-
-                    b.ToTable("PlayerStates");
                 });
 
             modelBuilder.Entity("OshimaBot.Data.Entities.ProcessedEvent", b =>
