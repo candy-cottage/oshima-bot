@@ -1,6 +1,6 @@
 using OshimaBot.Content.Effects.OpenEffects;
 
-namespace Milimoe.FunGameTesting.Others
+namespace OshimaBot.Content.Others
 {
     /// <summary>
     /// 回合奖励特效池（模组公共区域）

@@ -7,7 +7,7 @@ using OshimaBot.Content.Characters;
 using OshimaBot.Content.Effects.OpenEffects;
 using OshimaBot.Content.Items;
 using OshimaBot.Content.Skills;
-using Milimoe.FunGameTesting.Others;
+using OshimaBot.Content.Others;
 
 namespace OshimaBot.Game.Services
 {

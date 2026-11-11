@@ -24,13 +24,13 @@ namespace OshimaBot.Content.Effects.OpenEffects
             {
                 RemainDurationTurn = DurationTurn;
             }
-            character.ExSTR += 实际加成;
+            character.ExSTR2 += 实际加成;
         }
 
         public override void OnEffectLost(HookContext ctx)
         {
             if (ctx.Trigger is not Character character) return;
-            character.ExSTR -= 实际加成;
+            character.ExSTR2 -= 实际加成;
         }
 
         public ExSTR(Skill skill, Dictionary<string, object> args, Character? source = null) : base(skill, args)

@@ -45,13 +45,13 @@ namespace OshimaBot.Content.Skills
             double pastMP = character.MP;
             double pastMaxMP = character.MaxMP;
             本次提升的敏捷 = character.BaseAGI * 0.2;
-            character.ExAGI += 本次提升的敏捷;
+            character.ExAGI2 += 本次提升的敏捷;
             本次提升的力量 = 0;
             double 平衡敏捷 = character.AGI * 平衡系数;
             if (character.STR < 平衡敏捷)
             {
                 本次提升的力量 = 平衡敏捷 - character.STR;
-                character.ExSTR += 本次提升的力量;
+                character.ExSTR2 += 本次提升的力量;
             }
             character.Recovery(pastHP, pastMP, pastMaxHP, pastMaxMP);
             WriteLine($"[ {character} ] 敏捷提升了 {本次提升的敏捷:0.##} 点，力量提升了 {本次提升的力量:0.##} 点！");
@@ -64,8 +64,8 @@ namespace OshimaBot.Content.Skills
             double pastMaxHP = character.MaxHP;
             double pastMP = character.MP;
             double pastMaxMP = character.MaxMP;
-            character.ExAGI -= character.BaseAGI * 0.2;
-            character.ExSTR -= 本次提升的力量;
+            character.ExAGI2 -= character.BaseAGI * 0.2;
+            character.ExSTR2 -= 本次提升的力量;
             character.Recovery(pastHP, pastMP, pastMaxHP, pastMaxMP);
         }
 

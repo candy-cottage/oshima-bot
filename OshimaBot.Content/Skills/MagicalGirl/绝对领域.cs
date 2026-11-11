@@ -43,14 +43,14 @@ namespace OshimaBot.Content.Skills
         {
             if (ctx.Trigger is not Character character) return;
             实际敏捷提升 = 敏捷提升;
-            character.ExAGI += 实际敏捷提升;
+            character.ExAGI2 += 实际敏捷提升;
             WriteLine($"[ {character} ] 的敏捷提升了 {系数 * 100:0.##}% [ {实际敏捷提升:0.##} ] ！");
         }
 
         public override void OnEffectLost(HookContext ctx)
         {
             if (ctx.Trigger is not Character character) return;
-            character.ExAGI -= 实际敏捷提升;
+            character.ExAGI2 -= 实际敏捷提升;
         }
 
         public override AlterActualDamageResult AlterActualDamageAfterCalculation(DamageContext ctx)

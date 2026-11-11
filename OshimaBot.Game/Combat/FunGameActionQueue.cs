@@ -1,7 +1,6 @@
 using FunGame.Core.Entity;
-using FunGame.Core.Library.Constant;
 using FunGame.Core.Model.Queue;
-using Milimoe.FunGameTesting.Others;
+using OshimaBot.Content.Others;
 
 namespace OshimaBot.Game.Combat;
 

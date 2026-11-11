@@ -11,7 +11,7 @@ using FunGame.Core.Model.Framework;
 using FunGame.Core.Model.Queue;
 using OshimaBot.Content.Effects.OpenEffects;
 using OshimaBot.Content.Skills;
-using Milimoe.FunGameTesting.Others;
+using OshimaBot.Content.Others;
 
 namespace OshimaBot.Game.Services
 {

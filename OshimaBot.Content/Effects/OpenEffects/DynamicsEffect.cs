@@ -107,11 +107,11 @@ namespace OshimaBot.Content.Effects.OpenEffects
                         {
                             if (!remove)
                             {
-                                character.ExSTR += exSTR;
+                                character.ExSTR2 += exSTR;
                             }
                             else if (RealDynamicsValues.TryGetValue("exstr", out double current))
                             {
-                                character.ExSTR -= current;
+                                character.ExSTR2 -= current;
                             }
                             RealDynamicsValues["exstr"] = exSTR;
                             Descriptions.Add($"{(exSTR >= 0 ? "增加" : "减少")}角色 {Math.Abs(exSTR):0.##} 点力量。");
@@ -122,11 +122,11 @@ namespace OshimaBot.Content.Effects.OpenEffects
                         {
                             if (!remove)
                             {
-                                character.ExAGI += exAGI;
+                                character.ExAGI2 += exAGI;
                             }
                             else if (RealDynamicsValues.TryGetValue("exagi", out double current))
                             {
-                                character.ExAGI -= current;
+                                character.ExAGI2 -= current;
                             }
                             RealDynamicsValues["exagi"] = exAGI;
                             Descriptions.Add($"{(exAGI >= 0 ? "增加" : "减少")}角色 {Math.Abs(exAGI):0.##} 点敏捷。");
@@ -137,11 +137,11 @@ namespace OshimaBot.Content.Effects.OpenEffects
                         {
                             if (!remove)
                             {
-                                character.ExINT += exINT;
+                                character.ExINT2 += exINT;
                             }
                             else if (RealDynamicsValues.TryGetValue("exint", out double current))
                             {
-                                character.ExINT -= current;
+                                character.ExINT2 -= current;
                             }
                             RealDynamicsValues["exint"] = exINT;
                             Descriptions.Add($"{(exINT >= 0 ? "增加" : "减少")}角色 {Math.Abs(exINT):0.##} 点智力。");

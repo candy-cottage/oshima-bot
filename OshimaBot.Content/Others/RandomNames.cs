@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Milimoe.FunGameTesting.Others
+namespace OshimaBot.Content.Others
 {
     /// <summary>
     /// 随机中文名生成工具（从 FunGameService 抽出，供模组自包含使用，避免依赖测试项目）

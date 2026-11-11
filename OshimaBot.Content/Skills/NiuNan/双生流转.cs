@@ -111,8 +111,8 @@ namespace OshimaBot.Content.Skills
                         double pastMaxMP = c.MaxMP;
                         c.PrimaryAttribute = PrimaryAttribute.STR;
                         交换的基础智力 = c.BaseINT;
-                        c.ExINT -= 交换的基础智力;
-                        c.ExSTR += 交换的基础智力;
+                        c.ExINT2 -= 交换的基础智力;
+                        c.ExSTR2 += 交换的基础智力;
                         c.Recovery(pastHP, pastMP, pastMaxHP, pastMaxMP);
                         ResetEffect(character, false);
                     }
@@ -126,8 +126,8 @@ namespace OshimaBot.Content.Skills
                         double pastMP = c.MP;
                         double pastMaxMP = c.MaxMP;
                         c.PrimaryAttribute = PrimaryAttribute.INT;
-                        c.ExSTR -= 交换的基础智力;
-                        c.ExINT += 交换的基础智力;
+                        c.ExSTR2 -= 交换的基础智力;
+                        c.ExINT2 += 交换的基础智力;
                         交换的基础智力 = 0;
                         c.Recovery(pastHP, pastMP, pastMaxHP, pastMaxMP);
                         ResetEffect(character, true);

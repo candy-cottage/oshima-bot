@@ -76,13 +76,13 @@ namespace OshimaBot.Content.Skills
                         switch (核心属性)
                         {
                             case PrimaryAttribute.AGI:
-                                character.ExAGI += 累计增加;
+                                character.ExAGI2 += 累计增加;
                                 break;
                             case PrimaryAttribute.INT:
-                                character.ExINT += 累计增加;
+                                character.ExINT2 += 累计增加;
                                 break;
                             default:
-                                character.ExSTR += 累计增加;
+                                character.ExSTR2 += 累计增加;
                                 break;
                         }
                         WriteLine($"[ {character} ] 的征服者层数：{层数}，获得了 {累计增加:0.##} 点核心属性（{CharacterSet.GetPrimaryAttributeName(核心属性)}）加成。");
@@ -115,13 +115,13 @@ namespace OshimaBot.Content.Skills
                 switch (核心属性)
                 {
                     case PrimaryAttribute.AGI:
-                        character.ExAGI -= 累计增加;
+                        character.ExAGI2 -= 累计增加;
                         break;
                     case PrimaryAttribute.INT:
-                        character.ExINT -= 累计增加;
+                        character.ExINT2 -= 累计增加;
                         break;
                     default:
-                        character.ExSTR -= 累计增加;
+                        character.ExSTR2 -= 累计增加;
                         break;
                 }
                 核心属性 = PrimaryAttribute.None;

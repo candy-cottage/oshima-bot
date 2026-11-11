@@ -84,13 +84,13 @@ namespace OshimaBot.Content.Skills
             switch (character.PrimaryAttribute)
             {
                 case PrimaryAttribute.AGI:
-                    character.ExAGI -= 已应用;
+                    character.ExAGI2 -= 已应用;
                     break;
                 case PrimaryAttribute.INT:
-                    character.ExINT -= 已应用;
+                    character.ExINT2 -= 已应用;
                     break;
                 default:
-                    character.ExSTR -= 已应用;
+                    character.ExSTR2 -= 已应用;
                     break;
             }
             已应用 = 0;
@@ -107,13 +107,13 @@ namespace OshimaBot.Content.Skills
             switch (character.PrimaryAttribute)
             {
                 case PrimaryAttribute.AGI:
-                    character.ExAGI += delta;
+                    character.ExAGI2 += delta;
                     break;
                 case PrimaryAttribute.INT:
-                    character.ExINT += delta;
+                    character.ExINT2 += delta;
                     break;
                 default:
-                    character.ExSTR += delta;
+                    character.ExSTR2 += delta;
                     break;
             }
             已应用 = target;

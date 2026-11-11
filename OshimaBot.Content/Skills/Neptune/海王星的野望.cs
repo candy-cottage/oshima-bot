@@ -54,7 +54,7 @@ namespace OshimaBot.Content.Skills
         {
             if (ctx.Trigger is not Character character) return;
             实际力量提升 = 力量提升;
-            character.ExSTR += 实际力量提升;
+            character.ExSTR2 += 实际力量提升;
             if (character.Effects.Where(e => e is 深海之戟特效 && e.Skill.Character == character).FirstOrDefault() is 深海之戟特效 e)
             {
                 e.野望 = this;
@@ -64,7 +64,7 @@ namespace OshimaBot.Content.Skills
         public override void OnEffectLost(HookContext ctx)
         {
             if (ctx.Trigger is not Character character) return;
-            character.ExSTR -= 实际力量提升;
+            character.ExSTR2 -= 实际力量提升;
             if (character.Effects.Where(e => e is 深海之戟特效 && e.Skill.Character == character).FirstOrDefault() is 深海之戟特效 e)
             {
                 e.野望 = null;

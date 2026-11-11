@@ -1,5 +1,4 @@
 using FunGame.Core.Model.Framework;
-using Milimoe.FunGameTesting.Others;
 
 namespace OshimaBot.Game.Services;
 
