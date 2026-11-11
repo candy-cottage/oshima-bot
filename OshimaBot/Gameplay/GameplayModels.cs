@@ -35,7 +35,11 @@ public sealed record ActionResult(
 }
 
 /// <summary>P2 经济与排行视图。</summary>
-public sealed record StoreEntry(int Index, long Id, string Name, long Price, int Stock);
+/// <param name="Stock">剩余库存；-1 表示无限。</param>
+/// <param name="Quota">每人限购；0 表示不限。</param>
+/// <param name="Bought">当前玩家已购数量。</param>
+public sealed record StoreEntry(
+    int Index, long Id, string Name, string Currency, long Price, int Stock, int Quota, int Bought);
 
 public sealed record MarketEntry(
     int Index, long Id, string ItemName, int Quality, long Price, long Fee, string SellerHandle, bool IsMine);

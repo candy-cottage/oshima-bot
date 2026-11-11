@@ -150,8 +150,21 @@ namespace OshimaBot.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("CooperativePoints")
+                        .HasColumnType("REAL");
+
                     b.Property<double>("Credits")
                         .HasColumnType("REAL");
+
+                    b.Property<double>("ForgePoints")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HorseRacingPoints")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("LastStoreKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("MainCharacterGuid")
                         .HasColumnType("TEXT");
@@ -749,6 +762,13 @@ namespace OshimaBot.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("OwnerUserId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("Price")
                         .HasColumnType("INTEGER");
 
@@ -762,10 +782,20 @@ namespace OshimaBot.Data.Migrations
                     b.Property<DateTime?>("RefreshAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SoldCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Stock")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("StoreKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UsersBuyCountJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

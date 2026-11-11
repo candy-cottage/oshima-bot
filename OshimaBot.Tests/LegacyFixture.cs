@@ -199,12 +199,19 @@ public static class LegacyFixtureProbes
 
     private static JsonObject Store()
     {
-        JsonArray goods = [];
-        foreach ((string name, long price, int stock) in GameplayRules.SeedStoreGoods)
+        // 旧版 7 个固定商店的价格表 + 每日商店的件数与刷新时刻
+        JsonObject stores = [];
+        foreach (StoreSpec spec in StoreCatalog.Stores)
         {
-            goods.Add(new JsonObject { ["name"] = name, ["price"] = price, ["stock"] = stock });
+            stores[spec.Key] = new JsonArray(spec.Goods
+                .Select(g => (JsonNode?)JsonValue.Create(g.Price)).ToArray());
         }
-        return new JsonObject { ["goods"] = goods };
+        return new JsonObject
+        {
+            ["stores"] = stores,
+            ["dailyCount"] = StoreCatalog.DailyGoodsCount,
+            ["dailyRefreshHour"] = StoreCatalog.DailyRefreshHour
+        };
     }
 
     private static JsonObject MarketFee(JsonElement input)

@@ -26,6 +26,18 @@ public sealed class CorePlayerRecord
     /// <summary>最近一次签到日期，<c>yyyy-MM-dd</c>（Asia/Shanghai）。</summary>
     public string SignedOn { get; set; } = "";
 
+    /// <summary>锻造积分（旧版 <c>forgepoints</c>，用于锻造积分商店）。</summary>
+    public double ForgePoints { get; set; }
+
+    /// <summary>赛马积分（旧版 <c>horseracingpoints</c>）。</summary>
+    public double HorseRacingPoints { get; set; }
+
+    /// <summary>共斗积分（旧版 <c>cooperativepoints</c>）。</summary>
+    public double CooperativePoints { get; set; }
+
+    /// <summary>上次查看的商店 key（旧版 <c>UserLastVisitStore</c>）；/购买 默认作用于它。</summary>
+    public string LastStoreKey { get; set; } = "";
+
     public DateTime UpdatedAtUtc { get; set; }
 
     public int Version { get; set; }

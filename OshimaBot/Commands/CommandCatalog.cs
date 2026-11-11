@@ -28,7 +28,8 @@ public static class CommandCatalog
         "use", "salvage", "lock", "unlock", "equip", "unequip",
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
         // ---- P2：经济与战斗 ----
-        "shop", "buy", "market", "list-item", "delist", "market-buy",
+        "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
+        "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
         "forge", "forge-claim", "instance", "instance-claim",
         "duel", "boss", "rank"
@@ -290,13 +291,29 @@ public static class CommandCatalog
         "shop" => new DelegateCommand(
             key: "shop", name: "商店", aliases: ["shop"], usage: "/商店 [p2]",
             description: "铎京补给站货架", group: CommandGroups.Economy,
-            handler: context => ShopAsync(deps, context)),
+            handler: context => ShopAsync(context)),
 
         "buy" => new DelegateCommand(
             key: "buy", name: "购买", aliases: ["buy"], usage: "/购买 @1 [x2]",
-            description: "购买商店商品（最多 10 件）", group: CommandGroups.Economy, audit: true,
+            description: "购买当前商店的商品（作用于上次查看的店）", group: CommandGroups.Economy, audit: true,
             handler: async context => CommandReplies.FromResult(await deps.Economy.BuyAsync(
-                context.UserId, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
+                context.UserId, null, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
+
+        // 旧版 7 个固定商店：商店1–4 是常规店，商店5–7 是积分店
+        "shop-logistics" => StoreCommand("shop-logistics", "商店1", ["后勤部", "后勤"],
+            StoreCatalog.LogisticsKey, "探索者协会后勤部（探索许可与魔法卡礼包）"),
+        "shop-weapons" => StoreCommand("shop-weapons", "商店2", ["武器商会", "武器店"],
+            StoreCatalog.WeaponsKey, "铎京武器商会"),
+        "shop-yuki" => StoreCommand("shop-yuki", "商店3", ["杂货铺", "杂货店"],
+            StoreCatalog.YukiKey, "小雪杂货铺"),
+        "shop-welfare" => StoreCommand("shop-welfare", "商店4", ["慈善基金会", "基金会"],
+            StoreCatalog.WelfareKey, "铎京慈善基金会（免费福利，限购 1）"),
+        "shop-forge" => StoreCommand("shop-forge", "锻造商店", ["商店5", "锻造积分商店"],
+            StoreCatalog.ForgeKey, "用锻造积分兑换"),
+        "shop-horse" => StoreCommand("shop-horse", "赛马商店", ["商店6", "赛马积分商店"],
+            StoreCatalog.HorseRacingKey, "用赛马积分兑换钻石"),
+        "shop-coop" => StoreCommand("shop-coop", "共斗商店", ["商店7", "共斗积分商店"],
+            StoreCatalog.CooperativeKey, "用共斗积分兑换"),
 
         "market" => new DelegateCommand(
             key: "market", name: "市场", aliases: ["market"], usage: "/市场 [p2]",
@@ -689,15 +706,38 @@ public static class CommandCatalog
         => position < context.Args.Count && long.TryParse(context.Args[position], out long value)
             ? value : 0; // 0 会被仓储的价格范围校验拦下并给出三段式提示
 
-    private static async Task<BotReply> ShopAsync(CommandDependencies deps, CommandContext context)
+    /// <summary>7 个固定商店共用的命令构造（显式工厂，不反射）。</summary>
+    private static ICommand StoreCommand(
+        string key, string name, string[] aliases, string storeKey, string description)
+        => new DelegateCommand(
+            key: key, name: name, aliases: aliases, usage: $"/{name} [p2]",
+            description: description, group: CommandGroups.Economy,
+            handler: context => ShopAsync(context, storeKey));
+
+    private static async Task<BotReply> ShopAsync(CommandContext context, string? storeKey = null)
     {
+        CommandDependencies deps = context.Dependencies;
         IReadOnlyList<StoreEntry> goods = await deps.Economy.GetStoreAsync(
-            context.UserId, context.CancellationToken);
-        List<string> lines = goods.Select(good =>
-            $"- @{good.Index} {good.Name}　{good.Price} 金币　库存 {(good.Stock < 0 ? "无限" : good.Stock.ToString(CultureInfo.InvariantCulture))}").ToList();
-        lines.Add("- /购买 @编号 [x数量]　·　同名物品会自动堆叠");
-        return CommandReplies.ListPage("🏪 铎京补给站", $"{goods.Count} 种商品", lines,
-            context.Page, "/商店", ["/背包", "/状态"]);
+            context.UserId, storeKey, context.CancellationToken);
+        if (goods.Count == 0)
+        {
+            return CommandReplies.Detail("🏪 商店",
+                "- 商店暂时没有商品\n- 可用：/商店（每日）、/商店1~4（常规）、/商店5~7（积分）",
+                null, ["/商店查看"]);
+        }
+
+        List<string> lines = [.. goods.Select(good =>
+        {
+            string stock = good.Stock < 0 ? "无限" : good.Stock.ToString(CultureInfo.InvariantCulture);
+            string quota = good.Quota > 0 ? $"　限购 {good.Bought}/{good.Quota}" : "";
+            string price = good.Currency == "免费" ? "免费" : $"{good.Price} {good.Currency}";
+            return $"- @{good.Index} {good.Name}　{price}　库存 {stock}{quota}";
+        })];
+        lines.Add("- /购买 @编号 [x数量]　·　作用于当前商店");
+        string title = storeKey is null ? "🏪 每日商店（每 4:00 刷新）"
+            : $"🏪 {StoreCatalog.Find(storeKey)?.Name ?? "商店"}";
+        return CommandReplies.ListPage(title, $"{goods.Count} 种商品", lines,
+            context.Page, storeKey is null ? "/商店" : $"/{StoreCatalog.Find(storeKey)?.Name}", ["/背包", "/状态"]);
     }
 
     private static async Task<BotReply> MarketAsync(CommandDependencies deps, CommandContext context)

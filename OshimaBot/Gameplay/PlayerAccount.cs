@@ -42,6 +42,24 @@ public sealed class PlayerAccount(CorePlayerRecord wallet)
         set => Wallet.SignedOn = value;
     }
 
+    public double ForgePoints
+    {
+        get => Wallet.ForgePoints;
+        set => Wallet.ForgePoints = value;
+    }
+
+    public double HorseRacingPoints
+    {
+        get => Wallet.HorseRacingPoints;
+        set => Wallet.HorseRacingPoints = value;
+    }
+
+    public double CooperativePoints
+    {
+        get => Wallet.CooperativePoints;
+        set => Wallet.CooperativePoints = value;
+    }
+
     public DateTime UpdatedAtUtc
     {
         get => Wallet.UpdatedAtUtc;

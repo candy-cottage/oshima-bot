@@ -22,27 +22,79 @@ public sealed class EconomyTests
     private const long Buyer = 43;
 
     [Fact]
-    public async Task Store_LazySeedsAndBuyWritesBalancedLedger()
+    public async Task Store_DailyHasFourRandomGoodsPerUser()
     {
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
 
         IReadOnlyList<StoreEntry> goods = await economy.GetStoreAsync(Seller);
-        Assert.Equal(GameplayRules.SeedStoreGoods.Count, goods.Count);
+        Assert.Equal(StoreCatalog.DailyGoodsCount, goods.Count);
         Assert.Equal(1, goods[0].Index);
+        Assert.All(goods, g =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(g.Name));
+            Assert.True(g.Price > 0);
+            Assert.True(g.Stock >= 1);        // 每日商店库存 1–2（魔法卡 1，消耗品 +3）
+        });
 
-        ActionResult buy = await economy.BuyAsync(Seller, 1, 2);
+        // 每个用户一份，互不相同（用另一个用户再取一次）
+        IReadOnlyList<StoreEntry> other = await economy.GetStoreAsync(Buyer);
+        Assert.Equal(StoreCatalog.DailyGoodsCount, other.Count);
+    }
+
+    [Fact]
+    public async Task Store_FixedShopSellsFreeGoodsOncePerUser()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+
+        // 慈善基金会：免费、每人限购 1
+        IReadOnlyList<StoreEntry> goods = await economy.GetStoreAsync(Seller, StoreCatalog.WelfareKey, default);
+        Assert.NotEmpty(goods);
+        StoreEntry good = goods[0];
+        Assert.Equal("免费", good.Currency);
+        Assert.Equal(1, good.Quota);
+
+        ActionResult first = await economy.BuyAsync(Seller, StoreCatalog.WelfareKey, 1, 1);
+        Assert.True(first.Ok, first.Title);
+
+        ActionResult second = await economy.BuyAsync(Seller, StoreCatalog.WelfareKey, 1, 1);
+        Assert.False(second.Ok);
+        Assert.Contains("限购", second.Title);
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        // 免费商品不记 store_buy 流水
+        Assert.Empty(await dbContext.LedgerEntries.Where(x => x.Reason == "store_buy").ToListAsync());
+        Assert.Equal(1, await dbContext.CoreItems.CountAsync(x => x.UserId == Seller));
+    }
+
+    [Fact]
+    public async Task Store_FixedShopDebitsCorrectCurrencyAndStock()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await SetCreditsAsync(db, Seller, 200_000);
+
+        // 武器商会 第 2 件是金币 60000，库存 4
+        IReadOnlyList<StoreEntry> goods = await economy.GetStoreAsync(Seller, StoreCatalog.WeaponsKey, default);
+        StoreEntry good = goods.Single(g => g.Price == 60_000);
+        Assert.Equal(4, good.Stock);
+
+        ActionResult buy = await economy.BuyAsync(Seller, StoreCatalog.WeaponsKey, good.Index, 1);
         Assert.True(buy.Ok, buy.Title);
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         CorePlayerRecord state = await dbContext.CorePlayers.FirstAsync(x => x.UserId == Seller);
         LedgerEntry entry = await dbContext.LedgerEntries.FirstAsync(x => x.Reason == "store_buy");
-        Assert.Equal(-goods[0].Price * 2, entry.Delta);
+        Assert.Equal(-60_000, entry.Delta);
         Assert.Equal(state.Credits, entry.BalanceAfter);
-        // 同名同品质物品会堆叠成一行，数量累加。
-        Assert.Equal(2, (await dbContext.CoreItems.SingleAsync(
-            x => x.UserId == Seller && x.CatalogId == "store")).Quantity);
+
+        IReadOnlyList<StoreEntry> after = await economy.GetStoreAsync(Seller, StoreCatalog.WeaponsKey, default);
+        Assert.Equal(3, after.Single(g => g.Price == 60_000).Stock);
     }
 
     [Fact]
@@ -50,19 +102,19 @@ public sealed class EconomyTests
     {
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
-        await economy.GetStoreAsync(Seller);
-        await db.Get<IPlayerService>().GetSnapshotAsync(Seller); // 懒建 player_state，便于设置余额
+        await db.Get<IPlayerService>().GetSnapshotAsync(Seller);
         await SetCreditsAsync(db, Seller, 0);
 
-        ActionResult result = await economy.BuyAsync(Seller, 1, 1);
+        ActionResult result = await economy.BuyAsync(Seller, StoreCatalog.WeaponsKey, 1, 1);
 
         Assert.False(result.Ok);
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         Assert.Empty(await dbContext.LedgerEntries.Where(x => x.Reason == "store_buy").ToListAsync());
-        Assert.Equal(0, await dbContext.CoreItems.CountAsync(x => x.UserId == Seller && x.CatalogId == "store"));
-        Assert.Equal(GameplayRules.SeedStoreGoods[0].Stock,
-            (await dbContext.StoreGoods.OrderBy(x => x.Id).FirstAsync()).Stock);
+        Assert.Equal(0, await dbContext.CoreItems.CountAsync(x => x.UserId == Seller));
+        // 失败时不扣库存
+        Assert.All(await dbContext.StoreGoods.Where(x => x.StoreKey == StoreCatalog.WeaponsKey).ToListAsync(),
+            good => Assert.Equal(0, good.SoldCount));
     }
 
     [Fact]
@@ -234,7 +286,7 @@ public sealed class EconomyTests
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
 
-        Assert.False((await economy.BuyAsync(0, 1, 1)).Ok);
+        Assert.False((await economy.BuyAsync(0, null, 1, 1)).Ok);
         Assert.False((await economy.ListOnMarketAsync(0, 1, 100)).Ok);
         Assert.False((await economy.BossAsync(0)).Ok);
 

@@ -846,9 +846,15 @@ public sealed class PlayerService(
         string reason, string refType, string refId)
     {
         if (delta == 0) return;
-        if (currency == "diamonds") account.Materials += delta;
-        else account.Credits += delta;
-        double balance = currency == "diamonds" ? account.Materials : account.Credits;
+        // credits / diamonds 之外，积分商店还有三种积分；都走同一套流水，便于对账。
+        double balance = currency switch
+        {
+            "diamonds" => account.Materials += delta,
+            "forge_points" => account.ForgePoints += delta,
+            "horse_points" => account.HorseRacingPoints += delta,
+            "coop_points" => account.CooperativePoints += delta,
+            _ => account.Credits += delta
+        };
         db.LedgerEntries.Add(new LedgerEntry
         {
             UserId = account.UserId, Currency = currency, Delta = delta, BalanceAfter = balance,

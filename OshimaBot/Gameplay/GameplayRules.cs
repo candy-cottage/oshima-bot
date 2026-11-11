@@ -97,6 +97,20 @@ public static class GameplayRules
     /// <summary>游戏日（Asia/Shanghai），签到/任务/运势全部以它为准，避免 UTC 跨日。</summary>
     public static string Today() => GameDay(DateTime.UtcNow);
 
+    /// <summary>
+    /// 商店日 key：旧版每日商店按本地 <c>Today.AddHours(4)</c> 刷新，
+    /// 所以凌晨 4 点前仍算前一天。返回 <c>yyyy-MM-dd</c>。
+    /// </summary>
+    public static string StoreDay(DateTime utcNow)
+    {
+        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), GameTimeZone);
+        DateTime boundary = local.Hour >= 4
+            ? local.Date.AddHours(4)
+            : local.Date.AddDays(-1).AddHours(4);
+        return DateOnly.FromDateTime(boundary).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
     /// <summary>把 UTC 时间换算成游戏日字符串；纯函数，便于配假时钟测试。</summary>
     public static string GameDay(DateTime utcNow)
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
@@ -381,14 +395,6 @@ public static class GameplayRules
 
     public static long MarketFee(long price)
         => Math.Max(1, price * MarketFeeRatePercent / 100);
-
-    /// <summary>系统商店的默认货架（懒建，不进 Migration）。</summary>
-    public static readonly IReadOnlyList<(string Name, long Price, int Stock)> SeedStoreGoods =
-    [
-        ("补给包", 120, -1),
-        ("精良装备箱", 260, -1),
-        ("史诗遗物匣", 500, 20)
-    ];
 
     public static string RankingBoardName(string board) => board.ToLowerInvariant() switch
     {

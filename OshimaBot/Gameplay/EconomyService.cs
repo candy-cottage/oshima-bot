@@ -13,8 +13,9 @@ namespace OshimaBot.Gameplay;
 
 public interface IEconomyService
 {
-    Task<IReadOnlyList<StoreEntry>> GetStoreAsync(long userId, CancellationToken cancellationToken = default);
-    Task<ActionResult> BuyAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
+    /// <param name="storeKey">商店 key；为空时用玩家上次查看的商店（默认每日商店）。</param>
+    Task<IReadOnlyList<StoreEntry>> GetStoreAsync(long userId, string? storeKey = null, CancellationToken cancellationToken = default);
+    Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MarketEntry>> GetMarketAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> ListOnMarketAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
     Task<ActionResult> DelistAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -91,66 +92,282 @@ public sealed class EconomyService(
 
     // ---------------- 商店 ----------------
 
-    private static async Task<List<StoreGood>> EnsureStoreAsync(BotDbContext db, CancellationToken ct)
+    /// <summary>
+    /// 取商店货架（旧版 <c>CheckDailyStore</c> / <c>Players.GetStore</c>）：
+    /// 常规与积分商店是全局固定货架；每日商店每个用户一份，4 件随机、4:00 刷新。
+    /// </summary>
+    private async Task<List<StoreGood>> EnsureStoreAsync(
+        BotDbContext db, string storeKey, long userId, CancellationToken ct)
     {
-        if (!await db.Stores.AnyAsync(x => x.Key == StoreKey, ct))
+        if (string.Equals(storeKey, StoreCatalog.DailyKey, StringComparison.OrdinalIgnoreCase))
         {
-            db.Stores.Add(new Store { Key = StoreKey, Name = "铎京补给站", Kind = "system", ConfigJson = "{}" });
+            return await EnsureDailyStoreAsync(db, userId, ct);
+        }
+
+        StoreSpec? spec = StoreCatalog.Find(storeKey);
+        if (spec is null) return [];
+
+        if (!await db.Stores.AnyAsync(x => x.Key == spec.Key, ct))
+        {
+            db.Stores.Add(new Store
+            {
+                Key = spec.Key, Name = spec.Name, Kind = spec.Kind.ToString(), ConfigJson = "{}"
+            });
             await db.SaveChangesAsync(ct);
         }
+
         List<StoreGood> goods = await db.StoreGoods
-            .Where(x => x.StoreKey == StoreKey).OrderBy(x => x.Id).ToListAsync(ct);
-        if (goods.Count == 0)
+            .Where(x => x.StoreKey == spec.Key && x.OwnerUserId == 0)
+            .OrderBy(x => x.Slot).ThenBy(x => x.Id).ToListAsync(ct);
+        if (goods.Count > 0) return goods;
+
+        int slot = 0;
+        foreach (StoreGoodSpec item in spec.Goods)
         {
-            foreach ((string name, long price, int stock) in GameplayRules.SeedStoreGoods)
+            db.StoreGoods.Add(new StoreGood
             {
-                db.StoreGoods.Add(new StoreGood
-                {
-                    StoreKey = StoreKey, ItemCatalogId = name,
-                    PriceCurrency = "credits", Price = price, Stock = stock, Quota = -1
-                });
-            }
+                StoreKey = spec.Key, Slot = ++slot, OwnerUserId = 0,
+                Name = item.Name, ItemCatalogId = item.CatalogId,
+                PriceCurrency = StoreCatalog.LedgerCurrency(item.Currency),
+                Price = item.Price, Stock = item.Stock, Quota = item.Quota,
+                SoldCount = 0, UsersBuyCountJson = "{}"
+            });
+        }
+        await db.SaveChangesAsync(ct);
+        return await db.StoreGoods
+            .Where(x => x.StoreKey == spec.Key && x.OwnerUserId == 0)
+            .OrderBy(x => x.Slot).ThenBy(x => x.Id).ToListAsync(ct);
+    }
+
+    private async Task<List<StoreGood>> EnsureDailyStoreAsync(BotDbContext db, long userId, CancellationToken ct)
+    {
+        string storeDay = GameplayRules.StoreDay(clock.UtcNow);
+        string storeKey = $"{StoreCatalog.DailyKey}:{userId}";
+
+        if (!await db.Stores.AnyAsync(x => x.Key == storeKey, ct))
+        {
+            db.Stores.Add(new Store
+            {
+                Key = storeKey, Name = "每日商店", Kind = nameof(StoreKind.Daily),
+                RefreshAtUtc = clock.UtcNow, ConfigJson = "{}"
+            });
             await db.SaveChangesAsync(ct);
-            goods = await db.StoreGoods.Where(x => x.StoreKey == StoreKey).OrderBy(x => x.Id).ToListAsync(ct);
+        }
+
+        Store store = await db.Stores.FirstAsync(x => x.Key == storeKey, ct);
+        List<StoreGood> goods = await db.StoreGoods
+            .Where(x => x.StoreKey == storeKey).OrderBy(x => x.Slot).ToListAsync(ct);
+
+        // 用「商店日」判断是否该刷新：跨过本地 4:00 就重开一摊。
+        bool stale = goods.Count == 0
+            || goods.Any(x => !string.Equals(x.RefreshAtUtc?.ToString("yyyy-MM-dd"), storeDay, StringComparison.Ordinal));
+        if (!stale) return goods;
+
+        db.StoreGoods.RemoveRange(goods);
+        await db.SaveChangesAsync(ct);
+
+        goods = GenerateDailyGoods(storeKey, storeDay);
+        db.StoreGoods.AddRange(goods);
+        store.RefreshAtUtc = clock.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return goods;
+    }
+
+    /// <summary>
+    /// 旧版每日商店生成：4 件商品，1/3 概率是魔法卡，其余从抽卡池随机；
+    /// 价格按品质区间随机，库存 1–2（魔法卡 ×0.7 且库存 1，消耗品按品阶换 formula 并 +3）。
+    /// </summary>
+    private List<StoreGood> GenerateDailyGoods(string storeKey, string storeDay)
+    {
+        List<FunGame.Core.Entity.Item> drawPool = FunGameService.AllItems
+            .Where(GameplayRules.IsDrawable).ToList();
+        List<FunGame.Core.Entity.Item> magicCards = FunGameService.AllItems
+            .Where(i => i.ItemType == FunGame.Core.Library.Constant.ItemType.MagicCard).ToList();
+
+        List<StoreGood> goods = [];
+        DateTime refreshAt = DateTime.ParseExact(storeDay, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        for (int slot = 1; slot <= StoreCatalog.DailyGoodsCount; slot++)
+        {
+            bool wantMagicCard = random.Next(3) < 1 && magicCards.Count > 0;
+            List<FunGame.Core.Entity.Item> pool = wantMagicCard ? magicCards : drawPool;
+            if (pool.Count == 0) continue;
+
+            FunGame.Core.Entity.Item pick = pool[random.Next(pool.Count)];
+            (int min, int max) = StoreCatalog.PriceRange(pick.QualityType);
+            long price = random.Next(min, Math.Max(min + 1, max));
+            int stock = random.Next(1, 3);                       // 1–2
+
+            if (pick.ItemType == FunGame.Core.Library.Constant.ItemType.MagicCard)
+            {
+                price = (long)(price * 0.7);
+                stock = 1;
+            }
+            else if (pick.ItemType == FunGame.Core.Library.Constant.ItemType.Consumable)
+            {
+                int previous = (int)pick.QualityType - 1;
+                int current = (int)pick.QualityType;
+                int low = 300 * (1 + previous * previous - previous);
+                int high = 300 * (1 + current * current - current);
+                price = random.Next(low, Math.Max(low + 1, high));
+                stock += 3;
+            }
+            if (price <= 0)
+            {
+                int tier = (int)pick.QualityType;
+                price = (long)((random.NextDouble() + 0.1)
+                    * random.Next(1_000, 5_000)
+                    * random.Next(tier + 2, 6 + tier));
+            }
+
+            goods.Add(new StoreGood
+            {
+                StoreKey = storeKey, Slot = slot, OwnerUserId = 0,
+                Name = pick.Name,
+                ItemCatalogId = pick.Id.ToString(CultureInfo.InvariantCulture),
+                PriceCurrency = "credits", Price = price, Stock = stock, Quota = 0,
+                SoldCount = 0, UsersBuyCountJson = "{}",
+                RefreshAtUtc = refreshAt
+            });
         }
         return goods;
     }
 
-    public Task<IReadOnlyList<StoreEntry>> GetStoreAsync(long userId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<StoreEntry>> GetStoreAsync(long userId, string? storeKey = null,
+        CancellationToken cancellationToken = default)
         => ReadAsync<IReadOnlyList<StoreEntry>>(async (db, ct) =>
         {
-            List<StoreGood> goods = await EnsureStoreAsync(db, ct);
-            return goods.Select((good, i) => new StoreEntry(
-                i + 1, good.Id, good.ItemCatalogId, good.Price, good.Stock)).ToArray();
+            PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
+            string key = ResolveStoreKey(storeKey, account);
+            List<StoreGood> goods = await EnsureStoreAsync(db, key, userId, ct);
+            if (goods.Count == 0) return [];
+
+            // 记住「上次看的店」，/购买 不带参数时就用它（旧版 UserLastVisitStore）。
+            if (!string.Equals(account.Wallet.LastStoreKey, key, StringComparison.Ordinal))
+            {
+                account.Wallet.LastStoreKey = key;
+                await db.SaveChangesAsync(ct);
+            }
+
+            return [.. goods.Select((good, i) => new StoreEntry(
+                i + 1, good.Id, good.Name,
+                StoreCatalog.CurrencyName(ParseCurrency(good.PriceCurrency)),
+                good.Price,
+                good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount),
+                good.Quota, ReadBoughtCount(good, userId)))];
         }, cancellationToken);
 
-    public Task<ActionResult> BuyAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
+    public Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity,
+        CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            List<StoreGood> goods = await EnsureStoreAsync(db, ct);
+            string key = ResolveStoreKey(storeKey, state);
+            List<StoreGood> goods = await EnsureStoreAsync(db, key, userId, ct);
             if (index <= 0 || index > goods.Count) return NoListing("商品");
+
             StoreGood good = goods[index - 1];
-            int amount = Math.Clamp(quantity, 1, 10);
-            if (good.Stock >= 0 && good.Stock < amount)
+            int amount = Math.Clamp(quantity, 1, 99);
+            int remaining = good.Stock < 0 ? -1 : good.Stock - good.SoldCount;
+            if (remaining >= 0 && remaining < amount)
             {
-                return ActionResult.Fail("库存不足", "没有扣除金币，也没有发放物品",
-                    "减少购买数量或改买其它商品", "/商店");
+                return ActionResult.Fail("库存不足", "没有扣款，也没有发放物品",
+                    $"{good.Name} 只剩 {remaining} 件，想买 {amount} 件", "/商店");
             }
+            int bought = ReadBoughtCount(good, userId);
+            if (good.Quota > 0 && bought + amount > good.Quota)
+            {
+                return ActionResult.Fail("超出限购", "没有扣款，也没有发放物品",
+                    $"{good.Name} 每人限购 {good.Quota} 件，你已买 {bought} 件", "/商店");
+            }
+
+            StoreCurrency currency = ParseCurrency(good.PriceCurrency);
             long cost = good.Price * amount;
-            if (state.Credits < cost)
+            if (currency != StoreCurrency.Free)
             {
-                return ActionResult.Fail("金币不足", "没有扣除金币，也没有发放物品",
-                    $"需要 {cost} 金币，当前 {state.Credits}", "/签到");
+                double balance = StoreCatalog.GetBalance(currency, state);
+                if (balance < cost)
+                {
+                    return ActionResult.Fail($"{StoreCatalog.CurrencyName(currency)}不足", "没有扣款，也没有发放物品",
+                        $"需要 {cost}，当前 {balance:0.##}", "/签到");
+                }
+                PlayerService.ApplyCurrency(db, state, -cost, StoreCatalog.LedgerCurrency(currency),
+                    "store_buy", "store_good", good.Id.ToString(CultureInfo.InvariantCulture));
             }
-            PlayerService.ApplyCurrency(db, state, -cost, "credits", "store_buy", "store_good", good.Id.ToString(CultureInfo.InvariantCulture));
-            if (good.Stock >= 0) good.Stock -= amount;
-            int quality = good.Price >= 500 ? 4 : good.Price >= 260 ? 2 : 1;
-            await PlayerService.AddItemAsync(db, userId, good.ItemCatalogId, quality, amount, ct, "store");
+
+            good.SoldCount += amount;
+            WriteBoughtCount(good, userId, bought + amount);
+
+            // 「钻石」是旧版赛马积分商店里的货币型商品，购买后直接进 Materials。
+            if (good.ItemCatalogId.StartsWith("currency:", StringComparison.Ordinal))
+            {
+                string target = good.ItemCatalogId["currency:".Length..];
+                PlayerService.ApplyCurrency(db, state, amount, target, "store_exchange", "store_good",
+                    good.Id.ToString(CultureInfo.InvariantCulture));
+            }
+            else if (!string.IsNullOrWhiteSpace(good.ItemCatalogId))
+            {
+                await PlayerService.AddItemAsync(db, userId, good.Name, 1, amount, ct, good.ItemCatalogId);
+            }
+            else
+            {
+                // 内容包缺同名物品：按名称造占位物品（旧商品目录里有不少这类）。
+                await PlayerService.AddItemAsync(db, userId, good.Name, 1, amount, ct, "store");
+            }
+
+            int left = good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount);
             return ActionResult.Success("🛒 购买成功",
-                $"{good.ItemCatalogId} ×{amount} · 花费 {cost} 金币",
-                [$"- 当前金币：{state.Credits}　库存：{(good.Stock < 0 ? "无限" : good.Stock.ToString(CultureInfo.InvariantCulture))}",
-                    "- 已写入账本 ledger"], ["/商店", "/背包", "/状态"]);
+                $"{good.Name} ×{amount}"
+                    + (currency == StoreCurrency.Free ? " · 免费" : $" · 花费 {cost} {StoreCatalog.CurrencyName(currency)}"),
+                [
+                    $"- 余额：金币 {state.Credits:0.##}　钻石 {state.Materials:0.##}　锻 {state.ForgePoints:0.##}"
+                        + $"　赛马 {state.HorseRacingPoints:0.##}　共斗 {state.CooperativePoints:0.##}",
+                    $"- 库存：{(left < 0 ? "无限" : left.ToString(CultureInfo.InvariantCulture))}"
+                        + (good.Quota > 0 ? $"　已购 {bought + amount}/{good.Quota}" : ""),
+                    "- 已写入账本 ledger"
+                ], ["/商店", "/背包", "/状态"]);
         }, cancellationToken);
+
+    private string ResolveStoreKey(string? storeKey, PlayerAccount state)
+    {
+        if (!string.IsNullOrWhiteSpace(storeKey)) return storeKey;
+        return string.IsNullOrWhiteSpace(state.Wallet.LastStoreKey)
+            ? StoreCatalog.DailyKey : state.Wallet.LastStoreKey;
+    }
+
+    private static StoreCurrency ParseCurrency(string currency) => currency switch
+    {
+        "credits" => StoreCurrency.Credits,
+        "diamonds" => StoreCurrency.Diamonds,
+        "forge_points" => StoreCurrency.ForgePoints,
+        "horse_points" => StoreCurrency.HorseRacingPoints,
+        "coop_points" => StoreCurrency.CooperativePoints,
+        _ => StoreCurrency.Free
+    };
+
+    private static int ReadBoughtCount(StoreGood good, long userId)
+    {
+        Dictionary<string, int> map = ParseBuyCounts(good);
+        return map.GetValueOrDefault(userId.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void WriteBoughtCount(StoreGood good, long userId, int count)
+    {
+        Dictionary<string, int> map = ParseBuyCounts(good);
+        map[userId.ToString(CultureInfo.InvariantCulture)] = count;
+        good.UsersBuyCountJson = JsonSerializer.Serialize(map);
+    }
+
+    private static Dictionary<string, int> ParseBuyCounts(StoreGood good)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, int>>(good.UsersBuyCountJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 
     // ---------------- 市场 ----------------
 
