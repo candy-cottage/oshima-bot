@@ -25,7 +25,8 @@ public static class CommandCatalog
         // ---- P1：旅人存档 ----
         "register", "status", "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
-        "use", "salvage", "lock", "unlock", "equip", "unequip",
+        "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
+        "lock", "unlock", "equip", "unequip",
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
         "normal-attack-upgrade", "normal-attack-upgrade-info",
         "skill-upgrade", "skill-upgrade-info", "rename-character",
@@ -245,6 +246,12 @@ public static class CommandCatalog
             description: "查看背包，@编号 用于其它指令", group: CommandGroups.Player,
             handler: context => BagAsync(deps, context)),
 
+        "search" => new DelegateCommand(
+            key: "search", name: "库存搜索", aliases: ["库存查询", "search"], usage: "/库存搜索 <关键词> [p2]",
+            description: "按名称或描述搜索背包（旧版库存搜索1/2 合并）", group: CommandGroups.Player,
+            prefixMatch: true,
+            handler: context => SearchAsync(deps, context)),
+
         "use" => new DelegateCommand(
             key: "use", name: "使用", aliases: ["use"], usage: "/使用 @1 [x2]",
             description: "使用物品换取旅人经验", group: CommandGroups.Player,
@@ -256,6 +263,52 @@ public static class CommandCatalog
             description: "分解未锁定物品换取金币", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.SalvageAsync(
                 context.UserId, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
+
+        "salvage-quality" => new DelegateCommand(
+            key: "salvage-quality", name: "品质分解", aliases: ["按品质分解"], usage: "/品质分解 <品质 0-6>",
+            description: "按品质批量分解背包里的未锁定物品", group: CommandGroups.Player,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int quality) || quality < 0 || quality > 6)
+                {
+                    return CommandReplies.Error("缺少或无效的品质序号", "没有分解任何物品",
+                        "用法：/品质分解 0　（0 普通 / 1 优秀 / 2 稀有 / 3 史诗 / 4 传说 / 5 神话 / 6 不朽）",
+                        "/背包");
+                }
+                return CommandReplies.FromResult(await deps.Players.SalvageByQualityAsync(
+                    context.UserId, quality, context.CancellationToken));
+            }),
+
+        "exchange" => new DelegateCommand(
+            key: "exchange", name: "兑换金币", aliases: ["兑换", "exchange"], usage: "/兑换金币 <钻石数>",
+            description: $"钻石换金币（{GameplayRules.ExchangeMaterialUnit} 钻 = {GameplayRules.ExchangeCreditsPerUnit} 金币）",
+            group: CommandGroups.Player, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int materials) || materials < 0)
+                {
+                    return CommandReplies.Error("缺少或无效的钻石数量", "没有兑换任何金币",
+                        $"用法：/兑换金币 100（最低 {GameplayRules.ExchangeMaterialUnit} 钻一档）", "/状态");
+                }
+                return CommandReplies.FromResult(await deps.Players.ExchangeCreditsAsync(
+                    context.UserId, materials, context.CancellationToken));
+            }),
+
+        "use-magic-card" => new DelegateCommand(
+            key: "use-magic-card", name: "使用魔法卡", aliases: ["魔法卡使用"], usage: "/使用魔法卡 @卡 [@卡包]",
+            description: "把魔法卡打进同品质的魔法卡包", group: CommandGroups.Player,
+            audit: true, prefixMatch: true,
+            handler: async context => CommandReplies.FromResult(await deps.Players.UseMagicCardAsync(
+                context.UserId, RefIndex(context), RefIndex(context, 1), context.CancellationToken))),
+
+        "craft-magic-pack" => new DelegateCommand(
+            key: "craft-magic-pack", name: "合成魔法卡", aliases: ["合成卡包", "合成魔法卡包"],
+            usage: "/合成魔法卡 @1 @2 @3",
+            description: "3 张魔法卡合成一个魔法卡包", group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Players.CraftMagicCardPackAsync(
+                context.UserId, RefIndex(context), RefIndex(context, 1), RefIndex(context, 2),
+                context.CancellationToken))),
 
         "lock" => new DelegateCommand(
             key: "lock", name: "锁定", aliases: ["lock"], usage: "/锁定 @1",
@@ -724,9 +777,33 @@ public static class CommandCatalog
             $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · {item.Name} ×{item.Quantity}"
             + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 背包空空如也，先 /抽卡 或 /签到");
-        lines.Add("- /使用 @编号 [x数量] · /分解 @编号 · /锁定 @编号 · /装备 @编号");
+        lines.Add("- /使用 @编号 · /分解 @编号 · /品质分解 <0-6> · /锁定 @编号");
+        lines.Add("- /库存搜索 <关键词> · /兑换金币 <钻石> · /合成魔法卡 @1 @2 @3");
         return CommandReplies.ListPage("🎒 背包", $"{items.Count} 格", lines, context.Page,
             "/背包", ["/抽卡", "/状态"]);
+    }
+
+    private static async Task<BotReply> SearchAsync(CommandDependencies deps, CommandContext context)
+    {
+        string keyword = context.ArgumentText.Trim();
+        if (keyword.Length == 0)
+        {
+            return CommandReplies.Error("搜索关键词为空", "没有检索背包",
+                "用法：/库存搜索 火之矢　（同时匹配名称与描述）", "/背包");
+        }
+        IReadOnlyList<BagSearchEntry> hits = await deps.Players.SearchBagAsync(
+            context.UserId, keyword, context.CancellationToken);
+        List<string> lines = hits.Select(hit =>
+            $"- @{hit.Index} {GameplayRules.QualityName(hit.Quality)} · {hit.Name} ×{hit.Quantity}"
+            + (hit.Locked ? " 🔒" : "")
+            + (string.IsNullOrWhiteSpace(hit.Description) ? "" : $"　{hit.Description}")).ToList();
+        if (lines.Count == 0)
+        {
+            lines.Add($"- 背包里没有名称或描述包含「{keyword}」的物品");
+        }
+        lines.Add("- 编号与 /背包 一致：/使用 @编号 · /分解 @编号 · /锁定 @编号");
+        return CommandReplies.ListPage("🔍 库存搜索", $"「{keyword}」· 命中 {hits.Count} 格",
+            lines, context.Page, $"/库存搜索 {keyword}", ["/背包", "/状态"]);
     }
 
     private static async Task<BotReply> CharactersAsync(CommandDependencies deps, CommandContext context)

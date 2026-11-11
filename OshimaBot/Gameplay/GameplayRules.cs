@@ -132,6 +132,37 @@ public static class GameplayRules
         _ => 128L * Math.Max(1, quantity)
     };
 
+    // ---- 旧版对齐：钻石兑换金币（ExchangeCredits）----
+    // 旧版：reduce = max(10, 请求值)，再向下取整到 10 的倍数；reward = reduce / 10 * 2000。
+    // 帮助文案写的是「1 钻石 = 200 金币」，实际兑换按 10 钻一档结算。
+    public const int ExchangeMaterialUnit = 10;
+    public const int ExchangeCreditsPerUnit = 2_000;
+
+    // ---- 旧版对齐：魔法卡（UseMagicCard / ConflateMagicCardPack）----
+    /// <summary>一个魔法卡包最多容纳的魔法数量。</summary>
+    public const int MagicCardPackMaxMagics = 3;
+
+    /// <summary>魔法等级溢出时的补偿：每溢出 1 级补 10 钻石（旧版写了这句，但 diff 恒为 0 的死代码）。</summary>
+    public const int MagicCardLevelCompensationMaterials = 10;
+
+    /// <summary>
+    /// 钻石 → 金币的兑换方案：先把请求值抬到最低 10、再向下取整到 10 的倍数，然后按 10 钻 = 2000 金币折算。
+    /// <para>与旧版 <c>ExchangeCredits</c> 同口径：请求 0/7 → 10，请求 25 → 20，请求 100 → 100。</para>
+    /// </summary>
+    public static (int Materials, long Credits) ExchangePlan(int requested)
+    {
+        int reduce = Math.Max(ExchangeMaterialUnit, requested);
+        reduce -= reduce % ExchangeMaterialUnit;
+        return (reduce, (long)reduce / ExchangeMaterialUnit * ExchangeCreditsPerUnit);
+    }
+
+    /// <summary>
+    /// 把可注入随机源适配成 <see cref="Random"/>——内容包里的魔法卡生成器（<c>GenerateMagicCard</c>、
+    /// <c>ConflateMagicCardPack</c>）签名要求 <see cref="Random"/>，这里用一次抽样做种子，
+    /// 保证 <see cref="SeededRandomSource"/> 下仍可复现。
+    /// </summary>
+    public static Random NewRandom(IRandomSource source) => new(source.Next(int.MaxValue));
+
     /// <summary>
     /// 突破材料需求（照搬旧版 <c>FunGameConstant.LevelBreakNeedyList</c>）。
     /// <para>参数是**突破后的阶数**，与旧版 <c>LevelBreakNeedyList[LevelBreak + 1]</c> 一致。

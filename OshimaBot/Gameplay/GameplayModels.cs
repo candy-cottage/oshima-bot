@@ -11,6 +11,10 @@ public sealed record BagEntry(
     int Index, long Id, string Name, string CatalogId, int Quantity,
     int Quality, bool Locked, bool Bound, bool Equipped);
 
+/// <summary>库存搜索结果：<see cref="Index"/> 与 /背包 的 @编号一致，可直接用于其它指令。</summary>
+public sealed record BagSearchEntry(
+    int Index, long Id, string Name, string Description, int Quantity, int Quality, bool Locked);
+
 public sealed record CharacterEntry(
     int Index, long Id, string Name, int Level, long Exp,
     int BreakLevel, bool IsMain, int EquipmentCount);

@@ -164,6 +164,33 @@ public static class ItemStore
         return new PlayerItem(record, item);
     }
 
+    /// <summary>
+    /// 按**现成的 Core 快照**入库（魔法卡/魔法卡包这类运行时生成的物品）。
+    /// <para>与 <see cref="AddAsync"/> 的区别：不并堆叠、不按模板重建——技能、次数、描述都要原样保留，
+    /// 所以每张魔法卡都是独立一行。</para>
+    /// </summary>
+    public static PlayerItem AddSnapshot(
+        BotDbContext db, long userId, Item item, string catalogId, int quantity = 1)
+    {
+        CoreItemRecord record = new()
+        {
+            Guid = item.Guid.ToString(),
+            UserId = userId,
+            CatalogId = catalogId,
+            Quality = (int)item.QualityType,
+            Price = item.Price,
+            IsLock = item.IsLock,
+            IsTradable = item.IsTradable,
+            ItemType = (int)item.ItemType,
+            EquipSlotType = (int)item.EquipSlotType,
+            Quantity = Math.Max(1, quantity),
+            UpdatedAtUtc = DateTime.UtcNow,
+            SnapshotJson = JsonSerializer.Serialize(item, Options)
+        };
+        db.CoreItems.Add(record);
+        return new PlayerItem(record, item);
+    }
+
     /// <summary>按名字统计持有数量（跨堆叠），突破材料校验用。</summary>
     public static async Task<Dictionary<string, int>> CountByNamesAsync(
         BotDbContext db, long userId, IReadOnlyCollection<string> names, CancellationToken ct)

@@ -18,8 +18,32 @@ public interface IPlayerService
     /// <param name="useMaterial">true = 钻石抽卡（5/次），false = 金币抽卡（1000/次）；旧版是两条独立通道。</param>
     Task<ActionResult> GachaAsync(long userId, int count, bool useMaterial, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BagEntry>> GetBagAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>库存搜索：按名称或描述匹配关键词，返回结果保留 /背包 的 @编号。</summary>
+    Task<IReadOnlyList<BagSearchEntry>> SearchBagAsync(long userId, string keyword,
+        CancellationToken cancellationToken = default);
+
     Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
     Task<ActionResult> SalvageAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
+
+    /// <summary>按品质档位（0–6，对应 White…Gold）批量分解背包里可分解的物品。</summary>
+    Task<ActionResult> SalvageByQualityAsync(long userId, int qualityIndex,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>钻石兑换金币：10 钻一档，每档 2000 金币（旧版 ExchangeCredits）。</summary>
+    Task<ActionResult> ExchangeCreditsAsync(long userId, int materials,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 把魔法卡打进魔法卡包。<paramref name="packIndex"/> 为 0 时作用于主战角色已装备的卡包。
+    /// </summary>
+    Task<ActionResult> UseMagicCardAsync(long userId, int cardIndex, int packIndex,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>3 张魔法卡合成一个魔法卡包。</summary>
+    Task<ActionResult> CraftMagicCardPackAsync(long userId, int first, int second, int third,
+        CancellationToken cancellationToken = default);
+
     Task<ActionResult> SetLockAsync(long userId, int index, bool locked, CancellationToken cancellationToken = default);
     Task<ActionResult> EquipAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> UnequipAsync(long userId, string slot, CancellationToken cancellationToken = default);
@@ -99,6 +123,29 @@ public sealed class PlayerService(
                 i + 1, item.Id, ReadName(item), item.CatalogId, item.Quantity,
                 item.Quality, item.Locked, item.Bound, false)).ToArray();
         }, cancellationToken);
+
+    public Task<IReadOnlyList<BagSearchEntry>> SearchBagAsync(long userId, string keyword,
+        CancellationToken cancellationToken = default)
+        => userId <= 0
+            ? Task.FromResult<IReadOnlyList<BagSearchEntry>>([])
+            : ReadAsync(async (db, ct) =>
+            {
+                await PlayerService.EnsureAsync(db, userId, ct);
+                List<PlayerItem> items = await ItemStore.ListAsync(db, userId, ct);
+                List<BagSearchEntry> result = [];
+                for (int i = 0; i < items.Count; i++)
+                {
+                    PlayerItem item = items[i];
+                    string name = ReadName(item);
+                    string description = item.Item.Description ?? "";
+                    // 旧版两条入口：库存搜索2 只比名称，库存搜索 连描述一起比。这里合并为后者（前者是它的子集）。
+                    if (!name.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+                        && !description.Contains(keyword, StringComparison.OrdinalIgnoreCase)) continue;
+                    result.Add(new BagSearchEntry(
+                        i + 1, item.Id, name, Snippet(description), item.Quantity, item.Quality, item.Locked));
+                }
+                return (IReadOnlyList<BagSearchEntry>)result;
+            }, cancellationToken);
 
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<IReadOnlyList<CharacterEntry>>([]) : ReadAsync(async (db, ct) =>
@@ -318,14 +365,30 @@ public sealed class PlayerService(
             return $"{qualityName} · 角色【{created.Name}】";
         }
 
+        // 魔法卡与魔法卡包在内容包里没有模板——旧版就是按抽到的品质当场生成的，
+        // 这里同样走内容包的 GenerateMagicCard / GenerateMagicCardPack（3 张卡合包）。
+        if (kind is GameplayRules.GachaKind.MagicCard or GameplayRules.GachaKind.MagicCardPack)
+        {
+            Random local = GameplayRules.NewRandom(random);
+            QualityType rolled = GameplayRules.QualityTypeOf(quality);
+            if (kind == GameplayRules.GachaKind.MagicCard)
+            {
+                Item card = FunGameService.GenerateMagicCard(local, rolled);
+                ItemStore.AddSnapshot(db, state.UserId, card, "magic-card");
+                return $"{qualityName} · 魔法卡【{card.Name}】";
+            }
+            Item? pack = FunGameService.GenerateMagicCardPack(local, GameplayRules.MagicCardPackMaxMagics, rolled);
+            if (pack is null) return $"{qualityName} · 魔法卡包（生成失败）";
+            ItemStore.AddSnapshot(db, state.UserId, pack, "magic-card-pack");
+            return $"{qualityName} · 魔法卡包【{pack.Name}】";
+        }
+
         ItemType? wanted = kind switch
         {
-            GameplayRules.GachaKind.MagicCardPack => ItemType.MagicCardPack,
             GameplayRules.GachaKind.Weapon => ItemType.Weapon,
             GameplayRules.GachaKind.Armor => ItemType.Armor,
             GameplayRules.GachaKind.Shoes => ItemType.Shoes,
             GameplayRules.GachaKind.Accessory => ItemType.Accessory,
-            GameplayRules.GachaKind.MagicCard => ItemType.MagicCard,
             _ => null
         };
 
@@ -425,6 +488,239 @@ public sealed class PlayerService(
                 $"{name} ×{amount} · 钻石 +{materials}",
                 [$"- 品质：{qualityName}　当前钻石：{state.Materials}", "- 已写入账本 ledger，可对账"],
                 ["/背包", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> SalvageByQualityAsync(long userId, int qualityIndex,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            // 旧版 DecomposeItem3：品质索引直接用 QualityType 的整数值（White 0 … Gold 6）。
+            if (qualityIndex < 0 || qualityIndex > (int)QualityType.Gold)
+            {
+                return ActionResult.Fail("品质序号无效", "没有分解任何物品",
+                    $"可用 0–6：{string.Join(" / ", Enumerable.Range(0, 7).Select(i => $"{i} {GameplayRules.QualityName(i + 1)}"))}",
+                    "/背包");
+            }
+            int tier = qualityIndex + 1;
+            string qualityName = GameplayRules.QualityName(tier);
+            List<PlayerItem> items = await ItemStore.ListAsync(db, userId, ct);
+            // 旧版过滤条件：同品质、未装备、未上锁、未在交易中；本版装备不在背包里，另加「未绑定」。
+            List<PlayerItem> targets = [.. items.Where(x => x.Quality == tier && !x.Locked && !x.Bound)];
+            int units = targets.Sum(x => x.Quantity);
+            if (units == 0)
+            {
+                return ActionResult.Fail($"背包里没有可分解的{qualityName}物品", "没有分解任何物品",
+                    "只有未锁定、未绑定的物品才会被批量分解", "/背包");
+            }
+
+            long materials = GameplayRules.SalvageMaterials(tier, units);
+            ApplyCurrency(db, state, materials, "diamonds", "salvage_quality", "quality",
+                qualityIndex.ToString(CultureInfo.InvariantCulture));
+            foreach (PlayerItem item in targets) ItemStore.Remove(db, item);
+
+            List<string> lines =
+            [
+                $"- 分解 {targets.Count} 种共 {units} 件{qualityName}物品",
+                $"- 钻石 +{materials}　当前钻石：{state.Materials:0.##}",
+                "- 已写入账本 ledger，可对账"
+            ];
+            if (targets.Count <= 8)
+            {
+                lines.InsertRange(0, targets.Select(x => $"- {ReadName(x)} ×{x.Quantity}"));
+            }
+            return ActionResult.Success("♻️ 品质分解完成", $"{qualityName} ×{units} · 钻石 +{materials}",
+                lines, ["/背包", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> ExchangeCreditsAsync(long userId, int materials,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            (int reduce, long reward) = GameplayRules.ExchangePlan(materials);
+            if (state.Materials < reduce)
+            {
+                return ActionResult.Fail("钻石不足", "没有兑换任何金币",
+                    $"本次需要 {reduce} 钻（最低 {GameplayRules.ExchangeMaterialUnit} 钻一档），"
+                    + $"当前 {state.Materials:0.##} 钻", "/签到");
+            }
+            string refId = clock.Today();
+            ApplyCurrency(db, state, -reduce, "diamonds", "exchange", "exchange", refId);
+            ApplyCurrency(db, state, reward, "credits", "exchange", "exchange", refId);
+            return ActionResult.Success("💱 兑换完成",
+                $"{reduce} 钻 → {reward} 金币",
+                [
+                    $"- 汇率：{GameplayRules.ExchangeMaterialUnit} 钻 = {GameplayRules.ExchangeCreditsPerUnit} 金币",
+                    $"- 当前金币：{state.Credits:0.##}　钻石：{state.Materials:0.##}",
+                    "- 不足一档的零头会保留，不会被扣掉"
+                ], ["/状态", "/商店"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> UseMagicCardAsync(long userId, int cardIndex, int packIndex,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            PlayerItem? card = await ItemByIndexAsync(db, userId, cardIndex, ct);
+            if (card is null) return NoSuchItem(cardIndex);
+            if (card.Item.ItemType != ItemType.MagicCard)
+            {
+                return ActionResult.Fail("这个物品不是魔法卡", "没有使用任何魔法卡",
+                    $"{ReadName(card)} 是{ItemSet.GetItemTypeName(card.Item.ItemType)}，"
+                    + "魔法卡请用 /使用 @编号", "/背包");
+            }
+            if (card.Locked)
+            {
+                return ActionResult.Fail("魔法卡已锁定", "没有使用任何魔法卡",
+                    $"先 /解锁 @{cardIndex}", "/背包");
+            }
+            if (card.Item.RemainUseTimes <= 0)
+            {
+                return ActionResult.Fail("这张魔法卡的次数已用完", "没有使用任何魔法卡",
+                    "用 /合成魔法卡 把剩余的卡合成卡包", "/背包");
+            }
+            if (card.Item.Skills.Active is null)
+            {
+                return ActionResult.Fail("这张魔法卡没有任何魔法", "没有使用任何魔法卡",
+                    "内容包里这张卡是空卡，换一张试试", "/背包");
+            }
+
+            // 目标卡包：显式给编号就作用于背包里的卡包，否则作用于主战角色已装备的卡包。
+            Item? pack = null;
+            PlayerItem? packRow = null;
+            PlayerCharacter? main = null;
+            if (packIndex > 0)
+            {
+                packRow = await ItemByIndexAsync(db, userId, packIndex, ct);
+                if (packRow is null) return NoSuchItem(packIndex);
+                if (packRow.Item.ItemType != ItemType.MagicCardPack)
+                {
+                    return ActionResult.Fail("目标不是魔法卡包", "没有使用任何魔法卡",
+                        $"@{packIndex} 是{ItemSet.GetItemTypeName(packRow.Item.ItemType)}", "/背包");
+                }
+                pack = packRow.Item;
+            }
+            else
+            {
+                main = await MainCharacterAsync(db, userId, ct);
+                pack = main?.Core.EquipSlot.MagicCardPack;
+                if (pack is null)
+                {
+                    return ActionResult.Fail("主战角色没有装备魔法卡包", "没有使用任何魔法卡",
+                        "先 /装备 @编号 装上卡包，或 /使用魔法卡 @卡编号 @卡包编号 直接指定", "/我的角色");
+                }
+            }
+
+            if (card.Item.QualityType != pack.QualityType)
+            {
+                return ActionResult.Fail("品质不一致", "没有使用任何魔法卡",
+                    $"魔法卡是{GameplayRules.QualityName(card.Quality)}，"
+                    + $"卡包是{GameplayRules.QualityName(GameplayRules.QualityTierOf(pack.QualityType))}；"
+                    + "只能对相同品质的魔法卡包使用魔法卡", "/背包");
+            }
+
+            Skill magic = card.Item.Skills.Active;
+            string packName = string.IsNullOrWhiteSpace(pack.Name) ? "魔法卡包" : pack.Name;
+            List<string> lines = [];
+            // 用技能 Id 认同一张魔法：旧版按 GetIdName()（Id + 名字）比较，
+            // 而叠等级时名字会被追加「 +N」，第二次使用就认不出来、会把同一张魔法重复塞进卡包。
+            Skill? existing = pack.Skills.Magics.FirstOrDefault(m => m.Id == magic.Id);
+            if (existing is not null && existing.Level < General.GameplayEquilibriumConstant.MaxMagicLevel)
+            {
+                int cap = General.GameplayEquilibriumConstant.MaxMagicLevel;
+                int before = existing.Level;
+                existing.Level = Math.Min(cap, before + magic.Level);
+                existing.Name = TrimMagicName(existing.Name) + (existing.Level > 1 ? $" +{existing.Level - 1}" : "");
+                lines.Add($"- 魔法【{magic.Name}】等级 {before} → {existing.Level}");
+
+                // 旧版这里写了一段「等级溢出补偿 10 钻/级」，但 diff 恒为 0，是死代码；这里按原意实现。
+                int overflow = magic.Level - (existing.Level - before);
+                if (overflow > 0)
+                {
+                    int compensation = overflow * GameplayRules.MagicCardLevelCompensationMaterials;
+                    ApplyCurrency(db, state, compensation, "diamonds", "magic_card_overflow", "item",
+                        card.Id.ToString(CultureInfo.InvariantCulture));
+                    lines.Add($"- 技能已满级，溢出 {overflow} 级折算钻石 +{compensation}");
+                }
+            }
+            else if (pack.Skills.Magics.Count < GameplayRules.MagicCardPackMaxMagics)
+            {
+                Skill copied = magic.Copy();
+                copied.Level = magic.Level;
+                pack.Skills.Magics.Add(copied);
+                lines.Add($"- 魔法【{magic.Name}】已写入卡包（{pack.Skills.Magics.Count}/{GameplayRules.MagicCardPackMaxMagics}）");
+            }
+            else
+            {
+                return ActionResult.Fail("卡包里没有可用的位置", "没有使用任何魔法卡",
+                    $"魔法【{magic.Name}】在{packName}中不存在或已满级，且卡包已有 "
+                    + $"{GameplayRules.MagicCardPackMaxMagics} 个魔法", "/背包");
+            }
+
+            RefreshMagicPackDescription(pack);
+            card.Item.RemainUseTimes = Math.Max(0, card.Item.RemainUseTimes - 1);
+            if (card.Item.RemainUseTimes == 0) ItemStore.Remove(db, card);
+            else ItemStore.Sync(card);
+            if (packRow is not null) ItemStore.Sync(packRow);
+            else if (main is not null) CharacterStore.Sync(main);
+
+            lines.Add($"- {packName}：{DescribeMagicPack(pack)}");
+            lines.Add($"- 魔法卡剩余次数：{card.Item.RemainUseTimes}");
+            if (packRow is null) lines.Add("- 装备中的卡包需重新 /装备 才会把新魔法带进战斗");
+            return ActionResult.Success("🃏 魔法卡已使用", $"{magic.Name} → {packName}", lines,
+                ["/背包", "/我的角色"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> CraftMagicCardPackAsync(long userId, int first, int second, int third,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, _, ct) =>
+        {
+            int[] indices = [first, second, third];
+            if (indices.Any(x => x <= 0))
+            {
+                return ActionResult.Fail("需要 3 张魔法卡的编号", "没有合成任何卡包",
+                    "用法：/合成魔法卡 @1 @2 @3", "/背包");
+            }
+            if (indices.Distinct().Count() < 3)
+            {
+                return ActionResult.Fail("三张魔法卡编号重复", "没有合成任何卡包",
+                    "同一张卡不能既当材料又当材料，请选 3 个不同的 @编号", "/背包");
+            }
+
+            List<PlayerItem> cards = [];
+            foreach (int index in indices)
+            {
+                PlayerItem? card = await ItemByIndexAsync(db, userId, index, ct);
+                if (card is null) return NoSuchItem(index);
+                if (card.Locked)
+                {
+                    return ActionResult.Fail("材料里有已锁定的物品", "没有合成任何卡包",
+                        $"先 /解锁 @{index}", "/背包");
+                }
+                if (card.Item.ItemType != ItemType.MagicCard || card.Item.RemainUseTimes <= 0)
+                {
+                    return ActionResult.Fail("材料不是可用的魔法卡", "没有合成任何卡包",
+                        $"@{index} 不是魔法卡，或次数已用完", "/背包");
+                }
+                cards.Add(card);
+            }
+
+            Item? pack = FunGameService.ConflateMagicCardPack(
+                GameplayRules.NewRandom(random), cards.Select(x => x.Item));
+            if (pack is null)
+            {
+                return ActionResult.Fail("合成失败", "没有消耗任何魔法卡",
+                    "这三张魔法卡里没有任何魔法，换三张再试", "/背包");
+            }
+            ItemStore.AddSnapshot(db, userId, pack, "magic-card-pack");
+            foreach (PlayerItem card in cards) ItemStore.Remove(db, card);
+
+            string packName = string.IsNullOrWhiteSpace(pack.Name) ? "魔法卡包" : pack.Name;
+            return ActionResult.Success("🎴 合成魔法卡包",
+                $"{packName}（{GameplayRules.QualityName(GameplayRules.QualityTierOf(pack.QualityType))}）",
+                [
+                    $"- {DescribeMagicPack(pack)}",
+                    $"- 消耗魔法卡：{string.Join("、", cards.Select(ReadName))}",
+                    "- 用 /装备 @编号 给主战角色装上，再用 /使用魔法卡 继续强化"
+                ], ["/背包", "/我的角色"]);
         }, cancellationToken);
 
     public Task<ActionResult> SetLockAsync(long userId, int index, bool locked, CancellationToken cancellationToken = default)
@@ -1147,6 +1443,44 @@ public sealed class PlayerService(
     {
         if (!string.IsNullOrWhiteSpace(item.Name)) return item.Name;
         return $"物品 {item.CatalogId}";
+    }
+
+    /// <summary>描述摘要：压掉换行，超长截断，用于搜索结果的单行展示。</summary>
+    private static string Snippet(string text, int max = 40)
+    {
+        string flat = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return flat.Length <= max ? flat : flat[..max] + "…";
+    }
+
+    // ---- 魔法卡 ----
+
+    /// <summary>去掉名字里已有的「 +N」后缀，避免叠加等级时反复追加。</summary>
+    internal static string TrimMagicName(string name)
+    {
+        int index = name.LastIndexOf(" +", StringComparison.Ordinal);
+        return index > 0 && int.TryParse(name[(index + 2)..], NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out _)
+            ? name[..index]
+            : name;
+    }
+
+    /// <summary>魔法显示名：1 级不带后缀，2 级起写成「名字 +1」（与旧版一致，后缀是叠加次数）。</summary>
+    internal static string MagicLabel(string name, int level)
+        => level > 1 ? $"{TrimMagicName(name)} +{level - 1}" : TrimMagicName(name);
+
+    /// <summary>卡包内容的可读摘要。</summary>
+    internal static string DescribeMagicPack(Item pack)
+        => pack.Skills.Magics.Count == 0
+            ? "包含魔法：（空卡包）"
+            : $"包含魔法：{string.Join("，", pack.Skills.Magics.Select(m => MagicLabel(m.Name, m.Level)))}";
+
+    /// <summary>重写卡包描述第一行（魔法列表），保留「增加角色属性」及其后的内容。</summary>
+    internal static void RefreshMagicPackDescription(Item pack)
+    {
+        string head = DescribeMagicPack(pack);
+        string description = pack.Description ?? "";
+        int index = description.IndexOf("增加角色属性", StringComparison.Ordinal);
+        pack.Description = index < 0 ? head : $"{head}\r\n{description[index..]}";
     }
 
     /// <summary>统计 Core 快照里 6 个装备槽已占用的数量。</summary>
