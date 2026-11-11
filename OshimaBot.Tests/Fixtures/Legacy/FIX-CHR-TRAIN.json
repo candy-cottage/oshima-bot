@@ -5,38 +5,43 @@
   "probe": "train",
   "status": "current-locked",
   "input": {
-    "levels": [
-      1,
+    "minutes": [
       10,
-      50
+      100,
+      2880,
+      5000
     ]
   },
   "expected": {
     "current": {
-      "costCredits": 50,
+      "costCredits": 0,
       "defaultMinutes": 10,
-      "maxMinutes": 120,
-      "expByLevel": [
-        140,
-        320,
-        1120
+      "maxMinutes": 2880,
+      "expPerMinute": 2,
+      "expByMinutes": [
+        20,
+        200,
+        5760,
+        5760
       ]
     },
     "legacy": {
-      "experiencePerMinute": 2,
-      "dailyMaxMinutes": 2880,
       "costCredits": 0,
-      "bookMilestones": {
-        "smallHours": 8,
-        "mediumHours": 16
-      },
-      "note": "旧版 FunGameService.GetTrainingInfo：每分钟 2 经验、每日上限 2880 分钟，额外按小时数赠经验书，不收金币；新版固定 120+20×等级、收 50 金币"
+      "defaultMinutes": 10,
+      "maxMinutes": 2880,
+      "expPerMinute": 2,
+      "expByMinutes": [
+        20,
+        200,
+        5760,
+        5760
+      ]
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1270",
     "method": "RainBOTService 开启练级分支 + FunGameService.GetTrainingInfo",
-    "note": "旧版收益随时间与小/中/大经验书换算，新版固定 120+20×等级，且费用与时长无关"
+    "note": "旧版 FunGameService.GetTrainingInfo：每分钟 2 经验、每日上限 2880 分钟、不收金币；新版已逐项对齐（按会话时长结算）"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

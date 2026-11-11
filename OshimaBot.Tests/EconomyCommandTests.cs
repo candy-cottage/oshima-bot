@@ -60,6 +60,7 @@ public sealed class EconomyCommandTests
     {
         using EconomyCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
+        await TestItems.SeedAsync(db.Provider, UserId, 3);   // 旧版注册不带物品
 
         Assert.Contains("报价单已发布", await RouteAsync(router, "/报价 @1 300"));
         Assert.Contains("300 金币", await RouteAsync(router, "/报价列表"));

@@ -71,11 +71,12 @@ public sealed class EconomyTests
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
         IPlayerService players = db.Get<IPlayerService>();
-        await players.GetSnapshotAsync(Seller); // 建档 + 初始 3 件物品
+        await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 3);   // 旧版注册不带物品，测试自备 3 件
 
         ActionResult listed = await economy.ListOnMarketAsync(Seller, 1, 200);
         Assert.True(listed.Ok, listed.Title);
-        Assert.Equal(GameplayRules.StartingItems - 1, (await players.GetBagAsync(Seller)).Count); // 已托管
+        Assert.Equal(2, (await players.GetBagAsync(Seller)).Count); // 已托管 1 件
 
         IReadOnlyList<MarketEntry> market = await economy.GetMarketAsync(Buyer);
         Assert.Single(market);
@@ -108,11 +109,12 @@ public sealed class EconomyTests
         IEconomyService economy = db.Get<IEconomyService>();
         IPlayerService players = db.Get<IPlayerService>();
         await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 3);
 
         Assert.True((await economy.ListOnMarketAsync(Seller, 1, 150)).Ok);
         Assert.False((await economy.BuyMarketAsync(Seller, 1)).Ok);
         Assert.True((await economy.DelistAsync(Seller, 1)).Ok);
-        Assert.Equal(GameplayRules.StartingItems, (await players.GetBagAsync(Seller)).Count);
+        Assert.Equal(3, (await players.GetBagAsync(Seller)).Count);
         Assert.Empty(await economy.GetMarketAsync(Seller));
 
         using IServiceScope scope = db.Provider.CreateScope();
@@ -127,6 +129,7 @@ public sealed class EconomyTests
         IEconomyService economy = db.Get<IEconomyService>();
         IPlayerService players = db.Get<IPlayerService>();
         await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 3);
 
         Assert.True((await economy.CreateOfferAsync(Seller, 1, 300)).Ok);
         Assert.Single(await economy.GetOffersAsync(Buyer));
@@ -154,7 +157,8 @@ public sealed class EconomyTests
         IEconomyService economy = db.Get<IEconomyService>();
         IPlayerService players = db.Get<IPlayerService>();
         await players.GetSnapshotAsync(Seller);
-        await AddMaterialAsync(db, Seller, 3); // @4（初始 3 件之后）
+        await TestItems.SeedAsync(db.Provider, Seller, 3);   // 旧版注册不带物品
+        await AddMaterialAsync(db, Seller, 3);                // @4
 
         Assert.True((await economy.ForgeAsync(Seller, 4, 1)).Ok);
         Assert.False((await economy.ClaimForgeAsync(Seller)).Ok);
@@ -201,9 +205,11 @@ public sealed class EconomyTests
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        // 每次挑战都会扣费并结算，因此两次挑战应有两笔奖励流水。
-        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward") >= 2);
-        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_entry") >= 2);
+        // 旧版不收入场费、只有击杀才发材料，所以这两条流水都可能不存在；
+        // 唯一稳定的是战绩累积（未击杀也按伤害给分）。
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_entry") == 0);
+        Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward")
+            == await dbContext.LedgerEntries.CountAsync(x => x.Reason == "boss_reward" && x.Currency == "diamonds"));
     }
 
     [Fact]

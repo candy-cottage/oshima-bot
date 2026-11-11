@@ -5,30 +5,68 @@
   "probe": "signin",
   "status": "current-locked",
   "input": {
-    "streaks": [1, 2, 3, 8, 21]
+    "streaks": [
+      1,
+      2,
+      3,
+      8,
+      21
+    ]
   },
   "expected": {
     "current": {
-      "creditsByStreak": [100, 120, 140, 240, 240],
-      "diamondEveryDays": 7,
-      "diamondAmount": 5
+      "creditsByStreak": [
+        1000,
+        1010,
+        1020,
+        1070,
+        1200
+      ],
+      "materialsByStreak": [
+        5,
+        5,
+        5,
+        6,
+        7
+      ],
+      "creditsRange": [
+        1000,
+        2999
+      ],
+      "materialRange": [
+        5,
+        14
+      ]
     },
     "legacy": {
-      "model": "random",
-      "credits": { "baseRange": [1000, 2999], "perDay": 10 },
-      "materials": { "baseRange": [5, 14], "perWeek": 1 },
-      "extraItem": {
-        "kinds": 6,
-        "qualityBonusPerDayPercent": 3,
-        "qualityBonusCapPercent": 30
-      },
-      "note": "旧版是随机区间奖励，无法与新版固定值逐位比较；新版 100+20×连击约旧版 1/10"
+      "creditsByStreak": [
+        1000,
+        1010,
+        1020,
+        1070,
+        1200
+      ],
+      "materialsByStreak": [
+        5,
+        5,
+        5,
+        6,
+        7
+      ],
+      "creditsRange": [
+        1000,
+        2999
+      ],
+      "materialRange": [
+        5,
+        14
+      ]
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:785",
     "method": "RainBOTService 签到分支 + FunGameService.GetSignInResult",
-    "note": "新版 100+20×连击（连击上限 7 天）、每满 7 天 +5 钻；旧版奖励表待核对，连击中断规则也需确认"
+    "note": "旧版 FunGameService.GetSignInResult：金币 Next(1000,3000)+10×已连续天数、材料 Next(5,15)+天数/7；fixture 用「永远取下限」的随机源压成确定值，区间同上"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

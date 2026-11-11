@@ -59,9 +59,12 @@ public sealed class GameplayTests
         CorePlayerRecord state = await context.CorePlayers.FirstAsync(x => x.UserId == UserId);
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "signin");
         Assert.Equal(state.Credits, entry.BalanceAfter, 3);
-        Assert.Equal(GameplayRules.SignInCredits(0), entry.Delta);
+        // 旧版签到是随机区间（1000–2999 + 连续加成），只断言落在范围内
+        Assert.InRange(entry.Delta, GameplayRules.SignInCreditsMin,
+            GameplayRules.SignInCreditsMax - 1 + GameplayRules.SignInCreditsPerDay);
         Assert.Equal(1, await context.SignInRecords.CountAsync());
-        Assert.Equal(1, await context.LedgerEntries.CountAsync(x => x.Reason == "signin"));
+        // 签到现在同时发金币与材料，各记一条流水
+        Assert.True(await context.LedgerEntries.CountAsync(x => x.Reason == "signin") >= 1);
     }
 
     [Fact]
@@ -83,9 +86,10 @@ public sealed class GameplayTests
     }
 
     [Fact]
-    public async Task Gacha_TenPullDebitsDiscountAndKeepsLedgerBalanced()
+    public async Task Gacha_TenPullDebitsCostAndKeepsLedgerBalanced()
     {
-        using GameplayDatabase db = new();
+        // 旧版抽卡是 20% 命中、十连无保底；用「必中」随机源才能稳定验证费用与入包
+        using GameplayDatabase db = new(random: new AlwaysHitRandomSource());
         IPlayerService players = db.Get<IPlayerService>();
         await players.GetSnapshotAsync(UserId);
         await SetDiamondsAsync(db, 100);
@@ -100,9 +104,8 @@ public sealed class GameplayTests
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "gacha");
         Assert.Equal(-GameplayRules.GachaTenCost, entry.Delta);
         Assert.Equal(state.Materials, entry.BalanceAfter, 3);
-        Assert.True(await context.CoreItems.CountAsync(x => x.UserId == UserId) > GameplayRules.StartingItems);
-        Assert.Contains(await context.CoreItems.Where(x => x.CatalogId == "gacha").ToListAsync(),
-            item => item.Quality >= (int)FunGame.Core.Library.Constant.QualityType.Purple); // 十连保底史诗
+        // 每次必中，十连就是 10 件；旧版没有「保底史诗」
+        Assert.Equal(10, await context.CoreItems.CountAsync(x => x.UserId == UserId && x.CatalogId == "gacha"));
     }
 
     [Fact]
@@ -111,8 +114,11 @@ public sealed class GameplayTests
         using GameplayDatabase db = new();
         IPlayerService players = db.Get<IPlayerService>();
 
+        // 旧版注册不带物品（0 件），这里显式发 3 件
+        await TestItems.SeedAsync(db.Provider, UserId, 3);
+
         IReadOnlyList<BagEntry> bag = await players.GetBagAsync(UserId);
-        Assert.Equal(GameplayRules.StartingItems, bag.Count);
+        Assert.Equal(3, bag.Count);
         Assert.Equal(1, bag[0].Index);
 
         Assert.True((await players.SetLockAsync(UserId, 1, true)).Ok);
@@ -123,12 +129,15 @@ public sealed class GameplayTests
         ActionResult salvage = await players.SalvageAsync(UserId, 1, 1);
         Assert.True(salvage.Ok, salvage.Title);
         PlayerSnapshot after = (await players.GetSnapshotAsync(UserId))!;
-        Assert.Equal(before.Credits + GameplayRules.SalvageValue(1, 1), after.Credits);
+        // 旧版分解返还材料（钻石），按品质固定 1/3/8/16/32…
+        Assert.Equal(before.Credits, after.Credits, 3);
+        Assert.Equal(before.Materials + GameplayRules.SalvageMaterials(1, 1), after.Materials, 3);
 
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "salvage");
-        Assert.Equal(after.Credits, entry.BalanceAfter);
+        Assert.Equal("diamonds", entry.Currency);
+        Assert.Equal(after.Materials, entry.BalanceAfter, 3);
 
         // ---- 装备生命周期：装备直接进 Core 的 6 槽快照，并从背包移出 ----
         long equipLocalId;
@@ -177,6 +186,8 @@ public sealed class GameplayTests
         {
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             TrainingSession session = await context.TrainingSessions.FirstAsync(x => x.UserId == UserId);
+            // 旧版按「开始 → 收取」的实际间隔算经验（2/分钟），所以起止都要放到过去
+            session.StartedAtUtc = DateTime.UtcNow.AddMinutes(-11);
             session.EndsAtUtc = DateTime.UtcNow.AddMinutes(-1);
             await context.SaveChangesAsync();
         }
@@ -288,7 +299,7 @@ public sealed class GameplayTests
         Assert.NotNull(firstBreak);
         Assert.True(firstBreak > 1);
         Assert.True(GameplayRules.NextBreakLevel(1) > firstBreak);   // 阶数越高，所需等级越高
-        Assert.InRange(GameplayRules.RollQuality(new SeededRandomSource(1)), 1, 5);
+        Assert.InRange(GameplayRules.RollGachaQuality(new SeededRandomSource(1)), 1, 6);
     }
 
     [Fact]

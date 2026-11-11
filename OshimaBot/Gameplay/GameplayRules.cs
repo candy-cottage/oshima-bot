@@ -11,28 +11,53 @@ namespace OshimaBot.Gameplay;
 /// </summary>
 public static class GameplayRules
 {
-    public const long StartingCredits = 1200;
-    public const int StartingDiamonds = 30;
-    public const int StartingItems = 3;
+    // ---- 旧版对齐：起始资源 ----
+    // FunGameController.CreateSaved 只设 Inventory.Credits = 5000，Materials 与 Items 都是默认的 0。
+    public const long StartingCredits = 5000;
+    public const int StartingDiamonds = 0;
+    public const int StartingItems = 0;
 
+    // ---- 旧版对齐：抽卡 ----
+    // FunGameConstant.DrawCardReduce = 1000（金币/次）、DrawCardReduce_Material = 5（钻石/次）；
+    // 十连在旧版是按 10 倍直接乘，没有折扣。
+    public const int GachaCostCredits = 1000;
+    public const int GachaTenCostCredits = 10000;
     public const int GachaCost = 5;
-    public const int GachaTenCost = 45;
+    public const int GachaTenCost = 50;
     public const int MaxGachaPerCall = 10;
 
-    public const int SignInBaseCredits = 100;
-    public const int SignInStreakBonus = 20;
-    public const int SignInStreakCapDays = 7;
-    public const int SignInDiamondEveryDays = 7;
-    public const int SignInDiamondAmount = 5;
+    /// <summary>
+    /// 旧版 <c>FunGameConstant.DrawCardProbabilities</c>（百分数，总和 100）。
+    /// 命中后按 `NextDouble() * 100` 依次比对，从高品到低品取第一个 ≤ 概率的档。
+    /// </summary>
+    /// <remarks>
+    /// **顺序是从高品到低品**，与旧版 <c>OrderByDescending(o =&gt; (int)o)</c> 一致：
+    /// 旧版拿 <c>NextDouble() * 100</c> 逐个比较 <c>q &lt;= 该档概率</c>，命中即止。
+    /// 因为阈值是递减的，实际分布并非常量本身（白装约 80%），这里原样保留这层语义。
+    /// </remarks>
+    public static readonly IReadOnlyList<(int Tier, double Percent)> GachaQualityWeights =
+    [
+        (6, 3.06),    // Red    0 – 3.06
+        (5, 6.33),    // Orange 3.06 – 6.33
+        (4, 8.25),    // Purple 6.33 – 8.25
+        (3, 13.48),   // Blue   8.25 – 13.48
+        (2, 19.35),   // Green  13.48 – 19.35
+        (1, 49.53)    // White  19.35 – 100（含超出 49.53 的尾部）
+    ];
 
-    public const int SalvageValueBase = 20;
-    public const int UseExpBase = 30;
+    // ---- 旧版对齐：签到（FunGameService.GetSignInResult）----
+    // 金币 = Next(1000, 3000) + 10 × 已连续天数；材料 = Next(5, 15) + 已连续天数 / 7。
+    public const int SignInCreditsMin = 1000;
+    public const int SignInCreditsMax = 3000;
+    public const int SignInCreditsPerDay = 10;
+    public const int SignInMaterialMin = 5;
+    public const int SignInMaterialMax = 15;
 
-    public const int TrainCostCredits = 50;
+    // ---- 旧版对齐：分解返还（FunGameConstant.DecomposedMaterials，按品质固定值）----
+    public const int TrainCostCredits = 0;
     public const int TrainDefaultMinutes = 10;
-    public const int TrainMaxMinutes = 120;
-    public const int TrainExpBase = 120;
-    public const int TrainExpPerLevel = 20;
+    public const int TrainMaxMinutes = 2880;      // 旧版 dailyTrainingMinutes
+    public const int TrainExpPerMinute = 2;       // 旧版 experiencePerMinute
 
     public const int QuestRewardCredits = 80;
     public const int QuestRewardDiamonds = 2;
@@ -76,11 +101,21 @@ public static class GameplayRules
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    public static long SalvageValue(int quality, int quantity)
-        => SalvageValueBase * (long)Math.Max(1, quality) * Math.Max(1, quality) * Math.Max(1, quantity);
-
-    public static int UseExp(int quality, int quantity)
-        => UseExpBase * Math.Max(1, quality) * Math.Max(1, quantity);
+    /// <summary>
+    /// 分解返还的**材料**数量（旧版 <c>FunGameConstant.DecomposedMaterials</c>，按品质固定值）。
+    /// <para>1 普通 = 1、2 优秀 = 3、3 稀有 = 8、4 史诗 = 16、5 传说 = 32、6 神话 = 64、7 不朽 = 128；
+    /// 旧版返还的是 <c>Inventory.Materials</c>（即「钻石」），不是金币。</para>
+    /// </summary>
+    public static long SalvageMaterials(int quality, int quantity) => quality switch
+    {
+        <= 1 => 1L * Math.Max(1, quantity),
+        2 => 3L * Math.Max(1, quantity),
+        3 => 8L * Math.Max(1, quantity),
+        4 => 16L * Math.Max(1, quantity),
+        5 => 32L * Math.Max(1, quantity),
+        6 => 64L * Math.Max(1, quantity),
+        _ => 128L * Math.Max(1, quantity)
+    };
 
     /// <summary>
     /// 突破材料需求（照搬旧版 <c>FunGameConstant.LevelBreakNeedyList</c>）。
@@ -125,22 +160,37 @@ public static class GameplayRules
         return $"{Math.Clamp(levelBreak + 1, 0, total)}/{total}";
     }
 
-    public static long SignInCredits(int streak)
-        => SignInBaseCredits + SignInStreakBonus * Math.Min(Math.Max(0, streak), SignInStreakCapDays);
-
-    /// <summary>品质权重：普通 60 / 精良 25 / 稀有 10 / 史诗 4 / 传说 1。</summary>
-    public static int RollQuality(IRandomSource random)
+    /// <summary>
+    /// 签到奖励（旧版 <c>FunGameService.GetSignInResult</c>）。
+    /// <para>金币 = <c>Next(1000, 3000) + 10 × 已连续天数</c>；材料 = <c>Next(5, 15) + 已连续天数 / 7</c>。
+    /// 参数是**签到前**的连续天数（旧版用 <c>days</c> 计算、显示时 <c>days + 1</c>）。</para>
+    /// </summary>
+    public static (long Credits, int Materials) SignInReward(IRandomSource random, int previousStreak)
     {
-        int roll = random.Next(100);
-        return roll switch
-        {
-            < 60 => 1,
-            < 85 => 2,
-            < 95 => 3,
-            < 99 => 4,
-            _ => 5
-        };
+        int days = Math.Max(0, previousStreak);
+        int credits = random.Next(SignInCreditsMin, SignInCreditsMax) + SignInCreditsPerDay * days;
+        int materials = random.Next(SignInMaterialMin, SignInMaterialMax) + days / 7;
+        return (credits, materials);
     }
+
+    /// <summary>
+    /// 旧版抽卡品质判定：<c>q = NextDouble() * 100</c>，按 <see cref="GachaQualityWeights"/>
+    /// 从高品到低品逐个比较 <c>q &lt;= 该档阈值</c>，命中即止；都不命中落到普通。
+    /// </summary>
+    public static int RollGachaQuality(IRandomSource random)
+    {
+        double q = random.NextDouble() * 100;
+        foreach ((int tier, double percent) in GachaQualityWeights)
+        {
+            if (q <= percent) return tier;
+        }
+        return 1;
+    }
+
+    /// <summary>旧版抽卡命中阈值：<c>NextDouble() &gt; 0.8</c> 才出东西，否则「什么也没抽中」。</summary>
+    public const double GachaHitThreshold = 0.8;
+
+    public static bool RollGachaHit(IRandomSource random) => random.NextDouble() > GachaHitThreshold;
 
     /// <summary>
     /// 玩法品质档（1–5）→ Core 的 <see cref="QualityType"/>。
@@ -182,7 +232,7 @@ public static class GameplayRules
 
     // ---- P2：经济与战斗 ----
 
-    public const long MarketFeeRatePercent = 5;
+    public const long MarketFeeRatePercent = 15;   // 旧版 MarketSellItem：fee = amount * 0.15
     public const long MarketMinPrice = 1;
     public const long MarketMaxPrice = 1_000_000;
     public const int MarketMaxListingsPerUser = 5;
@@ -289,14 +339,14 @@ public static class GameplayRules
         };
     }
 
-    public const int DuelCostCredits = 30;
-    public const int DuelRewardCredits = 80;
+    public const int DuelCostCredits = 0;      // 旧版 FightCustom 不收费用
+    public const int DuelRewardCredits = 0;    // 旧版决斗不发奖励
     public const int DuelWinPoints = 10;
     public const int DuelLosePoints = 2;
 
-    public const int BossCostCredits = 100;
-    public const int BossRewardCredits = 300;
-    public const int BossRewardDiamonds = 3;
+    public const int BossCostCredits = 0;      // 旧版 FightBoss 无入场费
+    public const int BossRewardCredits = 0;    // 旧版击杀只给 Materials += Level，没有金币
+    public const int BossRewardDiamonds = 0;   // 实际奖励按 Boss 等级发放（15/30/60），此常量已不参与计算
     public const int BossWinPoints = 25;
     public const int RankingTop = 10;
 

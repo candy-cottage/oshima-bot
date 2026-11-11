@@ -217,26 +217,25 @@ public sealed class PlayerService(
             state.SignInStreak = continuous ? state.SignInStreak + 1 : 1;
             state.SignedOn = today;
 
-            long credits = GameplayRules.SignInCredits(state.SignInStreak - 1);
+            // 旧版 GetSignInResult：金币 Next(1000,3000)+10×已连续天数、材料 Next(5,15)+天数/7
+            (long credits, int materials) = GameplayRules.SignInReward(random, state.SignInStreak - 1);
             ApplyCurrency(db, state, credits, "credits", "signin", "signin", today);
-            int diamonds = state.SignInStreak % GameplayRules.SignInDiamondEveryDays == 0
-                ? GameplayRules.SignInDiamondAmount : 0;
-            if (diamonds > 0)
+            if (materials > 0)
             {
-                ApplyCurrency(db, state, diamonds, "diamonds", "signin_streak", "signin", today);
+                ApplyCurrency(db, state, materials, "diamonds", "signin", "signin", today);
             }
             db.SignInRecords.Add(new SignInRecord
             {
                 UserId = userId, SignInDate = today,
-                RewardJson = JsonSerializer.Serialize(new { credits, diamonds }),
+                RewardJson = JsonSerializer.Serialize(new { credits, materials }),
                 CreatedAtUtc = DateTime.UtcNow
             });
             await AdvanceQuestAsync(db, userId, "signin", ct);
             return ActionResult.Success("📅 签到成功",
-                $"连续 {state.SignInStreak} 天 · 金币 +{credits}{(diamonds > 0 ? $" · 钻石 +{diamonds}" : "")}",
+                $"连续 {state.SignInStreak} 天 · 金币 +{credits}{(materials > 0 ? $" · 钻石 +{materials}" : "")}",
                 [
                     $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
-                    $"- 连续签到每满 {GameplayRules.SignInDiamondEveryDays} 天额外送 {GameplayRules.SignInDiamondAmount} 钻石",
+                    "- 旧版规则：金币 1000–2999，钻石 5–14，连续天数越高加成越多",
                     "- 今日任务「今日签到」进度已更新"
                 ], ["/每日任务", "/状态", "/抽卡"]);
         }, cancellationToken);
@@ -255,11 +254,13 @@ public sealed class PlayerService(
 
             var catalog = FunGameService.AllItems;
             List<(string Name, int Quality)> drawn = [];
+            int hits = 0;
             for (int i = 0; i < pulls; i++)
             {
-                int quality = GameplayRules.RollQuality(random);
-                // 十连保底至少一件史诗及以上。
-                if (pulls == 10 && i == pulls - 1 && drawn.All(x => x.Quality < 4)) quality = 4;
+                // 旧版：每次独立掷 NextDouble()，> 0.8 才中奖；十连无保底、可能全空。
+                if (!GameplayRules.RollGachaHit(random)) continue;
+                hits++;
+                int quality = GameplayRules.RollGachaQuality(random);
                 string name = catalog.Count == 0
                     ? "无名的遗物"
                     : catalog[random.Next(catalog.Count)].Name;
@@ -271,12 +272,13 @@ public sealed class PlayerService(
             }
             await AdvanceQuestAsync(db, userId, "gacha", ct);
 
-            List<string> lines = drawn.Select((item, i) =>
-                $"- {i + 1}. {GameplayRules.QualityName(item.Quality)} · {item.Name}").ToList();
-            lines.Add($"- 消耗钻石 {cost}，剩余 {state.Materials}");
+            List<string> lines = [.. drawn.Select((item, i) =>
+                $"- {i + 1}. {GameplayRules.QualityName(item.Quality)} · {item.Name}")];
+            if (hits == 0) lines.Add($"- {pulls} 次都没抽中，什么也没得到");
+            lines.Add($"- 消耗钻石 {cost}，剩余 {state.Materials}（命中 {hits}/{pulls}）");
             lines.Add("- 用 /背包 查看物品编号后再 @编号 使用或分解");
             return ActionResult.Success(pulls == 10 ? "🎰 十连抽卡" : "🎲 抽卡",
-                $"{pulls} 次抽取 · 已全部放入背包",
+                hits == 0 ? "什么也没抽中" : $"抽中 {hits} 件 · 已放入背包",
                 lines, ["/背包", "/状态", "/抽卡"]);
         }, cancellationToken);
 
@@ -285,25 +287,55 @@ public sealed class PlayerService(
         {
             PlayerItem? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
-            int amount = Math.Clamp(quantity, 1, item.Quantity);
-            int exp = GameplayRules.UseExp(item.Quality, amount);
-            PlayerCharacter? target = await MainCharacterAsync(db, userId, ct);
-            string levelNote = "（无角色可加经验）";
-            if (target is not null)
+
+            string name = ReadName(item);
+            if (!ItemUsage.CanUse(item.Item))
             {
-                int before = target.Level;
-                target.Exp += exp;
-                target.Core.OnLevelUp();          // Core 模型：经验够了立即升级
-                int gained = target.Level - before;
-                CharacterStore.Sync(target);
-                levelNote = gained > 0
-                    ? $"{target.Name} 升了 {gained} 级 → Lv.{target.Level}"
-                    : $"{target.Name} 经验 +{exp}（Lv.{target.Level}，还需 {NeedExp(target)}）";
+                return ActionResult.Fail("这个物品无法使用", "没有消耗物品",
+                    $"{name} 不能直接使用；装备类请用 /装备 @编号", "/背包");
             }
+
+            int amount = Math.Clamp(quantity, 1, item.Quantity);
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
+            List<PlayerCharacter> targets = main is null ? [] : [main];
+
+            // 物品行为由内容包定义（经验书 / 回复药 / 礼包），这里只是装配 Core 的 User 并调用 UseItem。
+            ItemUsage.Result used = ItemUsage.Use(state, item, amount, targets);
+            if (!used.Used)
+            {
+                return ActionResult.Fail("使用失败", "没有消耗物品",
+                    string.IsNullOrWhiteSpace(used.Message) ? $"{name} 无法使用" : used.Message, "/背包");
+            }
+
+            string itemRef = item.Id.ToString(CultureInfo.InvariantCulture);
+            if (used.CreditDelta != 0)
+            {
+                ApplyCurrency(db, state, used.CreditDelta, "credits", "item_use", "item", itemRef);
+            }
+            if (used.MaterialDelta != 0)
+            {
+                ApplyCurrency(db, state, used.MaterialDelta, "diamonds", "item_use", "item", itemRef);
+            }
+
+            List<string> lines = [];
+            foreach (PlayerCharacter target in targets)
+            {
+                double gained = used.ExpGained.GetValueOrDefault(target.Core);
+                int beforeLevel = target.Level;
+                target.Core.OnLevelUp();              // Core 模型：经验够了立即升级
+                CharacterStore.Sync(target);
+                int levels = target.Level - beforeLevel;
+                lines.Add(gained > 0
+                    ? $"- {target.Name} 经验 +{gained:0.##} → Lv.{target.Level}"
+                        + (levels > 0 ? $"（升 {levels} 级）" : $"（还需 {NeedExp(target)}）")
+                    : $"- {target.Name} 当前 Lv.{target.Level}");
+            }
+            if (lines.Count == 0) lines.Add("- 没有可作用的角色");
+            lines.Add($"- 物品：{name} ×{amount} 已扣除");
+            if (!string.IsNullOrWhiteSpace(used.Message)) lines.Insert(0, $"- {used.Message}");
+
             Consume(db, item, amount);
-            return ActionResult.Success("🧪 使用物品",
-                $"{ReadName(item)} ×{amount}",
-                [$"- {levelNote}", "- 物品已扣除，未产生货币变动"],
+            return ActionResult.Success("🧪 使用物品", $"{name} ×{amount}", lines,
                 ["/角色", "/状态"]);
         }, cancellationToken);
 
@@ -319,12 +351,14 @@ public sealed class PlayerService(
             }
             int amount = Math.Clamp(quantity, 1, item.Quantity);
             string name = ReadName(item);
-            long credits = GameplayRules.SalvageValue(item.Quality, amount);
-            ApplyCurrency(db, state, credits, "credits", "salvage", "item", item.Id.ToString(CultureInfo.InvariantCulture));
+            // 旧版 DecomposedMaterials：按品质返还固定材料（1/3/8/16/32/64/128），进 Materials 不是金币
+            long materials = GameplayRules.SalvageMaterials(item.Quality, amount);
+            string qualityName = GameplayRules.QualityName(item.Quality);
+            ApplyCurrency(db, state, materials, "diamonds", "salvage", "item", item.Id.ToString(CultureInfo.InvariantCulture));
             Consume(db, item, amount);
             return ActionResult.Success("♻️ 分解完成",
-                $"{name} ×{amount} · 金币 +{credits}",
-                [$"- 品质：{GameplayRules.QualityName(item.Quality)}　当前金币：{state.Credits}", "- 已写入账本 ledger，可对账"],
+                $"{name} ×{amount} · 钻石 +{materials}",
+                [$"- 品质：{qualityName}　当前钻石：{state.Materials}", "- 已写入账本 ledger，可对账"],
                 ["/背包", "/状态"]);
         }, cancellationToken);
 
@@ -546,14 +580,8 @@ public sealed class PlayerService(
                 return ActionResult.Fail("已有角色在练级", "没有重复扣除金币",
                     "等待结束后用 /收取练级 结算", "/收取练级");
             }
-            if (state.Credits < GameplayRules.TrainCostCredits)
-            {
-                return ActionResult.Fail("金币不足", "没有开始练级",
-                    $"需要 {GameplayRules.TrainCostCredits} 金币，当前 {state.Credits}", "/签到");
-            }
             int duration = Math.Clamp(minutes, 1, GameplayRules.TrainMaxMinutes);
             DateTime now = clock.UtcNow;
-            ApplyCurrency(db, state, -GameplayRules.TrainCostCredits, "credits", "train_start", "character", character.Id.ToString(CultureInfo.InvariantCulture));
             db.TrainingSessions.Add(new TrainingSession
             {
                 UserId = userId, CharacterId = character.Id,
@@ -561,8 +589,10 @@ public sealed class PlayerService(
             });
             return ActionResult.Success("🏋️ 开始练级",
                 $"{character.Name} · {duration} 分钟后可用 /收取练级 结算",
-                [$"- 消耗金币 {GameplayRules.TrainCostCredits}，剩余 {state.Credits}",
-                    $"- 结算经验：{GameplayRules.TrainExpBase + GameplayRules.TrainExpPerLevel * character.Level}"],
+                [
+                    "- 旧版练级不收费，收益只看时长：每分钟 2 点经验（单次上限 2880 分钟）",
+                    $"- 本次预计经验：{GameplayRules.TrainExpPerMinute * duration}"
+                ],
                 ["/收取练级", "/状态"]);
         }, cancellationToken);
 
@@ -586,7 +616,11 @@ public sealed class PlayerService(
             string? mainGuid = state.Wallet.MainCharacterGuid;
             List<PlayerCharacter> all = await CharacterStore.ListAsync(db, userId, mainGuid, ct);
             PlayerCharacter? character = all.FirstOrDefault(x => x.Id == session.CharacterId);
-            long exp = GameplayRules.TrainExpBase + GameplayRules.TrainExpPerLevel * (character?.Level ?? 1);
+            // 旧版 GetTrainingInfo：总经验 = min(分钟数, 2880) × 2
+            int trainedMinutes = (int)Math.Min(
+                Math.Max(0, (session.EndsAtUtc - session.StartedAtUtc).TotalMinutes),
+                GameplayRules.TrainMaxMinutes);
+            long exp = GameplayRules.TrainExpPerMinute * (long)trainedMinutes;
             string levelNote = "（角色已不存在）";
             if (character is not null)
             {

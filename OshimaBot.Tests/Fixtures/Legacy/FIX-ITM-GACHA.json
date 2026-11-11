@@ -5,38 +5,59 @@
   "probe": "gacha",
   "status": "current-locked",
   "input": {
-    "counts": [1, 10]
+    "counts": [
+      1,
+      10
+    ]
   },
   "expected": {
     "current": {
       "singleCost": 5,
-      "tenCost": 45,
+      "tenCost": 50,
       "maxPerCall": 10,
-      "costByCount": [5, 45],
-      "pityQuality": 4,
-      "weights": [60, 25, 10, 4, 1]
+      "costByCount": [
+        5,
+        50
+      ],
+      "singleCostCredits": 1000,
+      "tenCostCredits": 10000,
+      "hitChancePercent": 20,
+      "pityQuality": null,
+      "qualityThresholds": [
+        3.06,
+        6.33,
+        8.25,
+        13.48,
+        19.35,
+        49.53
+      ]
     },
     "legacy": {
-      "model": "random",
-      "credits": { "singleCost": 1000, "tenCost": 10000 },
-      "materials": { "singleCost": 5, "tenCost": 50 },
-      "winChance": 0.2,
-      "pity": null,
-      "qualityProbabilities": {
-        "white": 49.53,
-        "green": 19.35,
-        "blue": 13.48,
-        "purple": 8.25,
-        "orange": 6.33,
-        "red": 3.06
-      },
-      "note": "每次独立掷 dice>0.8 才中奖；十连无折扣无保底，可能全空；新版 100% 得物"
+      "singleCost": 5,
+      "tenCost": 50,
+      "maxPerCall": 10,
+      "costByCount": [
+        5,
+        50
+      ],
+      "singleCostCredits": 1000,
+      "tenCostCredits": 10000,
+      "hitChancePercent": 20,
+      "pityQuality": null,
+      "qualityThresholds": [
+        3.06,
+        6.33,
+        8.25,
+        13.48,
+        19.35,
+        49.53
+      ]
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1016",
     "method": "RainBOTService 钻石抽卡分支 + FunGameService.DrawCards",
-    "note": "旧版金币抽卡 1000/次、钻石抽卡 5/次；新版只保留钻石抽卡，金币抽卡缺失（ITM-008 有意差异）。概率权重与保底待旧版核对"
+    "note": "旧版 FunGameConstant.DrawCardReduce=1000（金币/次）、DrawCardReduce_Material=5（钻石/次），十连按 10 倍无折扣；每次 dice>0.8 才中奖（20%）、十连无保底；品质按 DrawCardProbabilities 从高到低阈值判定"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

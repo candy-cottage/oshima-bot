@@ -602,7 +602,7 @@ public sealed class EconomyService(
             List<string> drops = [];
             for (int i = 0; i < itemCount; i++)
             {
-                int quality = Math.Clamp(GameplayRules.RollQuality(random) - (win ? 0 : 2), 1, 5);
+                int quality = Math.Clamp(GameplayRules.RollGachaQuality(random) - (win ? 0 : 2), 1, 5);
                 await PlayerService.AddItemAsync(db, userId, $"{kindName}秘境掉落", quality, 1, ct, "instance");
                 drops.Add(GameplayRules.QualityName(quality));
             }
@@ -701,12 +701,6 @@ public sealed class EconomyService(
                 return ActionResult.Fail("讨伐目标正在刷新", "没有扣除金币",
                     "稍后再试，或先去 /决斗 练手", "/决斗");
             }
-            if (state.Credits < GameplayRules.BossCostCredits)
-            {
-                return ActionResult.Fail("金币不足", "没有开始挑战",
-                    $"需要 {GameplayRules.BossCostCredits} 金币，当前 {state.Credits}", "/状态");
-            }
-
             PlayerCharacter? mine = await PlayerService.MainCharacterAsync(db, userId, ct);
             if (mine is null)
             {
@@ -734,12 +728,8 @@ public sealed class EconomyService(
             if (killed) damage = 1;
             BossPool.ApplyResult(bossEntry, boss.HP, boss.MP, boss.EP);
 
-            PlayerService.ApplyCurrency(db, state, -GameplayRules.BossCostCredits,
-                "credits", "boss_entry", "boss", reference);
-            int credits = killed
-                ? GameplayRules.BossRewardCredits
-                : Math.Max(1, (int)(GameplayRules.BossRewardCredits * damage * 0.5));
-            // 旧版等效奖励：击杀后 Inventory.Materials += boss.Level（材料在本作即钻石）。
+            // 旧版 FightBoss 不收入场费；击杀只做 Inventory.Materials += boss.Level（材料在本作即钻石）。
+            int credits = 0;
             int diamonds = killed ? bossEntry.Level : 0;
             if (credits > 0)
             {
@@ -759,7 +749,9 @@ public sealed class EconomyService(
                 $"- 目标：{bossEntry.Display}　剩余 HP {bossEntry.HPPercent:P0}（全服共享）",
                 $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
                 $"- 本次伤害占比：{damage:P0} · {battle.Rounds} 回合",
-                $"- 结算：金币 +{credits}{(diamonds > 0 ? $"　钻石 +{diamonds}" : "")} · 战绩 +{gain}",
+                diamonds > 0
+                    ? $"- 结算：钻石 +{diamonds}（= 目标等级）· 战绩 +{gain}"
+                    : $"- 结算：本次未击杀，只有战绩 +{gain}（击杀才发钻石）",
                 $"- 当前战绩：{points}　金币：{state.Credits}"
             ];
             lines.AddRange(battle.Tail(2)

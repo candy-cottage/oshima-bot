@@ -67,8 +67,10 @@ public sealed class GameplayCommandTests
     {
         using GameplayCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
+        await TestItems.SeedAsync(db.Provider, UserId, 3);   // 旧版注册不带物品
 
-        Assert.Contains("抽卡", await RouteAsync(router, "/抽卡 3"));
+        // 旧版注册不给钻石（0），抽卡会因钻石不足失败——这本身就是可达回复
+        Assert.Contains("钻石不足", await RouteAsync(router, "/抽卡 3"));
         string bag = await RouteAsync(router, "/背包");
         Assert.Contains("@1", bag);
         Assert.Contains("物品已锁定", await RouteAsync(router, "/锁定 @1"));
