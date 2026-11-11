@@ -433,27 +433,108 @@ public sealed class PlayerService(
         {
             PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
             if (character is null) return NoSuchCharacter(index);
-            long cost = GameplayRules.BreakCost(character.BreakLevel);
-            if (state.Credits < cost)
-            {
-                return ActionResult.Fail("金币不足", "没有消耗金币，突破等级未变",
-                    $"需要 {cost} 金币，当前 {state.Credits}", "/签到");
-            }
+
             int before = character.BreakLevel;
-            character.Core.OnLevelBreak();            // Core 负责判定等级是否达标
-            if (character.BreakLevel == before)
+            if (NeedBreak(character) is not int needLevel)
             {
-                return ActionResult.Fail("突破条件未满足", "没有消耗金币，突破等级未变",
-                    NeedBreak(character) is int need ? $"需要 Lv.{need}，当前 Lv.{character.Level}" : "无可突破的阶数",
-                    "/角色");
+                return ActionResult.Fail("已完成全部突破阶段", "突破等级未变",
+                    $"{character.Name} 已是 {before} 阶，无需再突破", "/角色");
             }
-            ApplyCurrency(db, state, -cost, "credits", "break", "character", character.Id.ToString(CultureInfo.InvariantCulture));
+            if (character.Level < needLevel)
+            {
+                return ActionResult.Fail("突破条件未满足", "没有消耗任何材料，突破等级未变",
+                    $"{character.Name} 需 Lv.{needLevel} 才能突破，当前 Lv.{character.Level}", "/练级 @1");
+            }
+
+            // Core 判定达标后**在等级远超时可能连升多阶**，所以先试算，再按跨越的每一档累加材料。
+            character.Core.OnLevelBreak();
+            int after = character.BreakLevel;
+            if (after == before)
+            {
+                character.Core.LevelBreak = before;
+                return ActionResult.Fail("突破条件未满足", "没有消耗任何材料，突破等级未变",
+                    $"{character.Name} 需 Lv.{needLevel} 才能突破，当前 Lv.{character.Level}", "/角色");
+            }
+
+            (int materialNeed, Dictionary<string, int> itemNeeds) = BreakNeeds(before + 1, after);
+            Dictionary<string, int> held = itemNeeds.Count == 0
+                ? []
+                : await ItemStore.CountByNamesAsync(db, userId, [.. itemNeeds.Keys], ct);
+
+            // 先整体校验；任何一项不足就撤回试算的阶数，一件材料都不扣。
+            List<string> lacks = [];
+            string materialName = General.GameplayEquilibriumConstant.InGameMaterial;
+            if (state.Materials < materialNeed)
+            {
+                lacks.Add($"{materialName} {state.Materials:0.##}/{materialNeed}");
+            }
+            foreach ((string name, int need) in itemNeeds)
+            {
+                int have = held.GetValueOrDefault(name);
+                if (have < need) lacks.Add($"{name} {have}/{need}");
+            }
+            if (lacks.Count > 0)
+            {
+                character.Core.LevelBreak = before;
+                return ActionResult.Fail("突破材料不足", "没有消耗任何材料，突破等级未变",
+                    $"缺少：{string.Join("　", lacks)}", "/背包");
+            }
+
+            if (materialNeed > 0)
+            {
+                ApplyCurrency(db, state, -materialNeed, "diamonds", "break", "character",
+                    character.Id.ToString(CultureInfo.InvariantCulture));
+            }
+            if (itemNeeds.Count > 0) await ItemStore.ConsumeByNamesAsync(db, userId, itemNeeds, ct);
             CharacterStore.Sync(character);
+
+            List<string> lines =
+            [
+                $"- 突破 {before} → {after} 阶（上限 Lv.{GameplayRules.NextBreakLevel(after)?.ToString() ?? General.GameplayEquilibriumConstant.MaxLevel.ToString()}）",
+                $"- 消耗：{DescribeBreakNeeds(materialNeed, itemNeeds)}",
+                $"- 剩余：{materialName} {state.Materials:0.##}"
+            ];
+            if (GameplayRules.LevelBreakNeedy(after + 1) is { Count: > 0 } next)
+            {
+                lines.Add($"- 下一阶（{after + 1} 阶）需要：{DescribeBreakNeeds(next)}");
+            }
+            else
+            {
+                lines.Add("- 已完成全部突破阶段");
+            }
+
             return ActionResult.Success("💥 突破成功",
-                $"{character.Name} · 突破 {character.BreakLevel} 阶（上限 Lv.{character.Core.MaxLevel}）",
-                [$"- 消耗金币 {cost}，剩余 {state.Credits}", "- 已写入账本 ledger"],
-                ["/角色", "/状态"]);
+                $"{character.Name} · 突破 {after} 阶",
+                lines,
+                ["/角色", "/练级 @1", "/状态"]);
         }, cancellationToken);
+
+    /// <summary>汇总从 <paramref name="fromStage"/> 到 <paramref name="toStage"/> 各档的材料需求（同名合并）。</summary>
+    private static (int Material, Dictionary<string, int> Items) BreakNeeds(int fromStage, int toStage)
+    {
+        int material = 0;
+        Dictionary<string, int> items = [];
+        for (int stage = fromStage; stage <= toStage; stage++)
+        {
+            foreach (BreakNeed need in GameplayRules.LevelBreakNeedy(stage))
+            {
+                if (need.IsMaterial) material += need.Count;
+                else items[need.Name] = items.GetValueOrDefault(need.Name) + need.Count;
+            }
+        }
+        return (material, items);
+    }
+
+    private static string DescribeBreakNeeds(int material, IReadOnlyDictionary<string, int> items)
+    {
+        List<string> parts = [];
+        if (material > 0) parts.Add($"{General.GameplayEquilibriumConstant.InGameMaterial} ×{material}");
+        parts.AddRange(items.Select(x => $"{x.Key} ×{x.Value}"));
+        return parts.Count == 0 ? "无" : string.Join("、", parts);
+    }
+
+    private static string DescribeBreakNeeds(IReadOnlyList<BreakNeed> needs)
+        => string.Join("、", needs.Select(x => $"{x.Name} ×{x.Count}"));
 
     public Task<ActionResult> TrainStartAsync(long userId, int index, int minutes, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>

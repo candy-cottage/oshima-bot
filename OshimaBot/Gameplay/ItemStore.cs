@@ -164,6 +164,58 @@ public static class ItemStore
         return new PlayerItem(record, item);
     }
 
+    /// <summary>按名字统计持有数量（跨堆叠），突破材料校验用。</summary>
+    public static async Task<Dictionary<string, int>> CountByNamesAsync(
+        BotDbContext db, long userId, IReadOnlyCollection<string> names, CancellationToken ct)
+    {
+        Dictionary<string, int> counts = [];
+        if (names.Count == 0) return counts;
+
+        HashSet<string> wanted = [.. names];
+        List<PlayerItem> items = await ListAsync(db, userId, ct);
+        foreach (PlayerItem item in items)
+        {
+            if (!wanted.Contains(item.Name)) continue;
+            counts[item.Name] = counts.GetValueOrDefault(item.Name) + item.Quantity;
+        }
+        return counts;
+    }
+
+    /// <summary>
+    /// 按名字扣除数量（跨堆叠，后加入的先扣，与旧版 <c>TakeLast</c> 一致）。
+    /// **先整体校验再扣**，不足时一件不动并返回 false。
+    /// </summary>
+    public static async Task<bool> ConsumeByNamesAsync(
+        BotDbContext db, long userId, IReadOnlyDictionary<string, int> needs, CancellationToken ct)
+    {
+        if (needs.Count == 0) return true;
+
+        List<PlayerItem> items = await ListAsync(db, userId, ct);
+        foreach ((string name, int need) in needs)
+        {
+            if (need <= 0) continue;
+            int have = items.Where(x => x.Name == name).Sum(x => x.Quantity);
+            if (have < need) return false;
+        }
+
+        foreach ((string name, int need) in needs)
+        {
+            int remaining = need;
+            if (remaining <= 0) continue;
+            foreach (PlayerItem item in items
+                .Where(x => x.Name == name)
+                .OrderByDescending(x => x.AcquiredAtUtc).ThenByDescending(x => x.Id))
+            {
+                if (remaining <= 0) break;
+                int take = Math.Min(remaining, item.Quantity);
+                if (item.Quantity <= take) Remove(db, item);   // Quantity setter 会把 0 抬成 1，必须整行移除
+                else item.Quantity -= take;
+                remaining -= take;
+            }
+        }
+        return true;
+    }
+
     /// <summary>把物品（含品质/锁定/绑定）写回记录与快照；不调用 SaveChanges。</summary>
     public static void Sync(PlayerItem item)
     {

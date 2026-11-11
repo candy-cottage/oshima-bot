@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FunGame.Core.Library.Constant;
+using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 
 namespace OshimaBot.Tests;
@@ -88,20 +89,26 @@ public static class LegacyFixtureProbes
         "forge", "store", "market-fee", "boss", "signin"
     };
 
-    public static JsonNode Run(string probe, JsonElement input) => probe switch
+    public static JsonNode Run(string probe, JsonElement input)
     {
-        "levelup" => LevelUp(input),
-        "break" => Break(input),
-        "train" => Train(input),
-        "register" => Register(),
-        "gacha" => Gacha(input),
-        "forge" => Forge(),
-        "store" => Store(),
-        "market-fee" => MarketFee(input),
-        "boss" => Boss(),
-        "signin" => SignIn(input),
-        _ => throw new NotSupportedException($"未注册的探针：{probe}")
-    };
+        // 内容包常量（InGameMaterial 等）由模块在启动时赋值，探针必须与生产一致的取值。
+        FunGameRuntime.EnsureInitialized();
+
+        return probe switch
+        {
+            "levelup" => LevelUp(input),
+            "break" => Break(input),
+            "train" => Train(input),
+            "register" => Register(),
+            "gacha" => Gacha(input),
+            "forge" => Forge(),
+            "store" => Store(),
+            "market-fee" => MarketFee(input),
+            "boss" => Boss(),
+            "signin" => SignIn(input),
+            _ => throw new NotSupportedException($"未注册的探针：{probe}")
+        };
+    }
 
     private static int[] IntArray(JsonElement input, string name)
         => input.TryGetProperty(name, out JsonElement value)
@@ -125,7 +132,9 @@ public static class LegacyFixtureProbes
         {
             ["levelCap"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(
                 GameplayRules.NextBreakLevel(b) ?? General.GameplayEquilibriumConstant.MaxLevel)).ToArray()),
-            ["breakCost"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(GameplayRules.BreakCost(b))).ToArray())
+            // 突破消耗改回旧版的材料表（LevelBreakNeedyList 同构）：突破到 N 阶需要什么。
+            ["breakNeedy"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(
+                string.Join(",", GameplayRules.LevelBreakNeedy(b).Select(x => $"{x.Name}×{x.Count}")))).ToArray())
         };
     }
 

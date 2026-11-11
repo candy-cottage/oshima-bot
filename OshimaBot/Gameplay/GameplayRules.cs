@@ -25,7 +25,6 @@ public static class GameplayRules
     public const int SignInDiamondEveryDays = 7;
     public const int SignInDiamondAmount = 5;
 
-    public const int BreakCreditsBase = 500;
     public const int SalvageValueBase = 20;
     public const int UseExpBase = 30;
 
@@ -83,7 +82,28 @@ public static class GameplayRules
     public static int UseExp(int quality, int quantity)
         => UseExpBase * Math.Max(1, quality) * Math.Max(1, quantity);
 
-    public static long BreakCost(int breakLevel) => BreakCreditsBase * (breakLevel + 1L);
+    /// <summary>
+    /// 突破材料需求（照搬旧版 <c>FunGameConstant.LevelBreakNeedyList</c>）。
+    /// <para>参数是**突破后的阶数**（1–5），与旧版 <c>LevelBreakNeedyList[LevelBreak + 1]</c> 一致。
+    /// 旧表里另有一档 <c>[0]</c>（材料 40 + 升华之印 2），但 <c>LevelBreak + 1</c> 最小为 1，那档永远取不到，故不搬。</para>
+    /// </summary>
+    public static IReadOnlyList<BreakNeed> LevelBreakNeedy(int breakLevel) => breakLevel switch
+    {
+        1 => [Material(80), Item("升华之印", 4), Item("流光之印", 2)],
+        2 => [Material(160), Item("升华之印", 8), Item("流光之印", 4), Item("永恒之印", 3)],
+        3 => [Material(320), Item("升华之印", 16), Item("流光之印", 8), Item("永恒之印", 6), Item("原初之印", 5)],
+        4 => [Material(640), Item("升华之印", 32), Item("流光之印", 16), Item("永恒之印", 12),
+              Item("原初之印", 10), Item("创生之印", 5)],
+        5 => [Material(1280), Item("升华之印", 64), Item("流光之印", 32), Item("永恒之印", 24),
+              Item("原初之印", 20), Item("创生之印", 10)],
+        _ => []
+    };
+
+    /// <summary>材料名取自运行时内容包常量（<c>InGameMaterial</c> 目前是「钻石」）。</summary>
+    private static BreakNeed Material(int count)
+        => new(General.GameplayEquilibriumConstant.InGameMaterial, count, true);
+
+    private static BreakNeed Item(string name, int count) => new(name, count, false);
 
     /// <summary>下一次突破所需等级（取自 Core 的 <c>LevelBreakList</c>）；已无更高阶数时返回 null。</summary>
     public static int? NextBreakLevel(int levelBreak)
@@ -291,3 +311,9 @@ public static class GameplayRules
 
     public static string CatalogVersion => "core-v3";
 }
+
+/// <summary>
+/// 一条突破材料需求。<see cref="IsMaterial"/> 为 true 时按钱包材料（<c>Materials</c>）结算，
+/// 否则按背包里同名物品的数量结算。
+/// </summary>
+public sealed record BreakNeed(string Name, int Count, bool IsMaterial);
