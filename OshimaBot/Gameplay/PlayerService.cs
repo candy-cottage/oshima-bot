@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OshimaBot.Data;
 using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
+using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
 
@@ -64,7 +65,7 @@ public sealed class PlayerService(
             PlayerAccount state = await PlayerService.EnsureAsync(db, userId, ct);
             List<PlayerCharacter> characters = await CharacterStore.ListAsync(
                 db, userId, state.Wallet.MainCharacterGuid, ct);
-            int itemCount = await db.ItemInstances.AsNoTracking().CountAsync(x => x.UserId == userId, ct);
+            int itemCount = await db.CoreItems.AsNoTracking().CountAsync(x => x.UserId == userId, ct);
             List<long> squadIds = await db.Squads.AsNoTracking()
                 .Where(x => x.UserId == userId).Select(x => x.Id).ToListAsync(ct);
             int squadCount = squadIds.Count == 0 ? 0 : await db.SquadMembers.AsNoTracking()
@@ -81,15 +82,11 @@ public sealed class PlayerService(
         => userId <= 0 ? Task.FromResult<IReadOnlyList<BagEntry>>([]) : ReadAsync(async (db, ct) =>
         {
             await PlayerService.EnsureAsync(db, userId, ct);
-            List<ItemInstance> items = await db.ItemInstances.AsNoTracking()
-                .Where(x => x.UserId == userId).OrderBy(x => x.Id).ToListAsync(ct);
-            List<long> ids = items.Select(x => x.Id).ToList();
-            HashSet<long> equipped = (await db.CharacterEquipment.AsNoTracking()
-                .Where(x => ids.Contains(x.ItemInstanceId))
-                .Select(x => x.ItemInstanceId).ToListAsync(ct)).ToHashSet();
+            List<PlayerItem> items = await ItemStore.ListAsync(db, userId, ct);
+            // 装备直接进角色快照（6 槽），背包里只剩下未装备的物品。
             return (IReadOnlyList<BagEntry>)items.Select((item, i) => new BagEntry(
                 i + 1, item.Id, ReadName(item), item.CatalogId, item.Quantity,
-                item.Quality, item.Locked, item.Bound, equipped.Contains(item.Id))).ToArray();
+                item.Quality, item.Locked, item.Bound, false)).ToArray();
         }, cancellationToken);
 
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
@@ -98,12 +95,9 @@ public sealed class PlayerService(
             PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
             List<PlayerCharacter> characters = await CharacterStore.ListAsync(
                 db, userId, account.Wallet.MainCharacterGuid, ct);
-            Dictionary<long, int> equipment = await db.CharacterEquipment.AsNoTracking()
-                .GroupBy(x => x.CharacterId).Select(g => new { g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
             return (IReadOnlyList<CharacterEntry>)characters.Select((c, i) => new CharacterEntry(
                 i + 1, c.Id, c.Name, c.Level, c.Exp, c.BreakLevel, c.IsMain,
-                equipment.GetValueOrDefault(c.Id))).ToArray();
+                CountEquipped(c.Core))).ToArray();
         }, cancellationToken);
 
     public async Task<IReadOnlyList<QuestEntry>> GetQuestsAsync(long userId, CancellationToken cancellationToken = default)
@@ -203,7 +197,7 @@ public sealed class PlayerService(
                     "- 等级与经验记在角色身上（Core 模型）",
                     $"- 金币：{state.Credits}　钻石：{state.Materials}",
                     $"- 角色：{await db.CoreCharacters.CountAsync(x => x.UserId == userId, ct)} 名",
-                    $"- 物品：{await db.ItemInstances.CountAsync(x => x.UserId == userId, ct)} 格",
+                    $"- 物品：{await db.CoreItems.CountAsync(x => x.UserId == userId, ct)} 格",
                     "- 旧版 JSON 存档未迁移，所有旅人从今天重新开始"
                 ], ["/状态", "/签到", "/抽卡", "/背包"]);
         }, cancellationToken);
@@ -289,14 +283,8 @@ public sealed class PlayerService(
     public Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            ItemInstance? item = await ItemByIndexAsync(db, userId, index, ct);
+            PlayerItem? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
-            if (await db.CharacterEquipment.AsNoTracking()
-                .AnyAsync(x => x.ItemInstanceId == item.Id, ct))
-            {
-                return ActionResult.Fail("该物品已装备", "没有消耗物品",
-                    "先 /卸下 <槽位> 再使用", "/背包");
-            }
             int amount = Math.Clamp(quantity, 1, item.Quantity);
             int exp = GameplayRules.UseExp(item.Quality, amount);
             PlayerCharacter? target = await MainCharacterAsync(db, userId, ct);
@@ -322,7 +310,7 @@ public sealed class PlayerService(
     public Task<ActionResult> SalvageAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
-            ItemInstance? item = await ItemByIndexAsync(db, userId, index, ct);
+            PlayerItem? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
             if (item.Locked || item.Bound)
             {
@@ -343,7 +331,7 @@ public sealed class PlayerService(
     public Task<ActionResult> SetLockAsync(long userId, int index, bool locked, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, _, ct) =>
         {
-            ItemInstance? item = await ItemByIndexAsync(db, userId, index, ct);
+            PlayerItem? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
             item.Locked = locked;
             return ActionResult.Success(locked ? "🔒 物品已锁定" : "🔓 物品已解锁",
@@ -354,27 +342,29 @@ public sealed class PlayerService(
     public Task<ActionResult> EquipAsync(long userId, int index, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, _, ct) =>
         {
-            ItemInstance? item = await ItemByIndexAsync(db, userId, index, ct);
+            PlayerItem? item = await ItemByIndexAsync(db, userId, index, ct);
             if (item is null) return NoSuchItem(index);
-            if (item.Bound) return ActionResult.Fail("该物品已装备", "没有重复装备", "先 /卸下 <槽位>", "/背包");
             PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
             if (main is null) return NoMainCharacter();
-            List<string> used = await db.CharacterEquipment.AsNoTracking()
-                .Where(x => x.CharacterId == main.Id).Select(x => x.Slot).ToListAsync(ct);
-            string? slot = GameplayRules.EquipmentSlots.FirstOrDefault(s => !used.Contains(s));
-            if (slot is null)
+            string name = ReadName(item);
+            // Core 按 ItemType 决定槽位（Accessory 会自动找空位）；返回 false 表示不可装备。
+            if (!main.Core.Equip(item.Item, out Item? replaced))
             {
-                return ActionResult.Fail("装备槽已满", "没有装备该物品",
-                    "先 /卸下 weapon / armor / trinket 之一", "/角色");
+                return ActionResult.Fail("该物品不能装备", "没有改动装备",
+                    "只有武器/防具/鞋子/饰品/魔法卡包可以装备", "/背包");
             }
-            item.Bound = true;
-            db.CharacterEquipment.Add(new CharacterEquipment
+            ItemStore.Remove(db, item);                        // 从背包移出
+            CharacterStore.Sync(main);
+            if (replaced is not null)
             {
-                CharacterId = main.Id, Slot = slot, ItemInstanceId = item.Id
-            });
+                await ItemStore.AddAsync(db, userId, replaced.Name,
+                    GameplayRules.QualityTierOf(replaced.QualityType), 1, ct,
+                    replaced.Id.ToString(CultureInfo.InvariantCulture));
+            }
             return ActionResult.Success("🛡️ 装备成功",
-                $"{ReadName(item)} → {main.Name} 的 {slot} 槽",
-                ["- 装备后自动绑定，需先卸下才能分解", "- 槽位：weapon / armor / trinket"],
+                $"{name} → {main.Name} 的 {item.Item.EquipSlotType} 槽"
+                + (replaced is null ? "" : $"（换下 {replaced.Name} 已回背包）"),
+                ["- 槽位由物品自身决定：Weapon / Armor / Shoes / Accessory1 / Accessory2 / MagicCardPack"],
                 ["/角色", "/背包", "/状态"]);
         }, cancellationToken);
 
@@ -383,20 +373,25 @@ public sealed class PlayerService(
         {
             PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
             if (main is null) return NoMainCharacter();
-            CharacterEquipment? equipment = await db.CharacterEquipment
-                .FirstOrDefaultAsync(x => x.CharacterId == main.Id && x.Slot == slot, ct);
-            if (equipment is null)
+            if (!TryParseSlot(slot, out EquipSlotType type))
+            {
+                return ActionResult.Fail("槽位名无效", "没有卸下任何物品",
+                    "可用：weapon / armor / shoes / accessory1 / accessory2 / magiccardpack", "/角色");
+            }
+
+            Item? removed = main.Core.UnEquip(type);
+            if (removed is null)
             {
                 return ActionResult.Fail("该槽位没有装备", "没有卸下任何物品",
-                    "用 /角色 查看当前装备，槽位为 weapon / armor / trinket", "/角色");
+                    $"槽位 {type} 是空的，用 /角色 查看当前装备", "/角色");
             }
-            ItemInstance? item = await db.ItemInstances
-                .FirstOrDefaultAsync(x => x.Id == equipment.ItemInstanceId && x.UserId == userId, ct);
-            db.CharacterEquipment.Remove(equipment);
-            if (item is not null) item.Bound = false;
+            CharacterStore.Sync(main);
+            await ItemStore.AddAsync(db, userId, removed.Name,
+                GameplayRules.QualityTierOf(removed.QualityType), 1, ct,
+                removed.Id.ToString(CultureInfo.InvariantCulture));
             return ActionResult.Success("📦 已卸下",
-                $"{slot} 槽 · {(item is null ? "未知物品" : ReadName(item))}",
-                ["- 物品已回到背包并解除绑定"], ["/背包", "/角色"]);
+                $"{type} 槽 · {removed.Name}",
+                ["- 物品已回到背包"], ["/背包", "/角色"]);
         }, cancellationToken);
 
     public Task<ActionResult> SetMainAsync(long userId, int index, CancellationToken cancellationToken = default)
@@ -690,12 +685,8 @@ public sealed class PlayerService(
         for (int i = 0; i < Math.Min(GameplayRules.StartingItems, itemTemplates.Count); i++)
         {
             var template = itemTemplates[i];
-            db.ItemInstances.Add(new ItemInstance
-            {
-                UserId = userId, CatalogId = template.Id.ToString(CultureInfo.InvariantCulture),
-                Quantity = 1, Quality = 1, PayloadJson = JsonSerializer.Serialize(new { name = template.Name }),
-                AcquiredAtUtc = DateTime.UtcNow
-            });
+            await ItemStore.AddAsync(db, userId, template.Name, 1, 1, ct,
+                template.Id.ToString(CultureInfo.InvariantCulture));
         }
         db.LedgerEntries.Add(new LedgerEntry
         {
@@ -724,33 +715,14 @@ public sealed class PlayerService(
         });
     }
 
-    internal static async Task AddItemAsync(
+    internal static Task AddItemAsync(
         BotDbContext db, long userId, string name, int quality, int quantity,
         CancellationToken ct, string catalogId = "gacha")
-    {
-        string payload = JsonSerializer.Serialize(new { name });
-        ItemInstance? stack = await db.ItemInstances.FirstOrDefaultAsync(
-            x => x.UserId == userId && x.CatalogId == catalogId && x.Quality == quality
-                 && x.PayloadJson == payload && !x.Bound && !x.Locked, ct);
-        if (stack is null)
-        {
-            db.ItemInstances.Add(new ItemInstance
-            {
-                UserId = userId, CatalogId = catalogId, Quantity = quantity, Quality = quality,
-                PayloadJson = payload, AcquiredAtUtc = DateTime.UtcNow
-            });
-        }
-        else
-        {
-            stack.Quantity += quantity;
-        }
-    }
+        => ItemStore.AddAsync(db, userId, name, quality, quantity, ct, catalogId);
 
-    internal static async Task<ItemInstance?> ItemByIndexAsync(
+    internal static Task<PlayerItem?> ItemByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
-        => index <= 0 ? null : await db.ItemInstances
-            .Where(x => x.UserId == userId).OrderBy(x => x.Id)
-            .Skip(index - 1).FirstOrDefaultAsync(ct);
+        => ItemStore.ByIndexAsync(db, userId, index, ct);
 
     internal static async Task<PlayerCharacter?> CharacterByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
@@ -783,9 +755,9 @@ public sealed class PlayerService(
     private static int? NeedBreak(PlayerCharacter character)
         => GameplayRules.NextBreakLevel(character.BreakLevel);
 
-    internal static void Consume(BotDbContext db, ItemInstance item, int amount)
+    internal static void Consume(BotDbContext db, PlayerItem item, int amount)
     {
-        if (item.Quantity <= amount) db.ItemInstances.Remove(item);
+        if (item.Quantity <= amount) ItemStore.Remove(db, item);
         else item.Quantity -= amount;
     }
 
@@ -823,17 +795,37 @@ public sealed class PlayerService(
         catch (JsonException) { return 0; }
     }
 
-    internal static string ReadName(ItemInstance item)
+    internal static string ReadName(PlayerItem item)
     {
-        if (string.IsNullOrWhiteSpace(item.PayloadJson)) return $"物品 {item.CatalogId}";
-        try
+        if (!string.IsNullOrWhiteSpace(item.Name)) return item.Name;
+        return $"物品 {item.CatalogId}";
+    }
+
+    /// <summary>统计 Core 快照里 6 个装备槽已占用的数量。</summary>
+    internal static int CountEquipped(Character character)
+    {
+        int count = 0;
+        if (character.EquipSlot.MagicCardPack is not null) count++;
+        if (character.EquipSlot.Weapon is not null) count++;
+        if (character.EquipSlot.Armor is not null) count++;
+        if (character.EquipSlot.Shoes is not null) count++;
+        if (character.EquipSlot.Accessory1 is not null) count++;
+        if (character.EquipSlot.Accessory2 is not null) count++;
+        return count;
+    }
+
+    /// <summary>解析 /卸下 的槽位名；兼容旧的 trinket（→ Accessory1）。</summary>
+    internal static bool TryParseSlot(string slot, out EquipSlotType type)
+    {
+        type = EquipSlotType.None;
+        if (string.IsNullOrWhiteSpace(slot)) return false;
+        string normalized = slot.Trim();
+        if (normalized.Equals("trinket", StringComparison.OrdinalIgnoreCase))
         {
-            using JsonDocument document = JsonDocument.Parse(item.PayloadJson);
-            return document.RootElement.TryGetProperty("name", out JsonElement name)
-                ? name.GetString() ?? $"物品 {item.CatalogId}"
-                : $"物品 {item.CatalogId}";
+            type = EquipSlotType.Accessory1;
+            return true;
         }
-        catch (JsonException) { return $"物品 {item.CatalogId}"; }
+        return Enum.TryParse(normalized, true, out type) && type != EquipSlotType.None;
     }
 
     internal static ActionResult NoSuchItem(int index)

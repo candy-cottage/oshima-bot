@@ -79,7 +79,7 @@ public sealed class GameplayTests
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         Assert.Equal(0, (await context.CorePlayers.FirstAsync(x => x.UserId == UserId)).Materials);
         Assert.Empty(await context.LedgerEntries.Where(x => x.Reason == "gacha").ToListAsync());
-        Assert.Equal(GameplayRules.StartingItems, await context.ItemInstances.CountAsync(x => x.UserId == UserId));
+        Assert.Equal(GameplayRules.StartingItems, await context.CoreItems.CountAsync(x => x.UserId == UserId));
     }
 
     [Fact]
@@ -100,9 +100,9 @@ public sealed class GameplayTests
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "gacha");
         Assert.Equal(-GameplayRules.GachaTenCost, entry.Delta);
         Assert.Equal(state.Materials, entry.BalanceAfter, 3);
-        Assert.True(await context.ItemInstances.CountAsync(x => x.UserId == UserId) > GameplayRules.StartingItems);
-        Assert.Contains(await context.ItemInstances.Where(x => x.CatalogId == "gacha").ToListAsync(),
-            item => item.Quality >= 4); // 十连保底
+        Assert.True(await context.CoreItems.CountAsync(x => x.UserId == UserId) > GameplayRules.StartingItems);
+        Assert.Contains(await context.CoreItems.Where(x => x.CatalogId == "gacha").ToListAsync(),
+            item => item.Quality >= (int)FunGame.Core.Library.Constant.QualityType.Purple); // 十连保底史诗
     }
 
     [Fact]
@@ -130,13 +130,37 @@ public sealed class GameplayTests
         LedgerEntry entry = await context.LedgerEntries.FirstAsync(x => x.Reason == "salvage");
         Assert.Equal(after.Credits, entry.BalanceAfter);
 
-        Assert.True((await players.EquipAsync(UserId, 2)).Ok);
-        Assert.True((await players.GetBagAsync(UserId))[1].Equipped);
-        Assert.False((await players.EquipAsync(UserId, 2)).Ok); // 已绑定，不能重复装备
-        Assert.False((await players.SalvageAsync(UserId, 2, 1)).Ok); // 绑定物品不可分解
-        Assert.True((await players.UnequipAsync(UserId, "weapon")).Ok);
-        Assert.False((await players.GetBagAsync(UserId))[1].Equipped);
-        Assert.True((await players.SalvageAsync(UserId, 2, 1)).Ok);
+        // ---- 装备生命周期：装备直接进 Core 的 6 槽快照，并从背包移出 ----
+        long equipLocalId;
+        string slotName;
+        using (IServiceScope equipScope = db.Provider.CreateScope())
+        {
+            BotDbContext equipContext = equipScope.ServiceProvider.GetRequiredService<BotDbContext>();
+            List<CoreItemRecord> rows = await equipContext.CoreItems
+                .Where(x => x.UserId == UserId).OrderBy(x => x.LocalId).ToListAsync();
+            CoreItemRecord equippable = rows.First(r => r.ItemType <= (int)FunGame.Core.Library.Constant.ItemType.Accessory);
+            equipLocalId = equippable.LocalId;
+            // 模板的 EquipSlotType 恒为 None（装备时才写入），槽位要按 ItemType 推。
+            slotName = equippable.ItemType switch
+            {
+                (int)FunGame.Core.Library.Constant.ItemType.Weapon => "Weapon",
+                (int)FunGame.Core.Library.Constant.ItemType.Armor => "Armor",
+                (int)FunGame.Core.Library.Constant.ItemType.Shoes => "Shoes",
+                (int)FunGame.Core.Library.Constant.ItemType.Accessory => "Accessory1",
+                _ => "MagicCardPack"
+            };
+        }
+
+        int bagBeforeEquip = (await players.GetBagAsync(UserId)).Count;
+        int equipIndex = (await players.GetBagAsync(UserId)).First(x => x.Id == equipLocalId).Index;
+        Assert.True((await players.EquipAsync(UserId, equipIndex)).Ok);
+        Assert.Equal(bagBeforeEquip - 1, (await players.GetBagAsync(UserId)).Count);
+        Assert.Equal(1, Assert.Single(await players.GetCharactersAsync(UserId)).EquipmentCount);
+
+        Assert.True((await players.UnequipAsync(UserId, slotName)).Ok);
+        IReadOnlyList<BagEntry> restored = await players.GetBagAsync(UserId);
+        Assert.Equal(bagBeforeEquip, restored.Count);
+        Assert.True((await players.SalvageAsync(UserId, restored.Count, 1)).Ok);
     }
 
     [Fact]
@@ -336,8 +360,8 @@ public sealed class GameplayTests
             Assert.True((await players.GachaAsync(UserId, 10)).Ok);
             using IServiceScope scope = db.Provider.CreateScope();
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-            List<string> names = await context.ItemInstances.AsNoTracking()
-                .OrderBy(x => x.Id).Select(x => x.PayloadJson).ToListAsync();
+            List<string> names = await context.CoreItems.AsNoTracking()
+                .OrderBy(x => x.LocalId).Select(x => x.CatalogId + ":" + x.Quality).ToListAsync();
             return string.Join("|", names);
         }
 

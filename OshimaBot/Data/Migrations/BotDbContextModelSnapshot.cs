@@ -77,8 +77,9 @@ namespace OshimaBot.Data.Migrations
 
             modelBuilder.Entity("OshimaBot.Data.Core.CoreItemRecord", b =>
                 {
-                    b.Property<string>("Guid")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("LocalId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("CatalogId")
                         .IsRequired()
@@ -90,10 +91,20 @@ namespace OshimaBot.Data.Migrations
                     b.Property<long>("EscrowUserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsBound")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsLock")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsTradable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemType")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("Price")
@@ -119,9 +130,12 @@ namespace OshimaBot.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("Guid");
+                    b.HasKey("LocalId");
 
                     b.HasIndex("CatalogId");
+
+                    b.HasIndex("Guid")
+                        .IsUnique();
 
                     b.HasIndex("EscrowUserId", "Quality");
 
@@ -295,22 +309,6 @@ namespace OshimaBot.Data.Migrations
                     b.ToTable("BindCodes");
                 });
 
-            modelBuilder.Entity("OshimaBot.Data.Entities.CharacterEquipment", b =>
-                {
-                    b.Property<long>("CharacterId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Slot")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("ItemInstanceId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("CharacterId", "Slot");
-
-                    b.ToTable("CharacterEquipment");
-                });
-
             modelBuilder.Entity("OshimaBot.Data.Entities.CharacterSkill", b =>
                 {
                     b.Property<long>("CharacterId")
@@ -440,49 +438,6 @@ namespace OshimaBot.Data.Migrations
                     b.HasKey("BotAppId");
 
                     b.ToTable("GatewaySessions");
-                });
-
-            modelBuilder.Entity("OshimaBot.Data.Entities.ItemInstance", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("AcquiredAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Bound")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CatalogId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Locked")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PayloadJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Quality")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "CatalogId");
-
-                    b.ToTable("ItemInstances");
                 });
 
             modelBuilder.Entity("OshimaBot.Data.Entities.LedgerEntry", b =>

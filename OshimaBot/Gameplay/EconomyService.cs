@@ -163,14 +163,13 @@ public sealed class EconomyService(
         List<MarketListing> listings = await ActiveListingsAsync(db, ct);
         if (listings.Count == 0) return [];
         List<long> ids = listings.Select(x => x.ItemInstanceId).ToList();
-        Dictionary<long, ItemInstance> items = await db.ItemInstances.AsNoTracking()
-            .Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        Dictionary<long, PlayerItem> items = await ItemStore.ByIdsAsync(db, ids, ct);
         List<long> sellers = listings.Select(x => x.SellerUserId).Distinct().ToList();
         Dictionary<long, string> handles = await db.Users.AsNoTracking()
             .Where(x => sellers.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
         return listings.Select((listing, i) =>
         {
-            items.TryGetValue(listing.ItemInstanceId, out ItemInstance? item);
+            items.TryGetValue(listing.ItemInstanceId, out PlayerItem? item);
             return new MarketEntry(i + 1, listing.Id,
                 item is null ? "未知物品" : PlayerService.ReadName(item), item?.Quality ?? 1,
                 listing.Price, listing.Fee,
@@ -197,7 +196,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("在售挂单已满", "没有上架任何物品",
                     $"最多同时挂 {GameplayRules.MarketMaxListingsPerUser} 件，先 /下架 @编号", "/市场");
             }
-            ItemInstance? item = await PlayerService.ItemByIndexAsync(db, userId, itemIndex, ct);
+            PlayerItem? item = await PlayerService.ItemByIndexAsync(db, userId, itemIndex, ct);
             if (item is null) return NoListing("背包物品");
             if (item.Locked || item.Bound)
             {
@@ -234,7 +233,7 @@ public sealed class EconomyService(
             {
                 return ActionResult.Fail("这不是你的挂单", "没有下架任何物品", "只能下架自己上架的商品", "/市场");
             }
-            ItemInstance? item = await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == listing.ItemInstanceId, ct);
+            PlayerItem? item = await ItemStore.ByIdAsync(db, listing.ItemInstanceId, ct);
             listing.Status = 2;
             listing.ClosedAtUtc = DateTime.UtcNow;
             if (item is not null) item.UserId = userId;
@@ -258,7 +257,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("金币不足", "没有发生任何交易",
                     $"需要 {listing.Price} 金币，当前 {state.Credits}", "/状态");
             }
-            ItemInstance? item = await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == listing.ItemInstanceId, ct);
+            PlayerItem? item = await ItemStore.ByIdAsync(db, listing.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("挂单物品已丢失", "没有发生任何交易", "联系管理员核查", "/市场");
 
             PlayerAccount seller = await PlayerService.EnsureAsync(db, listing.SellerUserId, ct);
@@ -289,15 +288,14 @@ public sealed class EconomyService(
             List<TradeItem> tradeItems = await db.TradeItems.AsNoTracking()
                 .Where(x => tradeIds.Contains(x.TradeId)).ToListAsync(ct);
             List<long> itemIds = tradeItems.Select(x => x.ItemInstanceId).ToList();
-            Dictionary<long, ItemInstance> items = await db.ItemInstances.AsNoTracking()
-                .Where(x => itemIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+            Dictionary<long, PlayerItem> items = await ItemStore.ByIdsAsync(db, itemIds, ct);
             List<long> sellers = trades.Select(x => x.SellerUserId).Distinct().ToList();
             Dictionary<long, string> handles = await db.Users.AsNoTracking()
                 .Where(x => sellers.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
             return trades.Select((trade, i) =>
             {
                 TradeItem? line = tradeItems.FirstOrDefault(x => x.TradeId == trade.Id);
-                items.TryGetValue(line?.ItemInstanceId ?? 0, out ItemInstance? item);
+                items.TryGetValue(line?.ItemInstanceId ?? 0, out PlayerItem? item);
                 return new OfferEntry(i + 1, trade.Id,
                     item is null ? "未知物品" : PlayerService.ReadName(item), line?.Price ?? 0,
                     handles.GetValueOrDefault(trade.SellerUserId, $"旅人{trade.SellerUserId}"),
@@ -313,7 +311,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("报价超出允许范围", "没有创建报价单",
                     $"价格需在 {GameplayRules.MarketMinPrice} ~ {GameplayRules.MarketMaxPrice} 之间", "/报价列表");
             }
-            ItemInstance? item = await PlayerService.ItemByIndexAsync(db, userId, itemIndex, ct);
+            PlayerItem? item = await PlayerService.ItemByIndexAsync(db, userId, itemIndex, ct);
             if (item is null) return NoListing("背包物品");
             if (item.Locked || item.Bound)
             {
@@ -352,7 +350,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("金币不足", "没有发生任何交易",
                     $"需要 {line.Price} 金币，当前 {state.Credits}", "/状态");
             }
-            ItemInstance? item = await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == line.ItemInstanceId, ct);
+            PlayerItem? item = await ItemStore.ByIdAsync(db, line.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("报价物品已丢失", "没有发生任何交易", "联系管理员核查", "/报价列表");
 
             PlayerAccount seller = await PlayerService.EnsureAsync(db, trade.SellerUserId, ct);
@@ -379,8 +377,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("这不是你的报价单", "没有撤回任何交易", "只能撤回自己发布的报价", "/报价列表");
             }
             TradeItem? line = await db.TradeItems.FirstOrDefaultAsync(x => x.TradeId == trade.Id, ct);
-            ItemInstance? item = line is null ? null :
-                await db.ItemInstances.FirstOrDefaultAsync(x => x.Id == line.ItemInstanceId, ct);
+            PlayerItem? item = line is null ? null : await ItemStore.ByIdAsync(db, line.ItemInstanceId, ct);
             trade.Status = 2;
             trade.ClosedAtUtc = DateTime.UtcNow;
             if (item is not null) item.UserId = userId;
@@ -399,7 +396,7 @@ public sealed class EconomyService(
                 return ActionResult.Fail("已有锻造进行中", "没有开始新的锻造",
                     "等待结束后用 /收取锻造 结算", "/收取锻造");
             }
-            ItemInstance? material = await PlayerService.ItemByIndexAsync(db, userId, materialIndex, ct);
+            PlayerItem? material = await PlayerService.ItemByIndexAsync(db, userId, materialIndex, ct);
             if (material is null) return NoListing("材料");
             if (material.Locked || material.Bound)
             {

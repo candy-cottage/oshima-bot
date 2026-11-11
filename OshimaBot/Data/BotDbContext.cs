@@ -20,8 +20,6 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
 
     public DbSet<PlayerState> PlayerStates => Set<PlayerState>();
     public DbSet<CharacterSkill> CharacterSkills => Set<CharacterSkill>();
-    public DbSet<CharacterEquipment> CharacterEquipment => Set<CharacterEquipment>();
-    public DbSet<ItemInstance> ItemInstances => Set<ItemInstance>();
     public DbSet<Squad> Squads => Set<Squad>();
     public DbSet<SquadMember> SquadMembers => Set<SquadMember>();
     public DbSet<TrainingSession> TrainingSessions => Set<TrainingSession>();
@@ -94,13 +92,6 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
             entity.Property(x => x.Version).IsConcurrencyToken();
         });
         modelBuilder.Entity<CharacterSkill>().HasKey(x => new { x.CharacterId, x.SkillId, x.Slot });
-        modelBuilder.Entity<CharacterEquipment>().HasKey(x => new { x.CharacterId, x.Slot });
-        modelBuilder.Entity<ItemInstance>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.HasIndex(x => new { x.UserId, x.CatalogId });
-            entity.Property(x => x.Version).IsConcurrencyToken();
-        });
         modelBuilder.Entity<Squad>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -199,7 +190,9 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
         });
         modelBuilder.Entity<CoreItemRecord>(entity =>
         {
-            entity.HasKey(x => x.Guid);
+            // 同 CoreCharacterRecord：自增本地键做关联，Guid 是业务身份。
+            entity.HasKey(x => x.LocalId);
+            entity.HasIndex(x => x.Guid).IsUnique();
             entity.HasIndex(x => new { x.UserId, x.Quality });
             entity.HasIndex(x => new { x.EscrowUserId, x.Quality });
             entity.HasIndex(x => new { x.CatalogId });

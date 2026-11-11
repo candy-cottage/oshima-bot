@@ -41,7 +41,7 @@ public sealed class EconomyTests
         Assert.Equal(-goods[0].Price * 2, entry.Delta);
         Assert.Equal(state.Credits, entry.BalanceAfter);
         // 同名同品质物品会堆叠成一行，数量累加。
-        Assert.Equal(2, (await dbContext.ItemInstances.SingleAsync(
+        Assert.Equal(2, (await dbContext.CoreItems.SingleAsync(
             x => x.UserId == Seller && x.CatalogId == "store")).Quantity);
     }
 
@@ -60,7 +60,7 @@ public sealed class EconomyTests
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext dbContext = scope.ServiceProvider.GetRequiredService<BotDbContext>();
         Assert.Empty(await dbContext.LedgerEntries.Where(x => x.Reason == "store_buy").ToListAsync());
-        Assert.Equal(0, await dbContext.ItemInstances.CountAsync(x => x.UserId == Seller && x.CatalogId == "store"));
+        Assert.Equal(0, await dbContext.CoreItems.CountAsync(x => x.UserId == Seller && x.CatalogId == "store"));
         Assert.Equal(GameplayRules.SeedStoreGoods[0].Stock,
             (await dbContext.StoreGoods.OrderBy(x => x.Id).FirstAsync()).Stock);
     }
@@ -97,7 +97,7 @@ public sealed class EconomyTests
         Assert.Equal(-200, (await dbContext.LedgerEntries.FirstAsync(x => x.Reason == "market_buy")).Delta);
         Assert.Equal(1, (await dbContext.MarketListings.FirstAsync()).Status);
         long tradedItemId = (await dbContext.MarketListings.FirstAsync()).ItemInstanceId;
-        Assert.Equal(Buyer, (await dbContext.ItemInstances.FirstAsync(x => x.Id == tradedItemId)).UserId);
+        Assert.Equal(Buyer, (await dbContext.CoreItems.FirstAsync(x => x.LocalId == tradedItemId)).UserId);
         Assert.Empty(await economy.GetMarketAsync(Buyer));
     }
 
@@ -251,11 +251,7 @@ public sealed class EconomyTests
     {
         using IServiceScope scope = db.Provider.CreateScope();
         BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        context.ItemInstances.Add(new ItemInstance
-        {
-            UserId = userId, CatalogId = "test", Quality = 1, Quantity = quantity,
-            PayloadJson = "{\"name\":\"测试材料\"}"
-        });
+        await ItemStore.AddAsync(context, userId, "测试材料", 1, quantity, CancellationToken.None, "test");
         await context.SaveChangesAsync();
     }
 

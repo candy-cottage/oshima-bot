@@ -29,27 +29,6 @@ public sealed class CharacterSkill
     public int Slot { get; set; }
 }
 
-public sealed class CharacterEquipment
-{
-    public long CharacterId { get; set; }
-    public string Slot { get; set; } = "";
-    public long ItemInstanceId { get; set; }
-}
-
-public sealed class ItemInstance
-{
-    public long Id { get; set; }
-    public long UserId { get; set; }
-    public string CatalogId { get; set; } = "";
-    public int Quantity { get; set; } = 1;
-    public int Quality { get; set; }
-    public bool Locked { get; set; }
-    public bool Bound { get; set; }
-    public string PayloadJson { get; set; } = "{}";
-    public DateTime AcquiredAtUtc { get; set; } = DateTime.UtcNow;
-    public int Version { get; set; }
-}
-
 public sealed class Squad
 {
     public long Id { get; set; }

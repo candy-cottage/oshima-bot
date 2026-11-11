@@ -69,7 +69,10 @@ public sealed class CoreCharacterRecord
 /// </summary>
 public sealed class CoreItemRecord
 {
-    /// <summary><c>Item.Guid</c>，业务主键。</summary>
+    /// <summary>持久层自增键；装备/市场等关联仍用它做整型引用。</summary>
+    public long LocalId { get; set; }
+
+    /// <summary><c>Item.Guid</c>，业务主键（唯一索引）。</summary>
     public string Guid { get; set; } = "";
 
     public long UserId { get; set; }
@@ -86,7 +89,13 @@ public sealed class CoreItemRecord
     public bool IsLock { get; set; }
     public bool IsTradable { get; set; }
 
-    /// <summary><c>EquipSlotType</c>：0=None，其余对应 6 槽之一。</summary>
+    /// <summary>装备后绑定（Core 的 Item 无此概念，属本作玩法状态）。</summary>
+    public bool IsBound { get; set; }
+
+    /// <summary><c>ItemType</c>：0=MagicCardPack … 4=Accessory …（决定能否装备）。</summary>
+    public int ItemType { get; set; }
+
+    /// <summary><c>EquipSlotType</c>：0=None，其余对应 6 槽之一；**装备时才写入**。</summary>
     public int EquipSlotType { get; set; }
 
     /// <summary>堆叠数量；Core 的 Item 本身是单件，堆叠是持久层的聚合策略。</summary>
