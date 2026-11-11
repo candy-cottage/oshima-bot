@@ -135,6 +135,46 @@ public sealed class GameplayCommandTests
         Assert.Contains("商店", legacy);
     }
 
+    /// <summary>
+    /// 全指令回归（M1.5 验收项）：每一条注册指令裸调一次，必须给出可读回复，且不能落到「玩法操作出现异常」。
+    /// <para>业务失败（缺参数、缺材料、次数已用）是正常回复，不算失败；模拟器指令单独测。</para>
+    /// </summary>
+    [Fact]
+    public async Task EveryRegisteredCommand_RespondsWithoutInternalError()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
+        CommandRouter router = db.CreateRouter();
+
+        Assert.Equal(66, registry.All.Count);
+
+        List<string> failures = [];
+        int checkedCommands = 0;
+        foreach (ICommand command in registry.All)
+        {
+            // 模拟器指令是完整对局，跑起来慢，且已有专门测试。
+            if (command.Key.StartsWith("sim", StringComparison.Ordinal)) continue;
+
+            string verb = command.Aliases.Count > 0 ? command.Aliases[0] : command.Name;
+            string input = verb.StartsWith('/') ? verb : "/" + verb;
+            string text = await RouteAsync(router, input);
+            checkedCommands++;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                failures.Add($"{command.Key}（{input}）→ 空回复");
+            }
+            else if (text.Contains("玩法操作出现异常"))
+            {
+                string head = text.Length > 80 ? text[..80] : text;
+                failures.Add($"{command.Key}（{input}）→ {head}");
+            }
+        }
+
+        Assert.True(checkedCommands >= 55, $"应覆盖绝大多数指令，实际只跑了 {checkedCommands} 条");
+        Assert.Empty(failures);
+    }
+
     private static async Task<string> RouteAsync(CommandRouter router, string command)
     {
         BotReply? reply = await router.RouteAsync(Message(command), new OtherData());

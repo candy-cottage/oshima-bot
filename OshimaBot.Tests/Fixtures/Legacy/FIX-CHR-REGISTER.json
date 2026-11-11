@@ -3,7 +3,7 @@
   "behaviorId": "ARC-001",
   "command": "创建存档",
   "probe": "register",
-  "status": "current-locked",
+  "status": "intentional-divergence",
   "input": {},
   "expected": {
     "current": {
@@ -11,12 +11,18 @@
       "diamonds": 30,
       "items": 3
     },
-    "legacy": null
+    "legacy": {
+      "credits": 5000,
+      "diamonds": 0,
+      "items": 0,
+      "character": "CustomCharacter（与用户名同名的自建角色）",
+      "note": "旧版 FunGameController.CreateSaved：Inventory.Credits=5000，Materials 与 Items 为 0；新版给 1200/30/3 起步资源（有意差异）"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:773",
     "method": "RainBOTService 创建存档分支",
-    "note": "旧版生成随机自建角色并写入 Users/Character；旧版初始资源与随机角色规则待从 Oracle 提取"
+    "note": "旧版 CreateSaved 只设 Credits=5000 并加一个 CustomCharacter；新版保留同名自建角色，但起步资源改为 1200 金币/30 钻石/3 件物品"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

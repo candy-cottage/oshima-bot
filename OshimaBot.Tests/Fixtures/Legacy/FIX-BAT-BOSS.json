@@ -12,7 +12,18 @@
       "rewardDiamonds": 3,
       "winPoints": 25
     },
-    "legacy": null
+    "legacy": {
+      "costCredits": 0,
+      "bossLevels": [
+        15,
+        30,
+        60
+      ],
+      "killReward": "Materials += boss.Level（15/30/60 钻）",
+      "sharedPool": true,
+      "poolSize": 10,
+      "note": "旧版无入场费；击杀奖励只有 Materials += Level；Boss 是全服共享持久实体，失败写回剩余 HP、死亡补池；新版保留共享池与等级奖励，但加收 100 金币入场费（角色每战满血重建，无旧版的重伤限流）"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1790",

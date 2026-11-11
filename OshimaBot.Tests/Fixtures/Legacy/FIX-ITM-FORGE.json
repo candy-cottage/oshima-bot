@@ -3,7 +3,7 @@
   "behaviorId": "ITM-020",
   "command": "锻造配方",
   "probe": "forge",
-  "status": "current-locked",
+  "status": "intentional-divergence",
   "input": {},
   "expected": {
     "current": {
@@ -13,7 +13,26 @@
       "maxMinutes": 120,
       "outputQuality": 3
     },
-    "legacy": null
+    "legacy": {
+      "model": "region-material",
+      "materialNeedyByQuality": {
+        "White": 30,
+        "Green": 50,
+        "Blue": 80,
+        "Purple": 120,
+        "Orange": 170,
+        "Red": 230
+      },
+      "regionCoefficientByRarity": {
+        "OneStar": 0.5,
+        "TwoStar": 0.6,
+        "ThreeStar": 0.7,
+        "FourStar": 0.85,
+        "FiveStar": 1.0
+      },
+      "costCredits": 0,
+      "note": "旧版 GenerateForgeResult 按提交材料所属地区的难度系数换算等效量，够数才出对应品质；无金币费用、无固定时长。新版固定 2 个同类材料 + 200 金币 / 5 分钟、产出固定稀有（有意简化）"
+    }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:2951",
