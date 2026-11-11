@@ -157,6 +157,42 @@ public static class GameplayRules
 
     private static BreakNeed Item(string name, int count) => new(name, count, false);
 
+    /// <summary>
+    /// 技能升级需求（照抄旧版 <c>FunGameConstant.SkillLevelUpList</c>，键是**目标等级** 1–6）。
+    /// <para>旧表里「角色等级」是前置，「金币/材料/物品」是消耗。</para>
+    /// </summary>
+    public static UpgradeNeed? SkillUpgradeCost(int targetLevel) => targetLevel switch
+    {
+        1 => new(1, -1, 5_000, 50, [("技能卷轴", 1)]),
+        2 => new(12, -1, 10_000, 100, [("技能卷轴", 2), ("智慧之果", 1)]),
+        3 => new(24, -1, 20_000, 150, [("技能卷轴", 4), ("智慧之果", 2), ("奥术符文", 1)]),
+        4 => new(36, -1, 40_000, 250, [("技能卷轴", 8), ("智慧之果", 4), ("奥术符文", 3), ("混沌之核", 1)]),
+        5 => new(48, -1, 70_000, 400,
+            [("技能卷轴", 16), ("智慧之果", 8), ("奥术符文", 6), ("混沌之核", 4), ("法则精粹", 1)]),
+        6 => new(60, -1, 110_000, 600,
+            [("技能卷轴", 32), ("智慧之果", 16), ("奥术符文", 12), ("混沌之核", 8), ("法则精粹", 5)]),
+        _ => null
+    };
+
+    /// <summary>
+    /// 普攻升级需求（照抄旧版 <c>FunGameConstant.NormalAttackLevelUpList</c>，键是**目标等级** 2–8）。
+    /// <para>6 级额外要求「角色突破进度 ≥ 4」。</para>
+    /// </summary>
+    public static UpgradeNeed? NormalAttackUpgradeCost(int targetLevel) => targetLevel switch
+    {
+        2 => new(8, -1, 2_000, 30, [("技能卷轴", 1)]),
+        3 => new(16, -1, 10_000, 100, [("技能卷轴", 2), ("智慧之果", 1)]),
+        4 => new(24, -1, 20_000, 150, [("技能卷轴", 4), ("智慧之果", 2), ("奥术符文", 1)]),
+        5 => new(32, -1, 40_000, 250, [("技能卷轴", 8), ("智慧之果", 4), ("奥术符文", 3), ("混沌之核", 1)]),
+        6 => new(40, 4, 70_000, 400,
+            [("技能卷轴", 16), ("智慧之果", 8), ("奥术符文", 6), ("混沌之核", 4), ("法则精粹", 1)]),
+        7 => new(48, -1, 110_000, 600,
+            [("技能卷轴", 32), ("智慧之果", 16), ("奥术符文", 12), ("混沌之核", 8), ("法则精粹", 5)]),
+        8 => new(56, -1, 160_000, 850,
+            [("技能卷轴", 64), ("智慧之果", 32), ("奥术符文", 24), ("混沌之核", 16), ("法则精粹", 10)]),
+        _ => null
+    };
+
     /// <summary>下一次突破所需等级（取自 Core 的 <c>LevelBreakList</c>）；已无更高阶数时返回 null。</summary>
     public static int? NextBreakLevel(int levelBreak)
     {
@@ -411,3 +447,12 @@ public static class GameplayRules
 /// 否则按背包里同名物品的数量结算。
 /// </summary>
 public sealed record BreakNeed(string Name, int Count, bool IsMaterial);
+
+/// <param name="RequiredLevel">角色等级前置。</param>
+/// <param name="RequiredBreak">角色突破进度前置；-1 表示无要求。</param>
+/// <param name="Credits">消耗金币。</param>
+/// <param name="Materials">消耗材料（钻石）。</param>
+/// <param name="Items">消耗物品（名字 + 数量）。</param>
+public sealed record UpgradeNeed(
+    int RequiredLevel, int RequiredBreak, long Credits, int Materials,
+    IReadOnlyList<(string Name, int Count)> Items);

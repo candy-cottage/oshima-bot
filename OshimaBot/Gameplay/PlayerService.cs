@@ -24,6 +24,16 @@ public interface IPlayerService
     Task<ActionResult> EquipAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> UnequipAsync(long userId, string slot, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default);
+    /// <param name="preview">true 只预览需求，不扣任何材料。</param>
+    Task<ActionResult> UpgradeNormalAttackAsync(long userId, int index, bool preview,
+        CancellationToken cancellationToken = default);
+
+    /// <param name="skillName">技能名（角色技能表里按名字匹配）。</param>
+    Task<ActionResult> UpgradeSkillAsync(long userId, int index, string skillName, bool preview,
+        CancellationToken cancellationToken = default);
+
+    Task<ActionResult> RenameAsync(long userId, string newName, CancellationToken cancellationToken = default);
+
     Task<ActionResult> SetMainAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> LevelUpAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> BreakAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -482,6 +492,197 @@ public sealed class PlayerService(
                 $"{type} 槽 · {removed.Name}",
                 ["- 物品已回到背包"], ["/背包", "/角色"]);
         }, cancellationToken);
+
+    // ---------------- 角色养成：普攻 / 技能 / 改名 ----------------
+
+    public Task<ActionResult> UpgradeNormalAttackAsync(long userId, int index, bool preview,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
+            if (character is null) return NoSuchCharacter(index);
+
+            NormalAttack? attack = character.Core.NormalAttack;
+            if (attack is null)
+            {
+                return ActionResult.Fail("该角色没有普攻", "等级未变", "换个角色试试", "/角色");
+            }
+
+            int current = attack.Level;
+            int cap = General.GameplayEquilibriumConstant.MaxNormalAttackLevel;
+            if (current >= cap)
+            {
+                return ActionResult.Fail("普攻已满级", "等级未变", $"当前 Lv.{current}，上限 Lv.{cap}", "/角色");
+            }
+            UpgradeNeed? need = GameplayRules.NormalAttackUpgradeCost(current + 1);
+            if (need is null)
+            {
+                return ActionResult.Fail("没有这一级的配方", "等级未变",
+                    $"目标等级 {current + 1}", "/角色");
+            }
+
+            string label = $"普攻 Lv.{current} → Lv.{current + 1}";
+            Dictionary<string, int> held = await ItemStore.CountByNamesAsync(
+                db, userId, [.. need.Items.Select(x => x.Name)], ct);
+            if (preview) return PreviewUpgrade("普攻升级", character.Name, label, need, state, held);
+
+            string? lack = await ConsumeUpgradeAsync(db, state, character, need, held, ct);
+            if (lack is not null)
+            {
+                return ActionResult.Fail("升级条件未满足", "没有消耗任何材料，等级未变", lack, "/背包");
+            }
+
+            attack.Level = current + 1;
+            CharacterStore.Sync(character);
+            return ActionResult.Success("⚔️ 普攻升级", $"{character.Name} {label}",
+                [$"- 剩余：金币 {state.Credits:0.##}　钻石 {state.Materials:0.##}"],
+                ["/角色", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> UpgradeSkillAsync(long userId, int index, string skillName, bool preview,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            PlayerCharacter? character = await CharacterByIndexAsync(db, userId, index, ct);
+            if (character is null) return NoSuchCharacter(index);
+            if (string.IsNullOrWhiteSpace(skillName))
+            {
+                return ActionResult.Fail("没说升级哪个技能", "等级未变",
+                    "/技能升级 @1 技能名，技能名见 /角色", "/角色");
+            }
+
+            Skill? skill = character.Core.Skills
+                .FirstOrDefault(x => string.Equals(x.Name, skillName.Trim(), StringComparison.Ordinal));
+            if (skill is null)
+            {
+                return ActionResult.Fail("没有这个技能", "等级未变",
+                    $"{character.Name} 身上找不到「{skillName.Trim()}」", "/角色");
+            }
+            if (skill.SkillType is not (SkillType.Skill or SkillType.SuperSkill))
+            {
+                return ActionResult.Fail("这个技能不能升级", "等级未变",
+                    "只有主动技能与绝招可以升级（普攻用 /普攻升级）", "/角色");
+            }
+
+            int current = skill.Level;
+            int cap = General.GameplayEquilibriumConstant.MaxSkillLevel;
+            if (current >= cap)
+            {
+                return ActionResult.Fail("技能已满级", "等级未变", $"当前 Lv.{current}，上限 Lv.{cap}", "/角色");
+            }
+            UpgradeNeed? need = GameplayRules.SkillUpgradeCost(current + 1);
+            if (need is null)
+            {
+                return ActionResult.Fail("没有这一级的配方", "等级未变", $"目标等级 {current + 1}", "/角色");
+            }
+
+            // 旧版：技能 Level 0 表示还没学，第一次「升级」其实是学习到 1 级
+            string label = current == 0
+                ? $"学习「{skill.Name}」→ Lv.1"
+                : $"「{skill.Name}」Lv.{current} → Lv.{current + 1}";
+            Dictionary<string, int> held = await ItemStore.CountByNamesAsync(
+                db, userId, [.. need.Items.Select(x => x.Name)], ct);
+            if (preview) return PreviewUpgrade("技能升级", character.Name, label, need, state, held);
+
+            string? lack = await ConsumeUpgradeAsync(db, state, character, need, held, ct);
+            if (lack is not null)
+            {
+                return ActionResult.Fail("升级条件未满足", "没有消耗任何材料，等级未变", lack, "/背包");
+            }
+
+            skill.Level = current + 1;
+            CharacterStore.Sync(character);
+            return ActionResult.Success("📖 技能升级", $"{character.Name} · {label}",
+                [$"- 剩余：金币 {state.Credits:0.##}　钻石 {state.Materials:0.##}"],
+                ["/角色", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> RenameAsync(long userId, string newName,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            string name = (newName ?? "").Trim();
+            if (name.Length is < 2 or > 12)
+            {
+                return ActionResult.Fail("名字长度不对", "没有改名",
+                    "请用 2–12 个字符：/角色改名 新名字", "/角色");
+            }
+            if (name.Any(char.IsWhiteSpace))
+            {
+                return ActionResult.Fail("名字不能含空白", "没有改名",
+                    "去掉空格再试", "/角色");
+            }
+
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
+            if (main is null) return NoMainCharacter();
+            string before = main.Name;
+            if (string.Equals(before, name, StringComparison.Ordinal))
+            {
+                return ActionResult.Fail("新名字和原来一样", "没有改名", "换一个名字", "/角色");
+            }
+
+            main.Name = name;
+            CharacterStore.Sync(main);
+            return ActionResult.Success("✏️ 改名成功", $"{before} → {name}",
+                ["- 主战角色的名字已更新"], ["/角色", "/状态"]);
+        }, cancellationToken);
+
+    /// <summary>升级类操作共用的前置校验 + 扣除；返回 null 表示成功扣完。</summary>
+    private static async Task<string?> ConsumeUpgradeAsync(
+        BotDbContext db, PlayerAccount state, PlayerCharacter character,
+        UpgradeNeed need, IReadOnlyDictionary<string, int> held, CancellationToken ct)
+    {
+        List<string> lacks = [];
+        if (character.Level < need.RequiredLevel)
+        {
+            lacks.Add($"角色等级 {character.Level}/{need.RequiredLevel}");
+        }
+        if (need.RequiredBreak >= 0 && character.BreakLevel < need.RequiredBreak)
+        {
+            lacks.Add($"突破进度 {GameplayRules.BreakProgress(character.BreakLevel)}"
+                + $"/{Math.Clamp(need.RequiredBreak + 1, 0, General.GameplayEquilibriumConstant.LevelBreakList.Count)}");
+        }
+        if (state.Credits < need.Credits) lacks.Add($"金币 {state.Credits:0.##}/{need.Credits}");
+        if (state.Materials < need.Materials) lacks.Add($"钻石 {state.Materials:0.##}/{need.Materials}");
+        foreach ((string name, int count) in need.Items)
+        {
+            int have = held.GetValueOrDefault(name);
+            if (have < count) lacks.Add($"{name} {have}/{count}");
+        }
+        if (lacks.Count > 0) return "缺少：" + string.Join("　", lacks);
+
+        string reference = character.Id.ToString(CultureInfo.InvariantCulture);
+        if (need.Credits > 0)
+        {
+            ApplyCurrency(db, state, -need.Credits, "credits", "upgrade", "character", reference);
+        }
+        if (need.Materials > 0)
+        {
+            ApplyCurrency(db, state, -need.Materials, "diamonds", "upgrade", "character", reference);
+        }
+        if (need.Items.Count > 0)
+        {
+            await ItemStore.ConsumeByNamesAsync(db, state.UserId,
+                need.Items.ToDictionary(x => x.Name, x => x.Count), ct);
+        }
+        return null;
+    }
+
+    private static ActionResult PreviewUpgrade(
+        string title, string characterName, string label, UpgradeNeed need,
+        PlayerAccount state, IReadOnlyDictionary<string, int> held)
+    {
+        List<string> lines = [$"- {characterName} · {label}"];
+        lines.Add($"- 前置：角色 Lv.{need.RequiredLevel}"
+            + (need.RequiredBreak >= 0 ? $"　突破进度 ≥ {need.RequiredBreak + 1}/"
+                + $"{General.GameplayEquilibriumConstant.LevelBreakList.Count}" : ""));
+        List<string> costs = [];
+        if (need.Credits > 0) costs.Add($"金币 {need.Credits}（{state.Credits:0.##}）");
+        if (need.Materials > 0) costs.Add($"钻石 {need.Materials}（{state.Materials:0.##}）");
+        costs.AddRange(need.Items.Select(x => $"{x.Name} {x.Count}（{held.GetValueOrDefault(x.Name)}）"));
+        lines.Add($"- 消耗：{string.Join("、", costs)}");
+        return ActionResult.Success($"{title}（预览）", label, lines, ["/角色"]);
+    }
 
     public Task<ActionResult> SetMainAsync(long userId, int index, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>

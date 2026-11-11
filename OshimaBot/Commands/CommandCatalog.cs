@@ -27,6 +27,8 @@ public static class CommandCatalog
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "lock", "unlock", "equip", "unequip",
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
+        "normal-attack-upgrade", "normal-attack-upgrade-info",
+        "skill-upgrade", "skill-upgrade-info", "rename-character",
         // ---- P2：经济与战斗 ----
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
         "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
@@ -196,6 +198,47 @@ public static class CommandCatalog
             group: CommandGroups.Player, audit: true,
             handler: async context => CommandReplies.FromResult(
                 await deps.Players.GachaAsync(context.UserId, 10, true, context.CancellationToken))),
+
+        // 旧版角色养成：普攻/技能升级（默认预览）、角色改名
+        "normal-attack-upgrade" => new DelegateCommand(
+            key: "normal-attack-upgrade", name: "普攻升级", aliases: ["升级普攻"],
+            usage: "/普攻升级 [@编号]", description: "升级角色普攻等级",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.UpgradeNormalAttackAsync(context.UserId, RefIndex(context), false,
+                    context.CancellationToken))),
+
+        "normal-attack-upgrade-info" => new DelegateCommand(
+            key: "normal-attack-upgrade-info", name: "查看普攻升级", aliases: ["普攻升级信息"],
+            usage: "/查看普攻升级 [@编号]", description: "查看下一次普攻升级需求",
+            group: CommandGroups.Player,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.UpgradeNormalAttackAsync(context.UserId, RefIndex(context), true,
+                    context.CancellationToken))),
+
+        "skill-upgrade" => new DelegateCommand(
+            key: "skill-upgrade", name: "技能升级", aliases: ["升级技能"],
+            usage: "/技能升级 @编号 技能名", description: "升级角色技能（等级 0 时即学习）",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.UpgradeSkillAsync(context.UserId, RefIndex(context),
+                    JoinFrom(context, 1), false, context.CancellationToken))),
+
+        "skill-upgrade-info" => new DelegateCommand(
+            key: "skill-upgrade-info", name: "查看技能升级", aliases: ["技能升级信息"],
+            usage: "/查看技能升级 @编号 技能名", description: "查看下一次技能升级需求",
+            group: CommandGroups.Player,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.UpgradeSkillAsync(context.UserId, RefIndex(context),
+                    JoinFrom(context, 1), true, context.CancellationToken))),
+
+        "rename-character" => new DelegateCommand(
+            key: "rename-character", name: "角色改名", aliases: ["改名"],
+            usage: "/角色改名 新名字", description: "修改主战角色的名字",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.RenameAsync(context.UserId, JoinFrom(context, 0),
+                    context.CancellationToken))),
 
         "bag" => new DelegateCommand(
             key: "bag", name: "背包", aliases: ["查看库存", "bag", "inventory"], usage: "/背包 [p2]",
@@ -701,6 +744,10 @@ public static class CommandCatalog
     }
 
     // ---- P2 指令辅助 ----
+
+    /// <summary>把从 <paramref name="start"/> 开始的参数拼回一个字符串（技能名/角色名可能含空格）。</summary>
+    private static string JoinFrom(CommandContext context, int start)
+        => context.Args.Count <= start ? "" : string.Join(' ', context.Args.Skip(start));
 
     private static long Price(CommandContext context, int position = 1)
         => position < context.Args.Count && long.TryParse(context.Args[position], out long value)

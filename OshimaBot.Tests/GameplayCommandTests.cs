@@ -26,7 +26,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(75, registry.All.Count);
+        Assert.Equal(80, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -99,9 +99,9 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
 
-        string content = await RouteAsync(router, "/帮助 p13");
+        string content = await RouteAsync(router, "/帮助 p14");
 
-        Assert.Contains("13/13", content);
+        Assert.Contains("14/14", content);
         bool hasP2 = content.Contains("/排行榜", StringComparison.Ordinal)
                      || content.Contains("经济战斗", StringComparison.Ordinal);
         Assert.True(hasP2, content);
@@ -147,7 +147,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(75, registry.All.Count);
+        Assert.Equal(80, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

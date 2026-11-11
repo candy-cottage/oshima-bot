@@ -362,6 +362,81 @@ public sealed class GameplayTests
     }
 
     [Fact]
+    public async Task UpgradeNormalAttackAndSkillUseLegacyCosts()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        // 1) 预览不扣材料
+        PlayerSnapshot walletBefore = (await players.GetSnapshotAsync(UserId))!;
+        ActionResult preview = await players.UpgradeNormalAttackAsync(UserId, 1, preview: true);
+        Assert.True(preview.Ok, preview.Title);
+        Assert.Contains(preview.Lines, line => line.Contains("金币 2000"));
+
+        // 2) 条件不足时拒绝（普攻 2 级要求角色 Lv.8，起始 Lv.1）
+        ActionResult denied = await players.UpgradeNormalAttackAsync(UserId, 1, preview: false);
+        Assert.False(denied.Ok);
+        Assert.Contains("角色等级", string.Join(" ", denied.Lines));
+
+        PlayerSnapshot walletAfter = (await players.GetSnapshotAsync(UserId))!;
+        Assert.Equal(walletBefore.Credits, walletAfter.Credits, 3);
+        Assert.Equal(walletBefore.Materials, walletAfter.Materials, 3);
+
+        // 3) 抬到 Lv.8 + 备齐 2000 金币 / 30 钻石 / 1 个技能卷轴，升级应成功
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            PlayerCharacter character = new(row, System.Text.Json.JsonSerializer.Deserialize<FunGame.Core.Entity.Character>(
+                row.SnapshotJson, FunGame.Core.Api.JsonTool.JsonSerializerOptions)!);
+            character.Level = 8;
+            CharacterStore.Sync(character);
+
+            CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
+            wallet.Credits = 2000;
+            wallet.Materials = 30;
+            await ItemStore.AddAsync(context, UserId, "技能卷轴", 1, 1, CancellationToken.None, "18004");
+            await context.SaveChangesAsync();
+        }
+
+        ActionResult upgraded = await players.UpgradeNormalAttackAsync(UserId, 1, preview: false);
+        Assert.True(upgraded.Ok, upgraded.Title);
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
+            Assert.Equal(0, wallet.Credits, 3);
+            Assert.Equal(0, wallet.Materials, 3);
+            Assert.Equal(0, await context.CoreItems.CountAsync(x => x.CatalogId == "18004"));
+
+            CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            FunGame.Core.Entity.Character core =
+                System.Text.Json.JsonSerializer.Deserialize<FunGame.Core.Entity.Character>(
+                    row.SnapshotJson, FunGame.Core.Api.JsonTool.JsonSerializerOptions)!;
+            Assert.Equal(2, core.NormalAttack.Level);
+        }
+    }
+
+    [Fact]
+    public async Task RenameCharacterUpdatesMainName()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        Assert.False((await players.RenameAsync(UserId, " ")).Ok);
+        Assert.False((await players.RenameAsync(UserId, "超长的名字超过十二个字符了")).Ok);
+
+        ActionResult ok = await players.RenameAsync(UserId, "新名字");
+        Assert.True(ok.Ok, ok.Title);
+
+        IReadOnlyList<CharacterEntry> characters = await players.GetCharactersAsync(UserId);
+        Assert.Equal("新名字", Assert.Single(characters).Name);
+    }
+
+    [Fact]
     public void QualityTiers_MapToCoreQualityTypes()
     {
         Assert.Equal(FunGame.Core.Library.Constant.QualityType.White, GameplayRules.QualityTypeOf(1));
