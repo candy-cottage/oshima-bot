@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -26,7 +27,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(89, registry.All.Count);
+        Assert.Equal(95, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -141,6 +142,28 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_RoomCommandsRequireGroupAndWorkEndToEnd()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        // 私聊：多人房间明确拒绝
+        Assert.Contains("群里", await RouteAsync(router, "/创建房间 混战"));
+
+        // 群聊：建 → 列表 → 信息 → 人数不足 → 退出
+        string created = await RouteGroupAsync(router, "/创建房间 混战");
+        Assert.Contains("房间创建成功", created);
+        string code = Regex.Match(created, @"\[ ([A-Z0-9]{7}) \]").Groups[1].Value;
+        Assert.Equal(RoomRules.CodeLength, code.Length);
+
+        Assert.Contains(code, await RouteGroupAsync(router, "/房间列表"));
+        Assert.Contains("等待开局", await RouteGroupAsync(router, "/房间信息"));
+        Assert.Contains("人数不足", await RouteGroupAsync(router, "/开始游戏"));
+        Assert.Contains("已离开房间", await RouteGroupAsync(router, "/退出房间"));
+        Assert.Contains("暂无房间", await RouteGroupAsync(router, "/房间列表"));
+    }
+
+    [Fact]
     public async Task Router_LookAndLegacyHelpReflectMigratedP1()
     {
         using GameplayCommandDatabase db = new();
@@ -165,7 +188,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(89, registry.All.Count);
+        Assert.Equal(95, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -193,6 +216,20 @@ public sealed class GameplayCommandTests
         Assert.True(checkedCommands >= 55, $"应覆盖绝大多数指令，实际只跑了 {checkedCommands} 条");
         Assert.Empty(failures);
     }
+
+    private static async Task<string> RouteGroupAsync(CommandRouter router, string command, long userId = UserId)
+    {
+        BotReply? reply = await router.RouteAsync(GroupMessage(command, userId), new OtherData());
+        Assert.NotNull(reply);
+        return reply!.Markdown?.Content ?? reply.Text ?? "";
+    }
+
+    private static ThirdPartyMessage GroupMessage(string detail, long userId = UserId)
+        => new()
+        {
+            Id = "MSG-GROUP", Detail = detail, IsGroup = true, GroupOpenId = "GROUP-1", OpenId = "GROUP-1",
+            AuthorOpenId = "MEMBER", FunGameUID = userId, Timestamp = "2026-11-12 00:00:00"
+        };
 
     private static async Task<string> RouteAsync(CommandRouter router, string command)
     {
@@ -229,6 +266,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IUserSessionService, UserSessionService>();
             services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
+            services.AddSingleton<IRoomService, RoomService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
@@ -238,6 +276,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IUserSessionService>(),
                 Provider.GetRequiredService<IPlayerService>(),
                 null!,
+                Provider.GetRequiredService<IRoomService>(),
                 NullLogger.Instance);
         }
 

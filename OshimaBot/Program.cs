@@ -82,6 +82,8 @@ builder.Services.AddSingleton<IGameClock, GameClock>();
 builder.Services.AddSingleton<IRandomSource, SystemRandomSource>();
 builder.Services.AddSingleton<IPlayerService, PlayerService>();
 builder.Services.AddSingleton<IEconomyService, EconomyService>();
+// 多人房间：进程内注册表（与旧版 FunGameConstant.Rooms 一致，重启即清空）。
+builder.Services.AddSingleton<IRoomService, RoomService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -91,6 +93,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IUserSessionService>(),
     sp.GetRequiredService<IPlayerService>(),
     sp.GetRequiredService<IEconomyService>(),
+    sp.GetRequiredService<IRoomService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

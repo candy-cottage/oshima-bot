@@ -36,7 +36,9 @@ public static class CommandCatalog
         "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
         "forge", "forge-claim", "instance", "instance-claim",
-        "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank"
+        "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
+        // ---- 多人房间 ----
+        "room-create", "room-join", "room-quit", "room-start", "room-list", "room-info"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -568,6 +570,74 @@ public static class CommandCatalog
             description: "查看服务器排行榜", group: CommandGroups.Economy,
             handler: context => RankAsync(deps, context)),
 
+        // ---- 多人房间（旧版 OnlineService）：按群隔离，房号 7 位，空闲 10 分钟解散 ----
+        "room-create" => new DelegateCommand(
+            key: "room-create", name: "创建房间",
+            aliases: ["建房", "创建赛马", "创建共斗", "创建混战", "创建团战"],
+            usage: "/创建房间 <赛马|共斗|混战|团战> [密码]",
+            description: "建多人房间，返回 7 位房号", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                RoomKind? kind = KindFromText(context.Raw);
+                string? password;
+                if (kind is null)
+                {
+                    kind = RoomRules.ParseKind(context.FirstArgument);
+                    password = context.Args.Count > 1 ? context.Args[1] : null;
+                }
+                else
+                {
+                    password = context.FirstArgument;
+                }
+                if (kind is null)
+                {
+                    return CommandReplies.Error("房间类型无效", "没有创建任何房间",
+                        $"用法：/创建房间 {RoomRules.KindHint()} [密码]", "/帮助");
+                }
+                return CommandReplies.FromResult(await deps.Rooms.CreateAsync(
+                    context.UserId, Scope(context), kind.Value.ToString(), password, context.CancellationToken));
+            }),
+
+        "room-join" => new DelegateCommand(
+            key: "room-join", name: "加入房间", aliases: ["进房"], usage: "/加入房间 <房号> [密码]",
+            description: "用房号加入本群的房间", group: CommandGroups.Economy, prefixMatch: true,
+            handler: async context =>
+            {
+                string? code = context.FirstArgument;
+                if (string.IsNullOrWhiteSpace(code))
+                {
+                    return CommandReplies.Error("没有给房号", "没有加入任何房间",
+                        "用法：/加入房间 房号 [密码]　房号用 /房间列表 查", "/房间列表");
+                }
+                return CommandReplies.FromResult(await deps.Rooms.JoinAsync(
+                    context.UserId, Scope(context), code, context.Args.Count > 1 ? context.Args[1] : null,
+                    context.CancellationToken));
+            }),
+
+        "room-quit" => new DelegateCommand(
+            key: "room-quit", name: "退出房间", aliases: ["离开房间"], usage: "/退出房间",
+            description: "离开当前房间；房主离开会自动转让", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(await deps.Rooms.QuitAsync(
+                context.UserId, Scope(context), context.CancellationToken))),
+
+        "room-start" => new DelegateCommand(
+            key: "room-start", name: "开始游戏", aliases: ["开始赛马"], usage: "/开始游戏",
+            description: "房主开一局（赛马房间任何人都能开）", group: CommandGroups.Economy,
+            audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Rooms.StartAsync(
+                context.UserId, Scope(context), context.CancellationToken))),
+
+        "room-list" => new DelegateCommand(
+            key: "room-list", name: "房间列表", aliases: ["房间"], usage: "/房间列表 [p2]",
+            description: "本群当前有哪些房间", group: CommandGroups.Economy,
+            handler: context => Task.FromResult(RoomList(deps, context))),
+
+        "room-info" => new DelegateCommand(
+            key: "room-info", name: "房间信息", aliases: ["我的房间"], usage: "/房间信息 [房号]",
+            description: "查看成员与状态；不给房号就看自己所在的房间", group: CommandGroups.Economy,
+            handler: context => Task.FromResult(RoomInfo(deps, context))),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -887,6 +957,82 @@ public static class CommandCatalog
         lines.Add("- /设主战 @编号 · /升级 @编号 · /突破 @编号 · /练级 @编号 [分钟]");
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
             "/我的角色", ["/状态", "/背包"]);
+    }
+
+    // ---- 房间指令辅助 ----
+
+    /// <summary>房间按群隔离：群聊取群 OpenId，私聊返回空串（服务层会拒绝）。</summary>
+    private static string Scope(CommandContext context) => context.Message.ChatScope();
+
+    /// <summary>
+    /// 从原始输入里认房间类型：`/创建赛马 密码` 这种旧写法没有类型参数，
+    /// 类型藏在动词里；规范写法 `/创建房间 混战` 走参数解析。
+    /// </summary>
+    private static RoomKind? KindFromText(string raw)
+    {
+        foreach ((RoomKind kind, string _, int _, string[] aliases) in RoomRules.Kinds)
+        {
+            if (aliases.Any(alias => raw.Contains(alias, StringComparison.OrdinalIgnoreCase))) return kind;
+        }
+        return null;
+    }
+
+    private static BotReply RoomList(CommandDependencies deps, CommandContext context)
+    {
+        string scope = Scope(context);
+        if (scope.Length == 0)
+        {
+            return CommandReplies.Error("请在群里使用", "没有列出任何房间",
+                "多人房间只能在群聊里使用", "/帮助");
+        }
+        IReadOnlyList<RoomSummary> rooms = deps.Rooms.List(scope);
+        if (rooms.Count == 0)
+        {
+            return CommandReplies.Compose("🏠 房间列表", "本群暂无房间",
+                ["- 用 /创建房间 混战 开一个"], ["/创建房间 混战", "/帮助"]);
+        }
+        List<string> lines = [.. rooms.Select(room =>
+            $"- [ {room.Code} ] {room.KindName}　{room.Members}/{room.MaxUsers} 人"
+            + $"　房主 {room.MasterName}" + (room.HasPassword ? " 🔒" : "")
+            + (room.Playing ? "　⚔️ 对局中" : ""))];
+        lines.Add("- /加入房间 房号　·　/房间信息 房号");
+        return CommandReplies.ListPage("🏠 房间列表", $"共 {rooms.Count} 个", lines, context.Page,
+            "/房间列表", ["/创建房间 混战"]);
+    }
+
+    private static BotReply RoomInfo(CommandDependencies deps, CommandContext context)
+    {
+        string scope = Scope(context);
+        if (scope.Length == 0)
+        {
+            return CommandReplies.Error("请在群里使用", "没有显示房间信息",
+                "多人房间只能在群聊里使用", "/帮助");
+        }
+        RoomDetail? detail = deps.Rooms.Info(scope, Target(context), context.UserId);
+        if (detail is null)
+        {
+            bool asked = !string.IsNullOrWhiteSpace(context.FirstArgument);
+            return asked
+                ? CommandReplies.Error("本群没有这个房间", "没有显示房间信息",
+                    "用 /房间列表 查看当前有哪些房间", "/房间列表")
+                : CommandReplies.Error("你当前不在任何房间中", "没有显示房间信息",
+                    "用 /加入房间 房号 加入一个，或 /房间列表", "/房间列表");
+        }
+        List<string> lines =
+        [
+            $"- 房号：[ {detail.Code} ]　{detail.KindName}　{detail.Members.Count}/{detail.MaxUsers} 人",
+            $"- 房主：{detail.MasterName}{(detail.IsMaster ? "（你）" : "")}"
+            + (detail.HasPassword ? "　🔒 有密码" : ""),
+            $"- 状态：{(detail.Playing ? "对局中" : "等待开局")}",
+            "- 成员："
+        ];
+        lines.AddRange(detail.Members.Select(member =>
+            $"  · {member.Display}{(member.UserId == detail.MasterId ? " 👑" : "")}"));
+        lines.Add(detail.IsMaster || detail.KindName.StartsWith("赛马", StringComparison.Ordinal)
+            ? "- 人都到齐了就 /开始游戏"
+            : "- 等房主 /开始游戏");
+        return CommandReplies.Compose($"🏠 {detail.KindName}", $"[ {detail.Code} ]", lines,
+            ["/开始游戏", "/退出房间", "/房间列表"]);
     }
 
     // ---- P2 指令辅助 ----

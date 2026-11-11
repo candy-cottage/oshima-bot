@@ -50,6 +50,21 @@ namespace OshimaBot.Models
         ClaimsPrincipal? Principal { get; set; }
     }
 
+    public static class BotMessageExtensions
+    {
+        /// <summary>
+        /// 会话作用域：群聊返回群标识（多人房间按群隔离），私聊返回空串。
+        /// <para><see cref="GroupAtMessage"/> 与 <see cref="InteractionEvent"/> 的 <c>OpenId</c> 本身就是群 id；
+        /// <see cref="ThirdPartyMessage"/> 两者分开传，优先取显式的 <c>group_openid</c>。</para>
+        /// </summary>
+        public static string ChatScope(this IBotMessage message)
+        {
+            if (!message.IsGroup) return "";
+            if (message is ThirdPartyMessage third && third.GroupOpenId.Length > 0) return third.GroupOpenId;
+            return message.OpenId;
+        }
+    }
+
     public sealed class ThirdPartyMessage : IBotMessage
     {
         [JsonPropertyName("id")] public string Id { get; set; } = "";
