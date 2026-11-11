@@ -298,14 +298,19 @@ public sealed class GameplayTests
         IPlayerService players = db.Get<IPlayerService>();
         await players.GetSnapshotAsync(UserId);
 
-        // 抬到突破门槛（0 → 1 阶需 Lv.20），并把材料清零。
+        // Core 语义：LevelBreak 从 -1 起算，第一次突破是 -1 → 0，取 0 档材料（钻石 40 + 升华之印 2）。
+        int firstNeedLevel = GameplayRules.NextBreakLevel(-1)!.Value;
+        Assert.Equal(10, firstNeedLevel);
+
         using (IServiceScope scope = db.Provider.CreateScope())
         {
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
+            Assert.Equal(-1, row.LevelBreak);        // 建档后还没突破过
+
             PlayerCharacter character = new(row, System.Text.Json.JsonSerializer.Deserialize<FunGame.Core.Entity.Character>(
                 row.SnapshotJson, FunGame.Core.Api.JsonTool.JsonSerializerOptions)!);
-            character.Level = GameplayRules.NextBreakLevel(0)!.Value;
+            character.Level = firstNeedLevel;
             CharacterStore.Sync(character);
 
             CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
@@ -313,19 +318,18 @@ public sealed class GameplayTests
             await context.SaveChangesAsync();
         }
 
-        // 材料不足：拒绝并且不扣任何东西（事务回滚），突破阶数不变。
+        // 材料不足：拒绝并且不扣任何东西（事务回滚），突破进度不变。
         ActionResult refused = await players.BreakAsync(UserId, 1);
         Assert.False(refused.Ok);
         Assert.Contains("突破材料不足", refused.Title);
 
-        // 补齐「突破到 1 阶」的需求：80 钻石 + 4 升华之印 + 2 流光之印（旧版 LevelBreakNeedyList[1]）。
+        // 补齐「第一次突破」的需求：40 钻石 + 2 升华之印（旧版 LevelBreakNeedyList[0]）。
         using (IServiceScope scope = db.Provider.CreateScope())
         {
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
-            wallet.Materials = 80;
-            await ItemStore.AddAsync(context, UserId, "升华之印", 1, 4, CancellationToken.None, "18001");
-            await ItemStore.AddAsync(context, UserId, "流光之印", 1, 2, CancellationToken.None, "18002");
+            wallet.Materials = 40;
+            await ItemStore.AddAsync(context, UserId, "升华之印", 1, 2, CancellationToken.None, "18001");
             await context.SaveChangesAsync();
         }
 
@@ -338,12 +342,11 @@ public sealed class GameplayTests
             CorePlayerRecord wallet = await context.CorePlayers.SingleAsync(x => x.UserId == UserId);
             Assert.Equal(0, wallet.Materials, 6);
             Assert.Equal(0, await context.CoreItems.CountAsync(x => x.CatalogId == "18001"));
-            Assert.Equal(0, await context.CoreItems.CountAsync(x => x.CatalogId == "18002"));
 
             CoreCharacterRecord row = await context.CoreCharacters.SingleAsync(x => x.UserId == UserId);
-            Assert.Equal(1, row.LevelBreak);
+            Assert.Equal(0, row.LevelBreak);         // -1 → 0，只升一阶
             Assert.Contains(await context.LedgerEntries.ToListAsync(),
-                x => x.Reason == "break" && x.Currency == "diamonds" && x.Delta == -80);
+                x => x.Reason == "break" && x.Currency == "diamonds" && x.Delta == -40);
         }
     }
 

@@ -490,13 +490,13 @@ public sealed class PlayerService(
 
             List<string> lines =
             [
-                $"- 突破 {before} → {after} 阶（上限 Lv.{GameplayRules.NextBreakLevel(after)?.ToString() ?? General.GameplayEquilibriumConstant.MaxLevel.ToString()}）",
+                $"- 突破进度 {GameplayRules.BreakProgress(before)} → {GameplayRules.BreakProgress(after)}（上限 Lv.{GameplayRules.NextBreakLevel(after)?.ToString() ?? General.GameplayEquilibriumConstant.MaxLevel.ToString()}）",
                 $"- 消耗：{DescribeBreakNeeds(materialNeed, itemNeeds)}",
                 $"- 剩余：{materialName} {state.Materials:0.##}"
             ];
             if (GameplayRules.LevelBreakNeedy(after + 1) is { Count: > 0 } next)
             {
-                lines.Add($"- 下一阶（{after + 1} 阶）需要：{DescribeBreakNeeds(next)}");
+                lines.Add($"- 下次突破需要：{DescribeBreakNeeds(next)}");
             }
             else
             {
@@ -504,7 +504,7 @@ public sealed class PlayerService(
             }
 
             return ActionResult.Success("💥 突破成功",
-                $"{character.Name} · 突破 {after} 阶",
+                $"{character.Name} · 突破进度 {GameplayRules.BreakProgress(after)}",
                 lines,
                 ["/角色", "/练级 @1", "/状态"]);
         }, cancellationToken);

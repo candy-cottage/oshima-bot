@@ -102,7 +102,7 @@ public static class CharacterStore
         character.Guid = Guid.NewGuid();     // Copy 会复制 Guid
         character.Level = 1;
         character.EXP = 0;
-        character.LevelBreak = 0;
+        character.LevelBreak = -1;           // Core 语义：-1 表示还没突破过，第一次突破是 -1 → 0
         character.HP = character.MaxHP;
 
         CoreCharacterRecord record = new()

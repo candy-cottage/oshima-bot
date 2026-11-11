@@ -6,6 +6,7 @@
   "status": "current-locked",
   "input": {
     "breakLevels": [
+      -1,
       0,
       1,
       2,
@@ -15,29 +16,33 @@
   "expected": {
     "current": {
       "levelCap": [
+        10,
         20,
         30,
         40,
         60
       ],
       "breakNeedy": [
-        "",
+        "钻石×40,升华之印×2",
         "钻石×80,升华之印×4,流光之印×2",
         "钻石×160,升华之印×8,流光之印×4,永恒之印×3",
+        "钻石×320,升华之印×16,流光之印×8,永恒之印×6,原初之印×5",
         ""
       ]
     },
     "legacy": {
       "levelCap": [
+        10,
         20,
         30,
         40,
         60
       ],
       "breakNeedy": [
-        "",
+        "钻石×40,升华之印×2",
         "钻石×80,升华之印×4,流光之印×2",
         "钻石×160,升华之印×8,流光之印×4,永恒之印×3",
+        "钻石×320,升华之印×16,流光之印×8,永恒之印×6,原初之印×5",
         ""
       ]
     }
@@ -45,7 +50,7 @@
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1498",
     "method": "RainBOTService 角色突破分支",
-    "note": "旧版 RainBOTService 角色突破分支直接查 FunGameConstant.LevelBreakNeedyList（突破到 N 阶用第 N 档），等级门槛取 Core 的 LevelBreakList；新版 GameplayRules.LevelBreakNeedy 同构抄录，数值逐项一致"
+    "note": "旧版 RainBOTService 角色突破分支直接查 FunGameConstant.LevelBreakNeedyList（突破到 N 阶用第 N 档），等级门槛取 Core 的 LevelBreakList；Core 的 Character.LevelBreak 默认 -1，第一次突破 -1 → 0 取 0 档（钻石 40 + 升华之印 2）。新版同构抄录，数值逐项一致"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

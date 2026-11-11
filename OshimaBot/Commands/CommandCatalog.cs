@@ -654,7 +654,7 @@ public static class CommandCatalog
             context.UserId, context.CancellationToken);
         List<string> lines = characters.Select(character =>
             $"- @{character.Index} {character.Name}　Lv.{character.Level} / 上限 {GameplayRules.NextBreakLevel(character.BreakLevel).ToString() ?? "满级"}"
-            + $"　突破 {character.BreakLevel} 阶　装备 {character.EquipmentCount} 件"
+            + $"　突破 {GameplayRules.BreakProgress(character.BreakLevel)}　装备 {character.EquipmentCount} 件"
             + (character.IsMain ? " ⭐主战" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 还没有角色，输入 /注册 领取初始角色");
         lines.Add("- /设主战 @编号 · /升级 @编号 · /突破 @编号 · /练级 @编号 [分钟]");

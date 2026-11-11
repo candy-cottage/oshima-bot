@@ -132,9 +132,9 @@ public static class LegacyFixtureProbes
         {
             ["levelCap"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(
                 GameplayRules.NextBreakLevel(b) ?? General.GameplayEquilibriumConstant.MaxLevel)).ToArray()),
-            // 突破消耗改回旧版的材料表（LevelBreakNeedyList 同构）：突破到 N 阶需要什么。
+            // 当前 b 阶「下一次突破」需要什么（Core 的 LevelBreak 从 -1 起算，突破到 b+1 阶取 b+1 档）。
             ["breakNeedy"] = new JsonArray(breaks.Select(b => (JsonNode?)JsonValue.Create(
-                string.Join(",", GameplayRules.LevelBreakNeedy(b).Select(x => $"{x.Name}×{x.Count}")))).ToArray())
+                string.Join(",", GameplayRules.LevelBreakNeedy(b + 1).Select(x => $"{x.Name}×{x.Count}")))).ToArray())
         };
     }
 

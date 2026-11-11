@@ -84,11 +84,13 @@ public static class GameplayRules
 
     /// <summary>
     /// 突破材料需求（照搬旧版 <c>FunGameConstant.LevelBreakNeedyList</c>）。
-    /// <para>参数是**突破后的阶数**（1–5），与旧版 <c>LevelBreakNeedyList[LevelBreak + 1]</c> 一致。
-    /// 旧表里另有一档 <c>[0]</c>（材料 40 + 升华之印 2），但 <c>LevelBreak + 1</c> 最小为 1，那档永远取不到，故不搬。</para>
+    /// <para>参数是**突破后的阶数**，与旧版 <c>LevelBreakNeedyList[LevelBreak + 1]</c> 一致。
+    /// Core 的 <c>Character.LevelBreak</c> 默认是 <c>-1</c>（还没突破过），所以第一次突破是 <c>-1 → 0</c>，
+    /// 取的是 <b>0 档</b>——这一档不是死数据。</para>
     /// </summary>
     public static IReadOnlyList<BreakNeed> LevelBreakNeedy(int breakLevel) => breakLevel switch
     {
+        0 => [Material(40), Item("升华之印", 2)],
         1 => [Material(80), Item("升华之印", 4), Item("流光之印", 2)],
         2 => [Material(160), Item("升华之印", 8), Item("流光之印", 4), Item("永恒之印", 3)],
         3 => [Material(320), Item("升华之印", 16), Item("流光之印", 8), Item("永恒之印", 6), Item("原初之印", 5)],
@@ -111,6 +113,16 @@ public static class GameplayRules
         int[] breaks = [.. General.GameplayEquilibriumConstant.LevelBreakList];
         int next = levelBreak + 1;
         return next < breaks.Length ? breaks[next] : null;
+    }
+
+    /// <summary>
+    /// 突破进度文案，口径同旧版「{LevelBreak + 1}/{总阶段数}」。
+    /// Core 的 <c>LevelBreak</c> 从 -1 起算，所以未突破过显示 <c>0/6</c>，全部完成显示 <c>6/6</c>。
+    /// </summary>
+    public static string BreakProgress(int levelBreak)
+    {
+        int total = General.GameplayEquilibriumConstant.LevelBreakList.Count;
+        return $"{Math.Clamp(levelBreak + 1, 0, total)}/{total}";
     }
 
     public static long SignInCredits(int streak)
