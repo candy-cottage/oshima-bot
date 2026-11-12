@@ -477,17 +477,47 @@ public static class CommandCatalog
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
         "forge" => new DelegateCommand(
-            key: "forge", name: "锻造", aliases: ["forge"], usage: "/锻造 @1 [分钟]",
-            description: "消耗 2 个同类材料 + 金币开始锻造", group: CommandGroups.Economy, audit: true,
-            handler: async context => CommandReplies.FromResult(await deps.Economy.ForgeAsync(
-                context.UserId, RefIndex(context),
-                Quantity(context, 1, GameplayRules.ForgeDefaultMinutes), context.CancellationToken))),
+            key: "forge", name: "锻造", aliases: ["forge"],
+            usage: "/锻造 @1 x40 [@2 x20…]　/锻造 信息｜取消｜模拟｜大师 <地区> <品质>",
+            description: "用野外材料锻造：产地决定系数与品质门槛，可指定大师锻造目标",
+            group: CommandGroups.Economy, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string action = (context.FirstArgument ?? "").Trim();
+                if (action is "信息" or "info")
+                {
+                    return await ForgeInfoReplyAsync(deps, context.UserId, context.CancellationToken);
+                }
+                if (action is "取消" or "cancel")
+                {
+                    return CommandReplies.FromResult(await deps.Forge.CancelAsync(
+                        context.UserId, context.CancellationToken));
+                }
+                if (action is "模拟" or "simulate")
+                {
+                    return CommandReplies.FromResult(await deps.Forge.SimulateAsync(
+                        context.UserId, Submissions(context, 1), context.CancellationToken));
+                }
+                if (action is "大师" or "master")
+                {
+                    if (!context.TryInt(1, out int regionId) || regionId <= 0 || context.Args.Count < 3)
+                    {
+                        return CommandReplies.Error("大师锻造参数不完整", "没有设定大师目标",
+                            "用法：/锻造 大师 1 史诗（地区编号 + 品质）", "/世界地图");
+                    }
+                    return CommandReplies.FromResult(await deps.Forge.SetMasterAsync(
+                        context.UserId, regionId, context.Args[2], context.CancellationToken));
+                }
+                return CommandReplies.FromResult(await deps.Forge.StartAsync(
+                    context.UserId, Submissions(context, 0), GameplayRules.ForgeDefaultMinutes,
+                    context.CancellationToken));
+            }),
 
         "forge-claim" => new DelegateCommand(
             key: "forge-claim", name: "收取锻造", aliases: ["forgeclaim"], usage: "/收取锻造",
-            description: "结算已完成的锻造", group: CommandGroups.Economy,
+            description: "结算已完成的锻造", group: CommandGroups.Economy, audit: true,
             handler: async context => CommandReplies.FromResult(
-                await deps.Economy.ClaimForgeAsync(context.UserId, context.CancellationToken))),
+                await deps.Forge.ClaimAsync(context.UserId, context.CancellationToken))),
 
         "instance" => new DelegateCommand(
             key: "instance", name: "秘境", aliases: ["instance"], usage: "/秘境 [类型] [难度]",
@@ -1466,6 +1496,57 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    // ---- 锻造 ----
+
+    /// <summary>把「@1 x40 @2 x20」这样的参数解析成（背包序号，件数）列表。</summary>
+    private static List<(int Index, int Quantity)> Submissions(CommandContext context, int start)
+    {
+        List<(int Index, int Quantity)> result = [];
+        for (int i = start; i < context.Args.Count; i++)
+        {
+            string arg = context.Args[i];
+            if (!arg.StartsWith('@') || !int.TryParse(arg[1..], out int index) || index <= 0) continue;
+            int quantity = 1;
+            if (i + 1 < context.Args.Count)
+            {
+                string next = context.Args[i + 1];
+                string digits = next.Length > 1 && (next[0] is 'x' or 'X') ? next[1..] : next;
+                if (int.TryParse(digits, out int parsed) && parsed > 0)
+                {
+                    quantity = parsed;
+                    i++;
+                }
+            }
+            result.Add((index, quantity));
+        }
+        return result;
+    }
+
+    private static async Task<BotReply> ForgeInfoReplyAsync(
+        CommandDependencies deps, long userId, CancellationToken cancellationToken)
+    {
+        ForgeInfo info = await deps.Forge.InfoAsync(userId, cancellationToken);
+        if (!info.Running)
+        {
+            return CommandReplies.Compose("⚒️ 锻造信息", "没有进行中的锻造",
+                [
+                    "- 配方：/锻造 @材料编号 x件数（可用多组混合产地）",
+                    "- 材料来自 /探索 采到的地区材料，产地决定系数与品质",
+                    "- 想先看看结果可以 /锻造 模拟 @材料编号 x件数"
+                ], ["/背包", "/世界地图", "/锻造 模拟"]);
+        }
+        List<string> lines =
+        [
+            $"- 配方：{info.Recipe}",
+            $"- {info.Estimate}",
+            $"- 大师目标：{info.Master}",
+            info.Ready ? "- ✅ 已完成：/收取锻造" : $"- 还需约 {info.RemainingSeconds / 60} 分 {info.RemainingSeconds % 60} 秒",
+            "- /锻造 取消 可以退回材料与金币（未结算前）"
+        ];
+        return CommandReplies.Compose("⚒️ 锻造信息", info.Ready ? "可收取" : "锻造中", lines,
+            [info.Ready ? "/收取锻造" : "/锻造 取消", "/背包", "/锻造 模拟"]);
+    }
 
     // ---- 任务板 ----
 

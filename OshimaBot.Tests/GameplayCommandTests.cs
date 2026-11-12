@@ -405,6 +405,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IActivityService, ActivityService>();
             services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<IQuestBoardService, QuestBoardService>();
+            services.AddSingleton<IForgeService, ForgeService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -422,6 +423,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IActivityService>(),
                 Provider.GetRequiredService<IExploreService>(),
                 Provider.GetRequiredService<IQuestBoardService>(),
+                Provider.GetRequiredService<IForgeService>(),
                 NullLogger.Instance);
         }
 

@@ -94,6 +94,8 @@ builder.Services.AddSingleton<IActivityService, ActivityService>();
 builder.Services.AddSingleton<IExploreService, ExploreService>();
 // 任务板（旧版 任务列表/做任务/任务信息/任务结算）：状态存 ActivityProgress，不新建表。
 builder.Services.AddSingleton<IQuestBoardService, QuestBoardService>();
+// 锻造：材料按所属地区折算系数与品质门槛，支持大师锻造/取消/模拟。
+builder.Services.AddSingleton<IForgeService, ForgeService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -109,6 +111,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IActivityService>(),
     sp.GetRequiredService<IExploreService>(),
     sp.GetRequiredService<IQuestBoardService>(),
+    sp.GetRequiredService<IForgeService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

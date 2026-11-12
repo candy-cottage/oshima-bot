@@ -24,8 +24,6 @@ public interface IEconomyService
     Task<ActionResult> CreateOfferAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
     Task<ActionResult> AcceptOfferAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> CancelOfferAsync(long userId, int index, CancellationToken cancellationToken = default);
-    Task<ActionResult> ForgeAsync(long userId, int materialIndex, int minutes, CancellationToken cancellationToken = default);
-    Task<ActionResult> ClaimForgeAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> InstanceAsync(long userId, string difficulty, CancellationToken cancellationToken = default);
     Task<ActionResult> ClaimInstanceAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> DuelAsync(long userId, CancellationToken cancellationToken = default);
@@ -692,71 +690,6 @@ public sealed class EconomyService(
         }, cancellationToken);
 
     // ---------------- 锻造 / 秘境 ----------------
-
-    public Task<ActionResult> ForgeAsync(long userId, int materialIndex, int minutes, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, state, ct) =>
-        {
-            if (await db.ForgingJobs.AnyAsync(x => x.UserId == userId && x.SettledAtUtc == null, ct))
-            {
-                return ActionResult.Fail("已有锻造进行中", "没有开始新的锻造",
-                    "等待结束后用 /收取锻造 结算", "/收取锻造");
-            }
-            PlayerItem? material = await PlayerService.ItemByIndexAsync(db, userId, materialIndex, ct);
-            if (material is null) return NoListing("材料");
-            if (material.Locked || material.Bound)
-            {
-                return ActionResult.Fail("材料已锁定或绑定", "没有消耗材料", "先 /解锁 @编号", "/背包");
-            }
-            if (material.Quantity < GameplayRules.ForgeMaterialQuantity)
-            {
-                return ActionResult.Fail("材料数量不足", "没有消耗材料",
-                    $"需要 {GameplayRules.ForgeMaterialQuantity} 个同类材料", "/背包");
-            }
-            if (state.Credits < GameplayRules.ForgeCostCredits)
-            {
-                return ActionResult.Fail("金币不足", "没有消耗材料或金币",
-                    $"需要 {GameplayRules.ForgeCostCredits} 金币，当前 {state.Credits}", "/状态");
-            }
-            string name = PlayerService.ReadName(material);
-            int duration = Math.Clamp(minutes, 1, GameplayRules.ForgeMaxMinutes);
-            PlayerService.ApplyCurrency(db, state, -GameplayRules.ForgeCostCredits, "credits", "forge_start", "forge", userId.ToString(CultureInfo.InvariantCulture));
-            PlayerService.Consume(db, material, GameplayRules.ForgeMaterialQuantity);
-
-            // 旧版按提交材料数给锻造积分（count × 0.3），是锻造商店与锻造榜的唯一来源。
-            double forgePoints = GameplayRules.ForgeMaterialQuantity * GameplayRules.ForgePointsPerMaterial;
-            PlayerService.ApplyCurrency(db, state, forgePoints, "forge_points", "forge_start", "forge",
-                userId.ToString(CultureInfo.InvariantCulture));
-            DateTime now = clock.UtcNow;
-            db.ForgingJobs.Add(new ForgingJob
-            {
-                UserId = userId, RecipeKey = "standard",
-                StateJson = JsonSerializer.Serialize(new { material = name }),
-                StartedAtUtc = now, EndsAtUtc = now.AddMinutes(duration)
-            });
-            return ActionResult.Success("🔨 开始锻造",
-                $"{name} ×{GameplayRules.ForgeMaterialQuantity} · {duration} 分钟后结算",
-                [$"- 消耗金币 {GameplayRules.ForgeCostCredits}，剩余 {state.Credits}",
-                    $"- 锻造积分 +{forgePoints:0.##}（提交 {GameplayRules.ForgeMaterialQuantity} 份材料，每份 "
-                    + $"{GameplayRules.ForgePointsPerMaterial:0.##} 分）",
-                    $"- 成品品质：{GameplayRules.QualityName(GameplayRules.ForgeOutputQuality)}"],
-                ["/收取锻造", "/背包"]);
-        }, cancellationToken);
-
-    public Task<ActionResult> ClaimForgeAsync(long userId, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, _, ct) =>
-        {
-            ForgingJob? job = await db.ForgingJobs
-                .Where(x => x.UserId == userId && x.SettledAtUtc == null)
-                .OrderBy(x => x.EndsAtUtc).FirstOrDefaultAsync(ct);
-            if (job is null) return ActionResult.Fail("没有进行中的锻造", "没有产出任何物品", "先用 /锻造 @编号 [分钟] 开始", "/锻造 @1 1");
-            if (job.EndsAtUtc > clock.UtcNow) return NotReady("锻造", job.EndsAtUtc);
-            await PlayerService.AddItemAsync(db, userId, "锻造·精制装备",
-                GameplayRules.ForgeOutputQuality, 1, ct, "forge");
-            job.SettledAtUtc = DateTime.UtcNow;
-            return ActionResult.Success("⚒️ 锻造完成", "精制装备已放入背包",
-                [$"- 品质：{GameplayRules.QualityName(GameplayRules.ForgeOutputQuality)}"],
-                ["/背包", "/状态"]);
-        }, cancellationToken);
 
     public Task<ActionResult> InstanceAsync(long userId, string difficulty, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>

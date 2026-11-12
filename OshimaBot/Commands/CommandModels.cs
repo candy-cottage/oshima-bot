@@ -32,6 +32,7 @@ public sealed record CommandDependencies(
     IActivityService Activities,
     IExploreService Explore,
     IQuestBoardService Quests,
+    IForgeService Forge,
     ILogger Logger);
 
 public interface ICommand

@@ -101,7 +101,7 @@ public sealed class EconomyCommandTests
         Assert.Contains("不能接受自己的报价单", await RouteAsync(router, "/接受报价 @1"));
         Assert.Contains("报价已撤回", await RouteAsync(router, "/撤回报价 @1"));
 
-        Assert.Contains("材料数量不足", await RouteAsync(router, "/锻造 @1 1"));
+        Assert.Contains("不是锻造材料", await RouteAsync(router, "/锻造 @1 1"));   // 新锻造只收地区材料
         Assert.Contains("进入秘境", await RouteAsync(router, "/秘境 精英"));
         Assert.Contains("尚未结束", await RouteAsync(router, "/收取秘境"));
 
@@ -179,6 +179,7 @@ public sealed class EconomyCommandTests
             services.AddSingleton<IActivityService, ActivityService>();
             services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<IQuestBoardService, QuestBoardService>();
+            services.AddSingleton<IForgeService, ForgeService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -196,6 +197,7 @@ public sealed class EconomyCommandTests
                 Provider.GetRequiredService<IActivityService>(),
                 Provider.GetRequiredService<IExploreService>(),
                 Provider.GetRequiredService<IQuestBoardService>(),
+                Provider.GetRequiredService<IForgeService>(),
                 NullLogger.Instance);
         }
 

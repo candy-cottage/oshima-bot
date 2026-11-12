@@ -203,7 +203,7 @@ public sealed class EconomyTests
     }
 
     [Fact]
-    public async Task ForgeAndInstance_RequireExpiryThenDeliverRewards()
+    public async Task Instance_RequiresExpiryThenDeliversRewards()
     {
         using EconomyDatabase db = new();
         IEconomyService economy = db.Get<IEconomyService>();
@@ -211,21 +211,6 @@ public sealed class EconomyTests
         await players.GetSnapshotAsync(Seller);
         await TestItems.SeedAsync(db.Provider, Seller, 3);   // 旧版注册不带物品
         await AddMaterialAsync(db, Seller, 3);                // @4
-
-        Assert.True((await economy.ForgeAsync(Seller, 4, 1)).Ok);
-
-        // 锻造积分是锻造商店与锻造榜的唯一来源：提交材料数 × 0.3
-        using (IServiceScope forgeScope = db.Provider.CreateScope())
-        {
-            BotDbContext forgeContext = forgeScope.ServiceProvider.GetRequiredService<BotDbContext>();
-            CorePlayerRecord wallet = await forgeContext.CorePlayers.FirstAsync(x => x.UserId == Seller);
-            Assert.Equal(GameplayRules.ForgeMaterialQuantity * GameplayRules.ForgePointsPerMaterial,
-                wallet.ForgePoints, 3);
-        }
-        Assert.False((await economy.ClaimForgeAsync(Seller)).Ok);
-        await ExpireAsync(db, "forge");
-        Assert.True((await economy.ClaimForgeAsync(Seller)).Ok);
-        Assert.Contains(await players.GetBagAsync(Seller), item => item.Name.Contains("锻造"));
 
         Assert.True((await economy.InstanceAsync(Seller, "地区 3")).Ok);
         Assert.False((await economy.ClaimInstanceAsync(Seller)).Ok);
