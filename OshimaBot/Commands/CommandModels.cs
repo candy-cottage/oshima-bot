@@ -30,6 +30,7 @@ public sealed record CommandDependencies(
     IClubService Clubs,
     IMailService Mail,
     IActivityService Activities,
+    IExploreService Explore,
     ILogger Logger);
 
 public interface ICommand

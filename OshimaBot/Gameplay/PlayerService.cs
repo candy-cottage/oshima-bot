@@ -1426,6 +1426,31 @@ public sealed class PlayerService(
         BotDbContext db, long userId, int index, CancellationToken ct)
         => ItemStore.ByIndexAsync(db, userId, index, ct);
 
+    /// <summary>玩家的全部角色（按创建顺序，序号与 <c>/我的角色</c> 一致）。</summary>
+    internal static async Task<List<PlayerCharacter>> AllCharactersAsync(
+        BotDbContext db, long userId, CancellationToken ct)
+    {
+        string? mainGuid = await MainGuidAsync(db, userId, ct);
+        return await CharacterStore.ListAsync(db, userId, mainGuid, ct);
+    }
+
+    /// <summary>小队编成（按槽位排序）；未编成返回空列表。</summary>
+    internal static async Task<List<PlayerCharacter>> SquadCharactersAsync(
+        BotDbContext db, long userId, CancellationToken ct)
+    {
+        Squad? squad = await db.Squads.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.IsActive, ct);
+        if (squad is null) return [];
+
+        List<long> memberIds = await db.SquadMembers.AsNoTracking()
+            .Where(x => x.SquadId == squad.Id).OrderBy(x => x.Slot)
+            .Select(x => x.CharacterId).ToListAsync(ct);
+        if (memberIds.Count == 0) return [];
+
+        List<PlayerCharacter> loaded = await AllCharactersAsync(db, userId, ct);
+        return [.. loaded.Where(x => memberIds.Contains(x.Id)).OrderBy(x => memberIds.IndexOf(x.Id))];
+    }
+
     internal static async Task<PlayerCharacter?> CharacterByIndexAsync(
         BotDbContext db, long userId, int index, CancellationToken ct)
     {

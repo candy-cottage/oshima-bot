@@ -20,7 +20,7 @@ public static class CommandCatalog
     public static readonly IReadOnlyList<string> Keys =
     [
         "help", "battle-help", "cancel", "bind", "uptime", "legacy-help",
-        "world-map", "region-info", "home-city",
+        "world-map", "region-info", "home-city", "explore", "explore-info", "explore-claim",
         "magic-card", "magic-card-pack",
         "char", "skill", "item", "stats", "team-stats",
         "rank-win", "rank-team-win", "rank-rating", "rank-team-rating",
@@ -1045,6 +1045,44 @@ public static class CommandCatalog
                     text, context.CancellationToken));
             }),
 
+        // ---- 世界探索（旧版 探索 / 小队探索 / 探索信息 / 探索结算）----
+        "explore" => new DelegateCommand(
+            key: "explore", name: "探索", aliases: ["前往"], usage: "/探索 <地区编号> <角色序号…|小队>",
+            description: "派角色去地区探索，2 分钟后可结算；许可按「人数 × 星级」扣", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int region) || region <= 0)
+                {
+                    return CommandReplies.Error("缺少地区编号", "没有开始探索",
+                        "用法：/探索 1 1 2（地区 + 角色序号），或 /探索 1 小队；编号用 /世界地图 查", "/世界地图");
+                }
+                string? tail = context.Args.Count > 1 ? context.Args[1] : null;
+                bool useSquad = tail is "小队" or "squad" or "队";
+                List<int> indexes = useSquad
+                    ? []
+                    : [.. context.Args.Skip(1)
+                        .Select(arg => int.TryParse(arg.TrimStart('@'), out int value) ? value : 0)
+                        .Where(value => value > 0)];
+                return CommandReplies.FromResult(await deps.Explore.StartAsync(
+                    context.UserId, region, indexes, useSquad, context.CancellationToken));
+            }),
+
+        "explore-info" => new DelegateCommand(
+            key: "explore-info", name: "探索信息", aliases: ["探索状态"], usage: "/探索信息",
+            description: "剩余探索许可、进行中的探索与剩余时间", group: CommandGroups.Economy,
+            handler: context => ExploreInfoAsync(deps, context)),
+
+        "explore-claim" => new DelegateCommand(
+            key: "explore-claim", name: "探索结算", aliases: ["探索收取"], usage: "/探索结算",
+            description: "结算已完成的探索（遇敌会真的打一场）", group: CommandGroups.Economy,
+            audit: true,
+            handler: async context =>
+            {
+                BattleReport report = await deps.Explore.ClaimAsync(context.UserId, context.CancellationToken);
+                return Report(report, context.Page, "/探索结算");
+            }),
+
         // ---- 世界地图（旧版 世界地图 / 查地区 / 主城）----
         "world-map" => new DelegateCommand(
             key: "world-map", name: "世界地图", aliases: ["看地图", "地区列表"], usage: "/世界地图",
@@ -1384,6 +1422,28 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    private static async Task<BotReply> ExploreInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        (ExploreQuota quota, IReadOnlyList<ExploreRunView> runs) = await deps.Explore.InfoAsync(
+            context.UserId, context.CancellationToken);
+
+        List<string> lines =
+        [
+            $"- 探索许可：{quota.Left}/{quota.DailyMax}（今日 {quota.Day}，每天 4:00 恢复 {ExploreRules.DailyQuota}）",
+            $"- 午餐 11–13 点：{(quota.LunchClaimed ? "已领 +30" : "未领")}"
+            + $"　晚餐 17–19 点：{(quota.DinnerClaimed ? "已领 +30" : "未领")}",
+            runs.Count == 0 ? "- 当前没有进行中的探索" : $"- 进行中 {runs.Count} 场："
+        ];
+        lines.AddRange(runs.Select(run =>
+            $"- #{run.Index} 【{run.RegionName}】{run.Characters}"
+            + $"　{(run.Ready ? "✅ 可结算" : $"还需 {run.RemainingSeconds} 秒")}"
+            + $"　消耗 {run.Cost}"));
+        if (runs.Any(x => x.Ready)) lines.Add("- 有探索完成了：/探索结算");
+        lines.Add("- 出发：/探索 地区编号 角色序号…　或 /探索 地区编号 小队");
+        return CommandReplies.Compose("🧭 探索信息", $"许可 {quota.Left}", lines,
+            ["/探索结算", "/世界地图", "/我的角色"]);
+    }
 
     // ---- 世界地图 ----
 

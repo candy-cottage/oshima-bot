@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(134, registry.All.Count);
+        Assert.Equal(137, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -165,6 +165,33 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_ExploreCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        await RouteAsync(router, "/我的角色");          // 先建档，探索需要角色
+        string info = await RouteAsync(router, "/探索信息");
+        Assert.Contains("探索许可", info);
+        Assert.Contains("60", info);
+        Assert.Contains("没有进行中的探索", info);
+
+        // 缺成员 / 缺地区编号都给用法
+        Assert.Contains("没有指定探索成员", await RouteAsync(router, "/探索 1"));
+        Assert.Contains("缺少地区编号", await RouteAsync(router, "/探索"));
+
+        // 1 人 5 星 = 5 许可
+        string started = await RouteAsync(router, "/探索 1 1");
+        Assert.Contains("出发探索", started);
+        Assert.Contains("剩余 55", started);
+
+        // 角色被锁 & 结算没到时间
+        Assert.Contains("正在探索", await RouteAsync(router, "/探索 1 1"));
+        Assert.Contains("还没结束", await RouteAsync(router, "/探索结算"));
+        Assert.Contains("还需", await RouteAsync(router, "/探索信息"));
+    }
+
+    [Fact]
     public async Task Router_WorldMapCommandsAreReachable()
     {
         using GameplayCommandDatabase db = new();
@@ -265,7 +292,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(134, registry.All.Count);
+        Assert.Equal(137, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -347,6 +374,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
             services.AddSingleton<IActivityService, ActivityService>();
+            services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -362,6 +390,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IClubService>(),
                 Provider.GetRequiredService<IMailService>(),
                 Provider.GetRequiredService<IActivityService>(),
+                Provider.GetRequiredService<IExploreService>(),
                 NullLogger.Instance);
         }
 

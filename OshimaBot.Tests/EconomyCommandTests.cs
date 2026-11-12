@@ -29,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(134, registry.All.Count);
+        Assert.Equal(137, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -177,6 +177,7 @@ public sealed class EconomyCommandTests
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
             services.AddSingleton<IActivityService, ActivityService>();
+            services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -192,6 +193,7 @@ public sealed class EconomyCommandTests
                 Provider.GetRequiredService<IClubService>(),
                 Provider.GetRequiredService<IMailService>(),
                 Provider.GetRequiredService<IActivityService>(),
+                Provider.GetRequiredService<IExploreService>(),
                 NullLogger.Instance);
         }
 
