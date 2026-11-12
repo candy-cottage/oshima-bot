@@ -187,6 +187,10 @@ public sealed class GameplayCommandTests
 
         // 角色被锁 & 结算没到时间
         Assert.Contains("正在探索", await RouteAsync(router, "/探索 1 1"));
+
+        // 小队探索：没编成时给引导，缺编号给用法
+        Assert.Contains("没有小队编成", await RouteAsync(router, "/小队探索 1"));
+        Assert.Contains("/小队探索 1", await RouteAsync(router, "/小队探索"));
         Assert.Contains("还没结束", await RouteAsync(router, "/探索结算"));
         Assert.Contains("还需", await RouteAsync(router, "/探索信息"));
     }

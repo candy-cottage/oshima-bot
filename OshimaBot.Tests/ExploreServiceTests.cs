@@ -76,6 +76,30 @@ public sealed class ExploreServiceTests
     }
 
     [Fact]
+    public async Task Start_WithSquadUsesSquadMembers()
+    {
+        using ExploreDatabase db = new();
+        IExploreService explore = db.Get<IExploreService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await db.CreatePlayerAsync(Player);
+
+        // 没编成小队
+        ActionResult none = await explore.StartAsync(Player, 1, [], useSquad: true);
+        Assert.False(none.Ok);
+        Assert.Contains("没有小队编成", none.Title);
+
+        Assert.True((await players.SquadAsync(Player, "add", 1)).Ok);
+        ActionResult started = await explore.StartAsync(Player, 1, [], useSquad: true);
+        Assert.True(started.Ok, started.Title);
+
+        // 1 人 × 5 星 = 5
+        (ExploreQuota quota, IReadOnlyList<ExploreRunView> runs) = await explore.InfoAsync(Player);
+        Assert.Equal(ExploreRules.DailyQuota - 5, quota.Left);
+        Assert.Single(runs);
+        Assert.False(string.IsNullOrWhiteSpace(runs[0].Characters));
+    }
+
+    [Fact]
     public async Task Start_RejectsWhenQuotaExhausted()
     {
         using ExploreDatabase db = new();

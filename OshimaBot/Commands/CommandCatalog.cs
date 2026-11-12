@@ -1047,18 +1047,28 @@ public static class CommandCatalog
 
         // ---- 世界探索（旧版 探索 / 小队探索 / 探索信息 / 探索结算）----
         "explore" => new DelegateCommand(
-            key: "explore", name: "探索", aliases: ["前往"], usage: "/探索 <地区编号> <角色序号…|小队>",
+            key: "explore", name: "探索", aliases: ["前往", "小队探索"],
+            usage: "/探索 <地区编号> <角色序号…>　/小队探索 <地区编号>",
             description: "派角色去地区探索，2 分钟后可结算；许可按「人数 × 星级」扣", group: CommandGroups.Economy,
             audit: true, prefixMatch: true,
             handler: async context =>
             {
+                // 「小队探索 1」是自带小队出发的旧写法：动词里已经含「小队」，
+                // 所以这里从原始输入判断，而不是看参数（CommandContext.Verb 只会给规范名）。
+                bool squadVerb = context.Raw.TrimStart().TrimStart('/')
+                    .StartsWith("小队探索", StringComparison.OrdinalIgnoreCase);
+
                 if (!context.TryInt(0, out int region) || region <= 0)
                 {
                     return CommandReplies.Error("缺少地区编号", "没有开始探索",
-                        "用法：/探索 1 1 2（地区 + 角色序号），或 /探索 1 小队；编号用 /世界地图 查", "/世界地图");
+                        squadVerb
+                            ? "用法：/小队探索 1（编号用 /世界地图 查）"
+                            : "用法：/探索 1 1 2（地区 + 角色序号），或 /小队探索 1；编号用 /世界地图 查",
+                        "/世界地图");
                 }
+
                 string? tail = context.Args.Count > 1 ? context.Args[1] : null;
-                bool useSquad = tail is "小队" or "squad" or "队";
+                bool useSquad = squadVerb || tail is "小队" or "squad" or "队";
                 List<int> indexes = useSquad
                     ? []
                     : [.. context.Args.Skip(1)
@@ -1440,7 +1450,7 @@ public static class CommandCatalog
             + $"　{(run.Ready ? "✅ 可结算" : $"还需 {run.RemainingSeconds} 秒")}"
             + $"　消耗 {run.Cost}"));
         if (runs.Any(x => x.Ready)) lines.Add("- 有探索完成了：/探索结算");
-        lines.Add("- 出发：/探索 地区编号 角色序号…　或 /探索 地区编号 小队");
+        lines.Add("- 出发：/探索 地区编号 角色序号…　或 /小队探索 地区编号（用小队编成）");
         return CommandReplies.Compose("🧭 探索信息", $"许可 {quota.Left}", lines,
             ["/探索结算", "/世界地图", "/我的角色"]);
     }
