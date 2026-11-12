@@ -63,6 +63,15 @@ public sealed record StoreDetail(
     string Name, string Currency, long Price, int Stock, int Quota, int Bought,
     DateTime WindowEndsAtUtc);
 
+/// <param name="Mine">我给的 / 对方给的，按编号（1 基）排列，供移除命令使用。</param>
+public sealed record OfferLine(int Index, string Name, int Quantity);
+
+/// <param name="Mine">true = 当前查看者是发起方。</param>
+public sealed record OfferDetail(
+    long Id, int Status, string StatusName, string Offeror, string Offeree,
+    IReadOnlyList<OfferLine> Giving, IReadOnlyList<OfferLine> Wanted,
+    bool Mine, bool IsTarget);
+
 public sealed record OfferEntry(
     int Index, long Id, string ItemName, long Price, string SellerHandle, bool IsMine);
 

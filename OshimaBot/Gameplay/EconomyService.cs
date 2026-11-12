@@ -25,8 +25,29 @@ public interface IEconomyService
     Task<ActionResult> BuyMarketAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<OfferEntry>> GetOffersAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> CreateOfferAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
+    /// <summary>接受报价：定向报价（双边换物）与公开挂单（金币结算）共用这一个入口。</summary>
     Task<ActionResult> AcceptOfferAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> CancelOfferAsync(long userId, int index, CancellationToken cancellationToken = default);
+
+    /// <summary>创建定向报价单草稿（旧版 CreateOffer）：先指定接收方，加完物品再发送。</summary>
+    Task<ActionResult> CreateOfferDraftAsync(long userId, string target, CancellationToken cancellationToken = default);
+
+    /// <summary>往草稿里加物品；<paramref name="opposite"/> 为 true 表示加的是「要对方的」。</summary>
+    Task<ActionResult> AddOfferItemsAsync(long userId, long offerId, bool opposite, IReadOnlyList<int> indexes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>从草稿里移除物品（我方物品会从托管退回背包）。</summary>
+    Task<ActionResult> RemoveOfferItemsAsync(long userId, long offerId, bool opposite, IReadOnlyList<int> indexes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>发送草稿（旧版 SendOffer）：发送后接收方才能接受或拒绝。</summary>
+    Task<ActionResult> SendOfferAsync(long userId, long offerId, CancellationToken cancellationToken = default);
+
+    /// <summary>接收方拒绝报价（旧版 OffereeReject）。</summary>
+    Task<ActionResult> RejectOfferAsync(long userId, long offerId, CancellationToken cancellationToken = default);
+
+    /// <summary>报价详情（旧版 GetOffer）：双边物品、状态与参与人。</summary>
+    Task<OfferDetail?> GetOfferDetailAsync(long userId, long offerId, CancellationToken cancellationToken = default);
     Task<ActionResult> InstanceAsync(long userId, string difficulty, CancellationToken cancellationToken = default);
     Task<ActionResult> ClaimInstanceAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> DuelAsync(long userId, CancellationToken cancellationToken = default);
@@ -52,7 +73,7 @@ public interface IEconomyService
 /// P2 经济与战斗仓储。所有货币变动（含跨用户买卖）都在同一个 SQLite 事务内完成，
 /// 买卖双方各自写一条 ledger；市场上架/报价的物品托管到 EscrowUserId，不出现在任何玩家背包。
 /// </summary>
-public sealed class EconomyService(
+public sealed partial class EconomyService(
     IServiceScopeFactory scopeFactory,
     ILogger<EconomyService> logger,
     IGameClock clock,
@@ -674,59 +695,6 @@ public sealed class EconomyService(
                 $"{PlayerService.ReadName(item)} · 要价 {price} 金币",
                 ["- 物品已移入托管，等待其它旅人 /接受报价 @编号",
                     "- 报价交易不收上架费，撤回用 /撤回报价 @编号"], ["/报价列表", "/背包"]);
-        }, cancellationToken);
-
-    public Task<ActionResult> AcceptOfferAsync(long userId, int index, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, state, ct) =>
-        {
-            List<Trade> trades = await ActiveOffersAsync(db, ct);
-            if (index <= 0 || index > trades.Count) return NoListing("报价单");
-            Trade trade = trades[index - 1];
-            if (trade.SellerUserId == userId)
-            {
-                return ActionResult.Fail("不能接受自己的报价单", "没有发生任何交易", "用 /撤回报价 @编号 取消", "/报价列表");
-            }
-            TradeItem? line = await db.TradeItems.FirstOrDefaultAsync(x => x.TradeId == trade.Id, ct);
-            if (line is null) return ActionResult.Fail("报价单缺少物品", "没有发生任何交易", "联系管理员核查", "/报价列表");
-            if (state.Credits < line.Price)
-            {
-                return ActionResult.Fail("金币不足", "没有发生任何交易",
-                    $"需要 {line.Price} 金币，当前 {state.Credits}", "/状态");
-            }
-            PlayerItem? item = await ItemStore.ByIdAsync(db, line.ItemInstanceId, ct);
-            if (item is null) return ActionResult.Fail("报价物品已丢失", "没有发生任何交易", "联系管理员核查", "/报价列表");
-
-            PlayerAccount seller = await PlayerService.EnsureAsync(db, trade.SellerUserId, ct);
-            string reference = trade.Id.ToString(CultureInfo.InvariantCulture);
-            PlayerService.ApplyCurrency(db, state, -line.Price, "credits", "offer_buy", "trade", reference);
-            PlayerService.ApplyCurrency(db, seller, line.Price, "credits", "offer_sale", "trade", reference);
-            item.UserId = userId;
-            trade.Status = 1;
-            trade.BuyerUserId = userId;
-            trade.ClosedAtUtc = DateTime.UtcNow;
-            return ActionResult.Success("🤝 报价成交",
-                $"{PlayerService.ReadName(item)} · {line.Price} 金币",
-                ["- 双方各写一条 ledger", "- 物品已放入买家背包"], ["/报价列表", "/背包", "/状态"]);
-        }, cancellationToken);
-
-    public Task<ActionResult> CancelOfferAsync(long userId, int index, CancellationToken cancellationToken = default)
-        => MutateAsync(userId, async (db, _, ct) =>
-        {
-            List<Trade> trades = await ActiveOffersAsync(db, ct);
-            if (index <= 0 || index > trades.Count) return NoListing("报价单");
-            Trade trade = trades[index - 1];
-            if (trade.SellerUserId != userId)
-            {
-                return ActionResult.Fail("这不是你的报价单", "没有撤回任何交易", "只能撤回自己发布的报价", "/报价列表");
-            }
-            TradeItem? line = await db.TradeItems.FirstOrDefaultAsync(x => x.TradeId == trade.Id, ct);
-            PlayerItem? item = line is null ? null : await ItemStore.ByIdAsync(db, line.ItemInstanceId, ct);
-            trade.Status = 2;
-            trade.ClosedAtUtc = DateTime.UtcNow;
-            if (item is not null) item.UserId = userId;
-            return ActionResult.Success("↩️ 报价已撤回",
-                $"{(item is null ? "未知物品" : PlayerService.ReadName(item))} 已退回背包",
-                [], ["/报价列表", "/背包"]);
         }, cancellationToken);
 
     // ---------------- 锻造 / 秘境 ----------------

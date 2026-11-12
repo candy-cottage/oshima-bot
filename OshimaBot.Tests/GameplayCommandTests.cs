@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(145, registry.All.Count);
+        Assert.Equal(153, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -162,6 +162,23 @@ public sealed class GameplayCommandTests
         Assert.Contains("人数不足", await RouteGroupAsync(router, "/开始游戏"));
         Assert.Contains("已离开房间", await RouteGroupAsync(router, "/退出房间"));
         Assert.Contains("暂无房间", await RouteGroupAsync(router, "/房间列表"));
+    }
+
+    [Fact]
+    public async Task Router_OfferCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");
+
+        Assert.Contains("没有指定报价对象", await RouteAsync(router, "/创建报价"));
+        Assert.Contains("找不到对方", await RouteAsync(router, "/创建报价 999999"));
+        Assert.Contains("缺少报价编号", await RouteAsync(router, "/报价添加物品"));
+        Assert.Contains("缺少物品编号", await RouteAsync(router, "/报价添加物品 1"));
+        Assert.Contains("缺少物品编号", await RouteAsync(router, "/报价移除对方物品 1"));
+        Assert.Contains("找不到报价", await RouteAsync(router, "/查报价 12345"));
+        Assert.Contains("找不到这份报价", await RouteAsync(router, "/发送报价 12345"));
+        Assert.Contains("找不到这份报价", await RouteAsync(router, "/拒绝报价 12345"));
     }
 
     [Fact]
@@ -357,7 +374,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(145, registry.All.Count);
+        Assert.Equal(153, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

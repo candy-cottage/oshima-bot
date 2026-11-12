@@ -40,6 +40,8 @@ public static class CommandCatalog
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
         "shop-forge", "shop-horse", "shop-coop", "shop-detail", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
+        "offer-create", "offer-add", "offer-add-want", "offer-remove", "offer-remove-want",
+        "offer-send", "offer-reject", "offer-info",
         "forge", "forge-claim", "instance", "instance-claim",
         "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
         "rank-horse", "rank-coop", "rank-forge",
@@ -496,6 +498,69 @@ public static class CommandCatalog
             description: "按报价买下物品", group: CommandGroups.Economy, audit: true,
             handler: async context => CommandReplies.FromResult(await deps.Economy.AcceptOfferAsync(
                 context.UserId, RefIndex(context), context.CancellationToken))),
+
+        // ---- 定向报价单（旧版 Offer：指定接收方，双边换物）----
+        "offer-create" => new DelegateCommand(
+            key: "offer-create", name: "创建报价", aliases: ["发起报价"], usage: "/创建报价 <UID|Handle|昵称>",
+            description: "建一份定向报价草稿，加完双方物品再发送", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                if (target is null)
+                {
+                    return CommandReplies.Error("没有指定报价对象", "没有创建报价单",
+                        "用法：/创建报价 123456（UID / Handle / 昵称）", "/报价列表");
+                }
+                return CommandReplies.FromResult(await deps.Economy.CreateOfferDraftAsync(
+                    context.UserId, target, context.CancellationToken));
+            }),
+
+        "offer-add" => new DelegateCommand(
+            key: "offer-add", name: "报价添加物品", aliases: ["报价加物品"], usage: "/报价添加物品 <编号> @1 @2",
+            description: "把自己背包里的物品加进报价草稿", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: context => OfferItemsAsync(deps, context, opposite: false, add: true)),
+
+        "offer-add-want" => new DelegateCommand(
+            key: "offer-add-want", name: "报价添加对方物品", aliases: ["报价加对方物品"],
+            usage: "/报价添加对方物品 <编号> @1 @2",
+            description: "把想要的对方物品加进报价草稿", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: context => OfferItemsAsync(deps, context, opposite: true, add: true)),
+
+        "offer-remove" => new DelegateCommand(
+            key: "offer-remove", name: "报价移除物品", aliases: ["报价去物品"], usage: "/报价移除物品 <编号> @1",
+            description: "从草稿里移出自己的物品（会退回背包）", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: context => OfferItemsAsync(deps, context, opposite: false, add: false)),
+
+        "offer-remove-want" => new DelegateCommand(
+            key: "offer-remove-want", name: "报价移除对方物品", aliases: ["报价去对方物品"],
+            usage: "/报价移除对方物品 <编号> @1",
+            description: "从草稿里移出想要的对方物品", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: context => OfferItemsAsync(deps, context, opposite: true, add: false)),
+
+        "offer-send" => new DelegateCommand(
+            key: "offer-send", name: "发送报价", aliases: ["发送报价单"], usage: "/发送报价 <编号>",
+            description: "把草稿发给对方，之后由对方接受或拒绝", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.SendOfferAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "offer-reject" => new DelegateCommand(
+            key: "offer-reject", name: "拒绝报价", aliases: ["拒绝报价单"], usage: "/拒绝报价 <编号>",
+            description: "拒绝发给你的报价，对方托管物品退回", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context => CommandReplies.FromResult(await deps.Economy.RejectOfferAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "offer-info" => new DelegateCommand(
+            key: "offer-info", name: "查报价", aliases: ["报价详情"], usage: "/查报价 <编号>",
+            description: "看报价双方各给了什么、当前状态", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: context => OfferInfoAsync(deps, context)),
 
         "offer-cancel" => new DelegateCommand(
             key: "offer-cancel", name: "撤回报价", aliases: ["offercancel"], usage: "/撤回报价 @1",
@@ -1523,6 +1588,88 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    // ---- 报价单 ----
+
+    private static async Task<BotReply> OfferItemsAsync(
+        CommandDependencies deps, CommandContext context, bool opposite, bool add)
+    {
+        if (!context.TryInt(0, out int offerId) || offerId <= 0)
+        {
+            return CommandReplies.Error("缺少报价编号", "报价单没有变化",
+                "编号是创建报价时给的那个数：/创建报价 对方 → #12", "/报价列表");
+        }
+        List<int> indexes = ItemIndexes(context, 1);
+        if (indexes.Count == 0)
+        {
+            return CommandReplies.Error("缺少物品编号", "报价单没有变化",
+                $"用法：/报价{(add ? "添加" : "移除")}{(opposite ? "对方" : "")}物品 {offerId} @1 @2",
+                "/背包");
+        }
+        ActionResult result = add
+            ? await deps.Economy.AddOfferItemsAsync(context.UserId, offerId, opposite, indexes,
+                context.CancellationToken)
+            : await deps.Economy.RemoveOfferItemsAsync(context.UserId, offerId, opposite, indexes,
+                context.CancellationToken);
+        return CommandReplies.FromResult(result);
+    }
+
+    private static async Task<BotReply> OfferInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        if (!context.TryInt(0, out int offerId) || offerId <= 0)
+        {
+            return CommandReplies.ListPage("📬 报价列表", "需要编号才能看详情",
+                ["- /查报价 编号（编号在创建报价时给出）", "- /报价列表 看公开挂单"], context.Page,
+                "/查报价", ["/报价列表"]);
+        }
+        OfferDetail? detail = await deps.Economy.GetOfferDetailAsync(
+            context.UserId, offerId, context.CancellationToken);
+        if (detail is null)
+        {
+            return CommandReplies.Error($"找不到报价 #{offerId}", "没有显示任何信息",
+                "草稿只有发起人能看，编号用创建时给的那个", "/报价列表");
+        }
+
+        List<string> lines =
+        [
+            $"- 状态：{detail.StatusName}",
+            $"- 发起：{detail.Offeror}" + (detail.Mine ? "（你）" : "")
+            + $"　接收：{detail.Offeree}" + (detail.IsTarget ? "（你）" : ""),
+            detail.Giving.Count == 0
+                ? "- 发起方给：还没有物品"
+                : $"- 发起方给：{string.Join("　", detail.Giving.Select(x => $"@{x.Index} {x.Name}"))}",
+            detail.Wanted.Count == 0
+                ? "- 想要的：还没有物品"
+                : $"- 想要的：{string.Join("　", detail.Wanted.Select(x => $"@{x.Index} {x.Name}"))}"
+        ];
+        List<string> actions = [];
+        if (detail.Mine && detail.Status == EconomyService.OfferDraft)
+        {
+            lines.Add($"- 加自己的：/报价添加物品 {offerId} @编号　·　加对方的：/报价添加对方物品 {offerId} @编号");
+            lines.Add($"- 都加好后 /发送报价 {offerId}");
+            actions.Add($"/发送报价 {offerId}");
+        }
+        if (detail.IsTarget && detail.Status == EconomyService.OfferSent)
+        {
+            lines.Add($"- 接受：/接受报价 {offerId}　·　拒绝：/拒绝报价 {offerId}");
+            actions.Add($"/接受报价 {offerId}");
+            actions.Add($"/拒绝报价 {offerId}");
+        }
+        actions.Add("/报价列表");
+        return CommandReplies.Compose($"📬 报价 #{offerId}", detail.StatusName, lines, actions);
+    }
+
+    /// <summary>从指定位置开始收集 @编号（报价单的增删物品都用它）。</summary>
+    private static List<int> ItemIndexes(CommandContext context, int start)
+    {
+        List<int> result = [];
+        for (int i = start; i < context.Args.Count; i++)
+        {
+            if (int.TryParse(context.Args[i].TrimStart('@'), out int value) && value > 0) result.Add(value);
+        }
+        return result;
+    }
+
 
     // ---- 锻造 ----
 
