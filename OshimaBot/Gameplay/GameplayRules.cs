@@ -116,6 +116,16 @@ public static class GameplayRules
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    /// <summary>当前「商店日」的起点（本地 4:00）对应的 UTC 时间；私信频次上限等按它切日。</summary>
+    public static DateTime StoreDayStartUtc(DateTime utcNow)
+    {
+        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), GameTimeZone);
+        DateTime boundary = local.Hour >= 4
+            ? local.Date.AddHours(4)
+            : local.Date.AddDays(-1).AddHours(4);
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(boundary, DateTimeKind.Unspecified), GameTimeZone);
+    }
+
     /// <summary>
     /// 社团周常周期 key（<c>yyyy-Www</c>，ISO 周、周一起算，边界沿用商店日的 4:00）。
     /// <para>与 <see cref="StoreDay"/> 同一套时区与切日口径，避免玩家在凌晨 3 点看到「任务已刷新」。</para>

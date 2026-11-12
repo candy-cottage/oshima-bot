@@ -229,7 +229,7 @@ public sealed class CommandFrameworkTests
     {
         sessions = new FakeSessions();
         codes = new FakeBindCodes();
-        return new CommandDependencies(null!, null!, codes, sessions, null!, null!, null!, null!, NullLogger.Instance);
+        return new CommandDependencies(null!, null!, codes, sessions, null!, null!, null!, null!, null!, NullLogger.Instance);
     }
 
     private static (CommandRouter Router, CommandRegistry Registry, FakeSessions Sessions, FakeBindCodes Codes)

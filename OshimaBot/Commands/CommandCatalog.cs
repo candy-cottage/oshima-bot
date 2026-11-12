@@ -48,7 +48,9 @@ public static class CommandCatalog
         "club-invite", "club-kick", "club-transfer", "club-settings", "club-donate",
         "club-tasks", "club-store", "club-market",
         // ---- 审核（管理员）----
-        "rename-review", "rename-approve", "rename-reject"
+        "rename-review", "rename-approve", "rename-reject",
+        // ---- 私信 ----
+        "mail-send", "mail-inbox", "mail-read"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -950,6 +952,36 @@ public static class CommandCatalog
             handler: async context => CommandReplies.FromResult(await deps.Clubs.RejectRenameAsync(
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
+        // ---- 私信（旧版 user_mails，内容过 NamingPolicy）----
+        "mail-send" => new DelegateCommand(
+            key: "mail-send", name: "私信", aliases: ["发送私信"], usage: "/私信 <UID|Handle|昵称> <内容>",
+            description: "给指定旅人发一条私信，每天有上限", group: CommandGroups.Economy,
+            prefixMatch: true, audit: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                string content = JoinFrom(context, 1);
+                if (target is null || content.Length == 0)
+                {
+                    return CommandReplies.Error("私信参数不完整", "没有发送任何私信",
+                        "用法：/私信 123456 周末一起打共斗吗", "/收件箱");
+                }
+                return CommandReplies.FromResult(await deps.Mail.SendAsync(
+                    context.UserId, target, content, context.CancellationToken));
+            }),
+
+        "mail-inbox" => new DelegateCommand(
+            key: "mail-inbox", name: "收件箱", aliases: ["信箱", "我的私信"], usage: "/收件箱 [未读] [p2]",
+            description: "查看私信列表，最近 50 封", group: CommandGroups.Economy,
+            handler: context => MailInboxAsync(deps, context)),
+
+        "mail-read" => new DelegateCommand(
+            key: "mail-read", name: "读信", aliases: ["查看私信"], usage: "/读信 <编号>",
+            description: "读一封私信（读后标记已读）", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: async context => CommandReplies.FromResult(await deps.Mail.ReadAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -1272,6 +1304,25 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    private static async Task<BotReply> MailInboxAsync(CommandDependencies deps, CommandContext context)
+    {
+        bool unreadOnly = context.HasFlag("未读") || context.HasFlag("unread");
+        IReadOnlyList<MailEntry> mails = await deps.Mail.InboxAsync(
+            context.UserId, unreadOnly, context.CancellationToken);
+        if (mails.Count == 0)
+        {
+            return CommandReplies.Compose("📬 收件箱", unreadOnly ? "没有未读私信" : "收件箱是空的",
+                ["- 用 /私信 昵称 内容 给别的旅人留言"], ["/私信", "/我的社团"]);
+        }
+        List<string> lines = [.. mails.Select(mail =>
+            $"- @{mail.Index} {(mail.Read ? "　" : "🔵")}{mail.From}：{mail.Preview}　{mail.SentOn}")];
+        lines.Add("- /读信 编号　·　/收件箱 未读 只看未读");
+        int unread = mails.Count(x => !x.Read);
+        return CommandReplies.ListPage("📬 收件箱",
+            unreadOnly ? $"{mails.Count} 封未读" : $"共 {mails.Count} 封 · 未读 {unread}",
+            lines, context.Page, "/收件箱", ["/收件箱 未读", "/私信"]);
+    }
 
     private static async Task<BotReply> RenameReviewAsync(CommandDependencies deps, CommandContext context)
     {

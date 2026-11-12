@@ -86,6 +86,8 @@ builder.Services.AddSingleton<IEconomyService, EconomyService>();
 builder.Services.AddSingleton<IRoomService, RoomService>();
 // 社团：旧版按社团编号落 JSON，这里四张表；一个人只能在一个社团（唯一索引兜底）。
 builder.Services.AddSingleton<IClubService, ClubService>();
+// 私信：旧版 user_mails 表一直在但没有收发入口，这里补上（内容过 NamingPolicy）。
+builder.Services.AddSingleton<IMailService, MailService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -97,6 +99,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IEconomyService>(),
     sp.GetRequiredService<IRoomService>(),
     sp.GetRequiredService<IClubService>(),
+    sp.GetRequiredService<IMailService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();
