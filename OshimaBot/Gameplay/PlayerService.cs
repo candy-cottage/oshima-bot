@@ -989,8 +989,12 @@ public sealed class PlayerService(
 
             main.Name = name;
             CharacterStore.Sync(main);
+            // 存档显示名跟着走：报价、社团成员、私信都用 Users.Nickname，
+            // 不同步的话玩家改了名，别人看到的还是「旅人42」。
+            Data.Entities.User? user = await db.Users.FirstOrDefaultAsync(x => x.Id == userId, ct);
+            if (user is not null) user.Nickname = name;
             return ActionResult.Success("✏️ 改名成功", $"{before} → {name}",
-                ["- 主战角色的名字已更新"], ["/角色", "/状态"]);
+                ["- 主战角色的名字已更新", "- 交易、社团、私信里显示的名字也会跟着变"], ["/角色", "/状态"]);
         }, cancellationToken);
 
     // ---------------- 自建角色重随（旧版 RandomCustomCharacter）----------------
@@ -1551,12 +1555,16 @@ public sealed class PlayerService(
         db.CorePlayers.Add(wallet);
 
         // 旧版注册即送一个与昵称同名的自建角色（CustomCharacter），不是内容包里的预制角色。
-        string nickname = await db.Users.AsNoTracking()
-            .Where(x => x.Id == userId)
-            .Select(x => x.Nickname)
-            .FirstOrDefaultAsync(ct) ?? "";
-        string starterName = string.IsNullOrWhiteSpace(nickname) ? $"旅人{userId}" : nickname.Trim();
-        PlayerCharacter starter = CharacterStore.CreateCustom(db, userId, starterName);
+        // QQ 事件里拿不到昵称（openid 而已），所以库里的 Nickname 初值为空：
+        // 这里补一个默认名，否则 /报价列表、社团成员这些地方会显示成随机 Handle。
+        Data.Entities.User? user = await db.Users.FirstOrDefaultAsync(x => x.Id == userId, ct);
+        string nickname = user?.Nickname ?? "";
+        if (string.IsNullOrWhiteSpace(nickname))
+        {
+            nickname = $"旅人{userId}";
+            if (user is not null) user.Nickname = nickname;
+        }
+        PlayerCharacter starter = CharacterStore.CreateCustom(db, userId, nickname.Trim());
         wallet.MainCharacterGuid = starter.Guid;
         var itemTemplates = FunGameService.AllItems;
         for (int i = 0; i < Math.Min(GameplayRules.StartingItems, itemTemplates.Count); i++)

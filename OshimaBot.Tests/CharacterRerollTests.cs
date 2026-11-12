@@ -103,6 +103,32 @@ public sealed class CharacterRerollTests
         Assert.Equal(5, await db.DiamondsAsync(Player), 3);
     }
 
+    [Fact]
+    public async Task Register_UsesDefaultNicknameWhenQqGivesNone()
+    {
+        using RerollDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await db.CreatePlayerAsync(Player, nickname: null);
+
+        // QQ 事件只有 openid，库里 Nickname 初值为空：建档时补默认名，
+        // 否则报价列表、社团成员会显示成随机 Handle
+        Assert.Equal($"旅人{Player}", (await players.GetCharactersAsync(Player)).Single().Name);
+        Assert.Equal($"旅人{Player}", await db.NicknameAsync(Player));
+    }
+
+    [Fact]
+    public async Task Rename_AlsoUpdatesStoredNickname()
+    {
+        using RerollDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await db.CreatePlayerAsync(Player, "旧名字");
+
+        ActionResult renamed = await players.RenameAsync(Player, "夜航船");
+        Assert.True(renamed.Ok, renamed.Title);
+        Assert.Equal("夜航船", await db.NicknameAsync(Player));
+        Assert.Equal("夜航船", (await players.GetCharactersAsync(Player)).Single().Name);
+    }
+
     private sealed class RerollDatabase : IDisposable
     {
         public SqliteConnection Connection { get; }
@@ -129,15 +155,26 @@ public sealed class CharacterRerollTests
 
         public T Get<T>() where T : notnull => Provider.GetRequiredService<T>();
 
-        public async Task CreatePlayerAsync(long userId, string nickname)
+        public async Task CreatePlayerAsync(long userId, string? nickname)
         {
             using (IServiceScope scope = Provider.CreateScope())
             {
                 BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-                context.Users.Add(new OshimaBot.Data.Entities.User { Id = userId, Handle = $"h{userId}", Nickname = nickname });
+                context.Users.Add(new OshimaBot.Data.Entities.User
+                {
+                    Id = userId, Handle = $"h{userId}", Nickname = nickname ?? ""
+                });
                 await context.SaveChangesAsync();
             }
             await Get<IPlayerService>().GetSnapshotAsync(userId);
+        }
+
+
+        public async Task<string> NicknameAsync(long userId)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            return (await context.Users.AsNoTracking().FirstAsync(x => x.Id == userId)).Nickname;
         }
 
         public async Task SetDiamondsAsync(long userId, double diamonds)
