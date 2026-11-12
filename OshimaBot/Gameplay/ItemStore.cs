@@ -145,6 +145,7 @@ public static class ItemStore
         }
 
         Item item = CreateItem(catalogId, name, type);
+        AssignPriceIfMissing(item);
         CoreItemRecord record = new()
         {
             Guid = item.Guid.ToString(),
@@ -172,6 +173,7 @@ public static class ItemStore
     public static PlayerItem AddSnapshot(
         BotDbContext db, long userId, Item item, string catalogId, int quantity = 1)
     {
+        AssignPriceIfMissing(item);
         CoreItemRecord record = new()
         {
             Guid = item.Guid.ToString(),
@@ -189,6 +191,16 @@ public static class ItemStore
         };
         db.CoreItems.Add(record);
         return new PlayerItem(record, item);
+    }
+
+    /// <summary>
+    /// 入包时给没有回收价的物品补一个（旧版 <c>AddItemToUserInventory</c> 总会写 Price）。
+    /// <para>内容包多数物品没设 <c>Price</c>，不补的话「商店出售」永远卖不出去。</para>
+    /// </summary>
+    private static void AssignPriceIfMissing(Item item)
+    {
+        if (item.Price > 0) return;
+        item.Price = GameplayRules.DefaultItemPrice(item.QualityType);
     }
 
     /// <summary>按名字统计持有数量（跨堆叠），突破材料校验用。</summary>

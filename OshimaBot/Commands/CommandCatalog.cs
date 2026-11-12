@@ -38,7 +38,7 @@ public static class CommandCatalog
         "reroll", "reroll-confirm", "reroll-cancel",
         // ---- P2：经济与战斗 ----
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
-        "shop-forge", "shop-horse", "shop-coop", "shop-detail", "buy", "market", "list-item", "delist", "market-buy",
+        "shop-forge", "shop-horse", "shop-coop", "shop-detail", "store-sell", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
         "offer-create", "offer-add", "offer-add-want", "offer-remove", "offer-remove-want",
         "offer-send", "offer-reject", "offer-info",
@@ -436,6 +436,22 @@ public static class CommandCatalog
             description: "单个商品的详情与库存（打开商店后 2 分钟内可下单）",
             group: CommandGroups.Economy, prefixMatch: true,
             handler: context => ShopDetailAsync(context)),
+
+        "store-sell" => new DelegateCommand(
+            key: "store-sell", name: "商店出售", aliases: ["出售物品"], usage: "/商店出售 @1 [@2…]",
+            description: "按回收价把背包物品卖给商店", group: CommandGroups.Economy, audit: true,
+            prefixMatch: true,
+            handler: async context =>
+            {
+                List<int> indexes = ItemIndexes(context, 0);
+                if (indexes.Count == 0)
+                {
+                    return CommandReplies.Error("没有指定物品", "没有卖出任何东西",
+                        "用法：/商店出售 @1 @2　编号用 /背包 查", "/背包");
+                }
+                return CommandReplies.FromResult(await deps.Economy.SellToStoreAsync(
+                    context.UserId, indexes, context.CancellationToken));
+            }),
 
         "buy" => new DelegateCommand(
             key: "buy", name: "购买", aliases: ["buy"], usage: "/购买 @1 [x2]",

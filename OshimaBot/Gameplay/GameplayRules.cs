@@ -340,6 +340,31 @@ public static class GameplayRules
         ItemType.Collectible or ItemType.QuestItem or ItemType.GiftBox or ItemType.Others);
 
     /// <summary>旧版抽卡命中阈值：<c>NextDouble() &gt; 0.8</c> 才出东西，否则「什么也没抽中」。</summary>
+    /// <summary>
+    /// 物品回收价区间（旧版 <c>FunGameConstant.PriceRanges</c>）：白色 200–800 … 金色 13 万–24 万。
+    /// </summary>
+    public static readonly IReadOnlyDictionary<QualityType, (int Min, int Max)> ItemPriceRanges =
+        new Dictionary<QualityType, (int Min, int Max)>
+        {
+            [QualityType.White] = (200, 800),
+            [QualityType.Green] = (800, 4200),
+            [QualityType.Blue] = (4200, 11000),
+            [QualityType.Purple] = (11000, 32200),
+            [QualityType.Orange] = (32200, 67000),
+            [QualityType.Red] = (67000, 130000),
+            [QualityType.Gold] = (130000, 240000)
+        };
+
+    /// <summary>
+    /// 入包时给物品定回收价（旧版 <c>AddItemToUserInventory</c>：<c>Next(min,max) * 0.35</c>）。
+    /// <para>这里取区间中值 × 0.35：旧版每件随机浮动，改成中值后同品质物品同价，
+    /// 便于对账与回归测试；量级与旧版一致。</para>
+    /// </summary>
+    public static double DefaultItemPrice(QualityType quality)
+        => ItemPriceRanges.TryGetValue(quality, out (int Min, int Max) range)
+            ? (range.Min + range.Max) / 2.0 * 0.35
+            : 0;
+
     public const double GachaHitThreshold = 0.8;
 
     public static bool RollGachaHit(IRandomSource random) => random.NextDouble() > GachaHitThreshold;

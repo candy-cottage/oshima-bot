@@ -19,6 +19,10 @@ public interface IEconomyService
     Task<StoreDetail?> GetStoreDetailAsync(long userId, int index, CancellationToken cancellationToken = default);
 
     Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity, CancellationToken cancellationToken = default);
+
+    /// <summary>把背包物品按回收价卖给商店（旧版 StoreSellItem）：批量、跳过锁定/绑定。</summary>
+    Task<ActionResult> SellToStoreAsync(long userId, IReadOnlyList<int> indexes,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MarketEntry>> GetMarketAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> ListOnMarketAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
     Task<ActionResult> DelistAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -389,6 +393,63 @@ public sealed partial class EconomyService(
                 good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount),
                 good.Quota, ReadBoughtCount(good, userId),
                 account.Wallet.LastStoreAtUtc!.Value.AddMinutes(GameplayRules.StoreWindowMinutes));
+        }, cancellationToken);
+
+    public Task<ActionResult> SellToStoreAsync(long userId, IReadOnlyList<int> indexes,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            if (indexes.Count == 0)
+            {
+                return ActionResult.Fail("没有指定物品", "没有卖出任何东西",
+                    "用法：/商店出售 @1 @2　编号用 /背包 查", "/背包");
+            }
+            List<PlayerItem> bag = await ItemStore.ListAsync(db, userId, ct);
+            List<string> sold = [];
+            List<string> skipped = [];
+            double total = 0;
+            foreach (int index in indexes.Distinct())
+            {
+                if (index <= 0 || index > bag.Count)
+                {
+                    skipped.Add($"@{index} 不存在");
+                    continue;
+                }
+                PlayerItem item = bag[index - 1];
+                string name = PlayerService.ReadName(item);
+                if (item.Locked || item.Bound)
+                {
+                    skipped.Add($"{name} 已锁定/绑定");
+                    continue;
+                }
+                // 旧版：Price <= 0 表示这件东西没有回收价（纪念品之类）。
+                if (item.Item.Price <= 0)
+                {
+                    skipped.Add($"{name} 没有回收价");
+                    continue;
+                }
+                double gained = item.Item.Price;
+                PlayerService.Consume(db, item, 1);
+                total += gained;
+                sold.Add($"{name} +{gained:0.##}");
+            }
+
+            if (sold.Count == 0)
+            {
+                return ActionResult.Fail("没有物品被卖出", "没有发生任何交易",
+                    string.Join("、", skipped), "/背包");
+            }
+
+            PlayerService.ApplyCurrency(db, state, total, "credits", "store_sell", "store",
+                userId.ToString(CultureInfo.InvariantCulture));
+            List<string> lines =
+            [
+                $"- 卖出 {sold.Count} 件，共得 {total:0.##} 金币",
+                $"- {string.Join("、", sold)}",
+                $"- 当前金币：{state.Credits:0.##}"
+            ];
+            if (skipped.Count > 0) lines.Add($"- 跳过：{string.Join("、", skipped)}");
+            return ActionResult.Success("💰 出售成功", $"+{total:0.##} 金币", lines, ["/背包", "/商店", "/状态"]);
         }, cancellationToken);
 
     public Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity,

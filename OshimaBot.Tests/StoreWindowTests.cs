@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using FunGame.Core.Library.Constant;
 using OshimaBot.Data;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
@@ -72,6 +73,35 @@ public sealed class StoreWindowTests
         Assert.Null(await economy.GetStoreDetailAsync(Player, 0));
     }
 
+    [Fact]
+    public async Task Sell_PaysRecyclePriceAndSkipsLockedItems()
+    {
+        using StoreDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        await db.CreatePlayerAsync(Player);
+
+        // 入包时就带上回收价（优质 = (800+4200)/2 × 0.35 = 875）
+        await db.AddItemAsync(Player, "优质矿石", quality: 2, quantity: 2);
+        await db.AddItemAsync(Player, "上锁矿石", quality: 2, quantity: 1);
+        await db.SetLockAsync(Player, "上锁矿石");
+
+        double before = await db.CreditsAsync(Player);
+        ActionResult sold = await economy.SellToStoreAsync(Player, [1]);
+
+        Assert.True(sold.Ok, sold.Title);
+        Assert.Equal(before + GameplayRules.DefaultItemPrice(QualityType.Green), await db.CreditsAsync(Player), 3);
+        Assert.Equal(1, (await db.ItemsAsync(Player)).Count(x => x.Name == "优质矿石"));  // 卖了一件
+
+        // 锁定的卖不掉
+        ActionResult locked = await economy.SellToStoreAsync(Player, [2]);
+        Assert.False(locked.Ok);
+        Assert.Contains("锁定", locked.Lines[0]);
+
+        // 越界编号也不会崩
+        Assert.False((await economy.SellToStoreAsync(Player, [99])).Ok);
+        Assert.False((await economy.SellToStoreAsync(Player, [])).Ok);
+    }
+
     private sealed class StoreDatabase : IDisposable
     {
         public SqliteConnection Connection { get; }
@@ -102,6 +132,40 @@ public sealed class StoreWindowTests
         public T Get<T>() where T : notnull => Provider.GetRequiredService<T>();
 
         public Task CreatePlayerAsync(long userId) => Get<IPlayerService>().GetSnapshotAsync(userId);
+
+
+        public async Task AddItemAsync(long userId, string name, int quality, int quantity)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            await ItemStore.AddAsync(context, userId, name, quality, quantity, CancellationToken.None, "test");
+            await context.SaveChangesAsync();
+        }
+
+        public async Task<List<PlayerItem>> ItemsAsync(long userId)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            return await ItemStore.ListAsync(context, userId, CancellationToken.None);
+        }
+
+        public async Task SetLockAsync(long userId, string name)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            List<PlayerItem> items = await ItemStore.ListAsync(context, userId, CancellationToken.None);
+            PlayerItem item = items.First(x => x.Name == name);
+            item.Locked = true;
+            ItemStore.Sync(item);
+            await context.SaveChangesAsync();
+        }
+
+        public async Task<double> CreditsAsync(long userId)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            return (await context.CorePlayers.AsNoTracking().FirstAsync(x => x.UserId == userId)).Credits;
+        }
 
         public async Task<string> LastStoreKeyAsync(long userId)
         {
