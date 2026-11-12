@@ -6,6 +6,7 @@ using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Messaging;
 using OshimaBot.Models;
+using OshimaBot.Security;
 using OshimaBot.Services;
 
 namespace OshimaBot.Commands;
@@ -45,7 +46,9 @@ public static class CommandCatalog
         "club-create", "club-list", "club-info", "club-mine", "club-join", "club-quit", "club-disband",
         "club-members", "club-admins", "club-applications", "club-invites", "club-approve", "club-reject",
         "club-invite", "club-kick", "club-transfer", "club-settings", "club-donate",
-        "club-tasks", "club-store", "club-market"
+        "club-tasks", "club-store", "club-market",
+        // ---- 审核（管理员）----
+        "rename-review", "rename-approve", "rename-reject"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -926,6 +929,27 @@ public static class CommandCatalog
                     "/社团市场");
             }),
 
+        // ---- 改名审核：公开名称先审后生效（平台规范），管理员专属 ----
+        "rename-review" => new DelegateCommand(
+            key: "rename-review", name: "改名审核", aliases: ["审核列表", "待审改名"], usage: "/改名审核",
+            description: "待审的改名申请（社团名等公开名称）", group: CommandGroups.Economy,
+            prefixMatch: true, requiredRole: BotRole.Admin,
+            handler: context => RenameReviewAsync(deps, context)),
+
+        "rename-approve" => new DelegateCommand(
+            key: "rename-approve", name: "批准改名", aliases: ["通过改名"], usage: "/批准改名 编号",
+            description: "通过改名申请并对全服生效", group: CommandGroups.Economy,
+            prefixMatch: true, requiredRole: BotRole.Admin, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.ApproveRenameAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "rename-reject" => new DelegateCommand(
+            key: "rename-reject", name: "拒绝改名", aliases: ["驳回改名"], usage: "/拒绝改名 编号",
+            description: "拒绝改名申请，原名保持不变", group: CommandGroups.Economy,
+            prefixMatch: true, requiredRole: BotRole.Admin, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.RejectRenameAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -1248,6 +1272,22 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    private static async Task<BotReply> RenameReviewAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<RenameRequestEntry> rows = await deps.Clubs.PendingRenamesAsync(context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("🧾 改名审核", "没有待审申请",
+                ["- 玩家用 /社团设置 名称 新名 提交后才会出现在这里"], ["/社团列表", "/帮助"]);
+        }
+        List<string> lines = [.. rows.Select(row =>
+            $"- @{row.Index} {row.TargetName} → 「{row.RequestedName}」　申请者 {row.Requester}　{row.SubmittedOn}")];
+        lines.Add("- /批准改名 编号 · /拒绝改名 编号");
+        lines.Add("- 自动校验只拦长度、不可见字符、冒充官方、站外引流；人工复核不能省");
+        return CommandReplies.Compose("🧾 改名审核", $"待审 {rows.Count} 条", lines,
+            ["/批准改名 1", "/拒绝改名 1", "/社团列表"]);
+    }
 
     private static async Task<BotReply> ClubTasksAsync(CommandDependencies deps, CommandContext context)
     {

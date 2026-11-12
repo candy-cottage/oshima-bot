@@ -172,8 +172,15 @@ public sealed class ClubServiceTests
         Assert.True((await clubs.UpdateSettingsAsync(Master, "公告", "周末一起跑赛马")).Ok);
         Assert.Equal("周末一起跑赛马", (await clubs.MineAsync(Master))!.Notice);
 
+        // 改名要过审核：提交后名字不变，管理员批准才生效
+        string before = (await clubs.MineAsync(Master))!.Name;
         Assert.True((await clubs.UpdateSettingsAsync(Master, "名称", "夜航船")).Ok);
+        Assert.Equal(before, (await clubs.MineAsync(Master))!.Name);
+        RenameRequestEntry pending = Assert.Single(await clubs.PendingRenamesAsync());
+        Assert.Equal("夜航船", pending.RequestedName);
+        Assert.True((await clubs.ApproveRenameAsync(Master, 1)).Ok);
         Assert.Equal("夜航船", (await clubs.MineAsync(Master))!.Name);
+        Assert.Empty(await clubs.PendingRenamesAsync());
 
         // 普通成员不能改设置
         Assert.True((await clubs.InviteAsync(Master, Member.ToString())).Ok);
@@ -382,6 +389,47 @@ public sealed class ClubServiceTests
         Assert.True(cleared.Ok, cleared.Title);
         Assert.Single(await db.ItemsAsync(Master));
     }
+
+    [Fact]
+    public async Task Rename_RequiresReviewAndRejectsBadNames()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        string original = (await clubs.MineAsync(Master))!.Name;
+
+        // 自动校验：冒充官方 / 站外引流 / 不可见字符一律拦在提交前
+        Assert.Contains("官方", (await clubs.UpdateSettingsAsync(Master, "名称", "官方客服中心")).Lines[0]);
+        Assert.False((await clubs.UpdateSettingsAsync(Master, "名称", "加群领奖励")).Ok);
+        Assert.False((await clubs.UpdateSettingsAsync(Master, "名称", "夜\u200B航船")).Ok);
+        Assert.Empty(await clubs.PendingRenamesAsync());
+
+        Assert.True((await clubs.UpdateSettingsAsync(Master, "名称", "夜航船")).Ok);
+        // 同一时间只允许一个待审申请
+        Assert.Contains("审核中", (await clubs.UpdateSettingsAsync(Master, "名称", "别的名字")).Title);
+
+        // 拒绝后名字不变，且能重新提交
+        Assert.True((await clubs.RejectRenameAsync(Master, 1)).Ok);
+        Assert.Equal(original, (await clubs.MineAsync(Master))!.Name);
+        Assert.Empty(await clubs.PendingRenamesAsync());
+        Assert.True((await clubs.UpdateSettingsAsync(Master, "名称", "第二名字")).Ok);
+
+        // 公告也走同一套内容校验
+        Assert.False((await clubs.UpdateSettingsAsync(Master, "公告", "扫码进群 12345678")).Ok);
+        Assert.True((await clubs.UpdateSettingsAsync(Master, "公告", "周末一起打共斗")).Ok);
+    }
+
+    [Theory]
+    [InlineData("夜航船", true)]
+    [InlineData("a", false)]                        // 太短
+    [InlineData("官方认证社团", false)]              // 冒充官方
+    [InlineData("https://example.com", false)]      // 站外链接
+    [InlineData("加群 12345", false)]                // 引流
+    [InlineData("啊啊啊啊啊啊啊啊", false)]            // 刷屏重复
+    [InlineData("夜 航 船  ", true)]                 // 首尾空格会被裁掉
+    public void NamingPolicy_BlocksImpersonationAndAds(string text, bool expected)
+        => Assert.Equal(expected, NamingPolicy.Check(text, 2, 15, "社团名").Ok);
 
     private sealed class ClubDatabase : IDisposable
     {

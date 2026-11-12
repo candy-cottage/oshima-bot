@@ -79,6 +79,11 @@ public interface IClubService
     Task<ActionResult> StoreBuyAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
     Task<ActionResult> StoreSellAsync(long userId, int itemIndex, int quantity, CancellationToken cancellationToken = default);
 
+    // ---- 改名审核（平台规范：公开名称先审后生效）----
+    Task<IReadOnlyList<RenameRequestEntry>> PendingRenamesAsync(CancellationToken cancellationToken = default);
+    Task<ActionResult> ApproveRenameAsync(long reviewerId, int index, CancellationToken cancellationToken = default);
+    Task<ActionResult> RejectRenameAsync(long reviewerId, int index, CancellationToken cancellationToken = default);
+
     // ---- 社团市场（社团内部交易，手续费进基金）----
     Task<IReadOnlyList<ClubMarketEntry>> MarketAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> MarketListAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
@@ -512,9 +517,10 @@ public sealed partial class ClubService(
                         [], ["/社团信息"]);
                 case "公告" or "notice":
                     string notice = (value ?? "").Trim();
-                    if (notice.Length > 200)
+                    (bool noticeOk, string noticeWhy) = NamingPolicy.CheckNotice(notice);
+                    if (!noticeOk)
                     {
-                        return ActionResult.Fail("公告太长", "没有修改公告", "最多 200 字", "/社团设置 公告");
+                        return ActionResult.Fail("公告未通过内容校验", "没有修改公告", noticeWhy, "/社团设置 公告");
                     }
                     club.Notice = notice;
                     return ActionResult.Success("📝 公告已更新", string.IsNullOrEmpty(notice) ? "（已清空）" : notice,
@@ -522,22 +528,42 @@ public sealed partial class ClubService(
                 case "名称" or "name":
                     if (mine.Role != ClubRole.Master)
                     {
-                        return ActionResult.Fail("只有社长可以改名", "没有修改名称", "让社长来操作", "/社团设置");
+                        return ActionResult.Fail("只有社长可以改名", "没有提交改名申请", "让社长来操作", "/社团设置");
                     }
                     string name = (value ?? "").Trim();
-                    if (name.Length < MinNameLength || name.Length > MaxNameLength)
+                    (bool nameOk, string nameWhy) = NamingPolicy.Check(name, MinNameLength, MaxNameLength, "社团名");
+                    if (!nameOk)
                     {
-                        return ActionResult.Fail("社团名长度不合法", "没有修改名称",
-                            $"{MinNameLength}–{MaxNameLength} 个字", "/社团设置 名称");
+                        return ActionResult.Fail("社团名不符合命名规范", "没有提交改名申请", nameWhy, "/社团设置 名称");
                     }
                     if (await db.Clubs.AnyAsync(x => x.Name == name && x.Id != club.Id, ct))
                     {
-                        return ActionResult.Fail($"社团名「{name}」已被占用", "没有修改名称", "换一个", "/社团设置 名称");
+                        return ActionResult.Fail($"社团名「{name}」已被占用", "没有提交改名申请", "换一个", "/社团设置 名称");
                     }
-                    string old = club.Name;
-                    club.Name = name;
-                    return ActionResult.Success("📝 社团已改名", $"[ {old} ] → [ {name} ]",
-                        ["- v3 没有审核台，改名立即生效"], ["/我的社团", "/社团信息"]);
+                    if (await db.RenameRequests.AnyAsync(
+                        x => x.TargetType == "club" && x.TargetId == club.Id.ToString(CultureInfo.InvariantCulture)
+                             && x.Status == 0, ct))
+                    {
+                        return ActionResult.Fail("已有一个改名申请在审核中", "没有重复提交",
+                            "等管理员处理，或让管理员先拒绝掉旧的", "/我的社团");
+                    }
+                    // 平台规范：公开可见的名字要过审核，不能由玩家直接生效。
+                    db.RenameRequests.Add(new RenameRequest
+                    {
+                        UserId = userId,
+                        TargetType = "club",
+                        TargetId = club.Id.ToString(CultureInfo.InvariantCulture),
+                        RequestedName = name,
+                        Status = 0,
+                        CreatedAtUtc = clock.UtcNow
+                    });
+                    return ActionResult.Success("📨 改名申请已提交",
+                        $"[ {club.Name} ] → 「{name}」",
+                        [
+                            "- 名称要通过审核才会生效（防冒充官方与站外引流）",
+                            "- 审核期间社团名保持原样；被拒绝会保留当前名字",
+                            "- 社团前缀与公告不受影响"
+                        ], ["/我的社团", "/社团设置"]);
                 case "任命" or "admin" or "卸任" or "demote":
                 {
                     List<ClubMember> members = await db.ClubMembers
