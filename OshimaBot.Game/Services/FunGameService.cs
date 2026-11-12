@@ -14,6 +14,9 @@ namespace OshimaBot.Game.Services
     public class FunGameService
     {
         public static List<Character> Characters { get; } = [];
+
+        /// <summary>地区（旧版 <c>FunGameService.Regions</c>；v3 内容包从旧版 OshimaModules/Regions 复制而来）。</summary>
+        public static List<Region> Regions { get; } = [];
         public static List<Skill> Skills { get; } = [];
         public static List<Skill> PassiveSkills { get; } = [];
         public static List<Skill> CommonPassiveSkills { get; } = [];
@@ -46,6 +49,8 @@ namespace OshimaBot.Game.Services
             Characters.Add(new CHAOS());
             Characters.Add(new Ryuko());
             Characters.Add(new TheGodK());
+
+            Regions.AddRange(OshimaBot.Content.Regions.OshimaRegions.CreateAll());
 
             Skills.AddRange([new 疾风步(), new 助威(), new 挑拨(), new 绞丝棍(), new 金刚击(), new 旋风轮(), new 双连击(), new 绝影(), new 胧(), new 魔眼(),
                 new 天堂之吻(), new 回复弹(), new 养命功(), new 镜花水月(), new 剑风闪(), new 鲨鱼锚击(), new 疾走(), new 闪现(),
