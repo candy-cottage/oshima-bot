@@ -1,4 +1,5 @@
 using System.Text;
+using OshimaBot.Content.Regions;
 using OshimaBot.Game.Services;
 using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
@@ -6,6 +7,10 @@ using FunGame.Core.Library.Constant;
 namespace OshimaBot.Services
 {
     public sealed record CatalogEntry(long Id, string Name, string Category);
+
+    /// <summary>世界地图的一行：编号、名称、分类、难度、当前天气与可采材料。</summary>
+    public sealed record RegionSummary(
+        long Id, string Name, string Category, string Difficulty, string Weather, IReadOnlyList<string> Materials);
 
     public sealed class FunGameQueryService(ISimulationStatisticsStore statistics)
     {
@@ -25,6 +30,36 @@ namespace OshimaBot.Services
                 .Select(group => group.First())
                 .OrderBy(item => item.Id)
                 .Select(item => new CatalogEntry(item.Id, item.Name, item.ItemType.ToString()))];
+
+        /// <summary>世界地图（旧版 <c>GetRegion</c> 无参重载）：按地区 Id 列出全部地区。</summary>
+        public IReadOnlyList<RegionSummary> GetRegions()
+        {
+            FunGameRuntime.EnsureInitialized();
+            return [.. FunGameService.Regions.OfType<OshimaRegion>().Select(region => new RegionSummary(
+                region.Id, region.Name, region.Category,
+                CharacterSet.GetRarityTypeName(region.Difficulty),
+                $"{region.Weather} {region.Temperature}℃",
+                [.. region.RegionCrops.Select(c => c.Name)]))];
+        }
+
+        /// <summary>地区详情（旧版 <c>OshimaRegion.ToString</c>）：头目 / 生物 / 材料 / NPC / 区域 / 探索剧情。</summary>
+        public string GetRegionInfo(int index)
+        {
+            FunGameRuntime.EnsureInitialized();
+            OshimaRegion? region = FunGameService.Regions.OfType<OshimaRegion>()
+                .FirstOrDefault(r => r.Id == index);
+            if (region is null) return "";
+            return region.ToString();
+        }
+
+        /// <summary>按名字找地区（<c>/查地区 银辉城</c> 这类写法）。</summary>
+        public string GetRegionInfo(string name)
+        {
+            FunGameRuntime.EnsureInitialized();
+            OshimaRegion? region = FunGameService.Regions.OfType<OshimaRegion>()
+                .FirstOrDefault(r => string.Equals(r.Name, name.Trim(), StringComparison.Ordinal));
+            return region?.ToString() ?? "";
+        }
 
         public string GetCharacterInfo(int id)
         {

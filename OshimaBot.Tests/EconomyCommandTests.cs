@@ -12,6 +12,7 @@ using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Models;
 using OshimaBot.Security;
+using OshimaBot.Services;
 using Xunit;
 
 namespace OshimaBot.Tests;
@@ -28,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(131, registry.All.Count);
+        Assert.Equal(134, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -176,12 +177,14 @@ public sealed class EconomyCommandTests
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
             services.AddSingleton<IActivityService, ActivityService>();
+            services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
+            services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
 
             Dependencies = new CommandDependencies(
-                null!, null!, null!,
+                Provider.GetRequiredService<FunGameQueryService>(), null!, null!,
                 Provider.GetRequiredService<IUserSessionService>(),
                 Provider.GetRequiredService<IPlayerService>(),
                 Provider.GetRequiredService<IEconomyService>(),

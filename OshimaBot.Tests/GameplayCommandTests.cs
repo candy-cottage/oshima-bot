@@ -12,6 +12,7 @@ using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Models;
 using OshimaBot.Security;
+using OshimaBot.Services;
 using Xunit;
 
 namespace OshimaBot.Tests;
@@ -27,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(131, registry.All.Count);
+        Assert.Equal(134, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -164,6 +165,30 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_WorldMapCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        string map = await RouteAsync(router, "/世界地图");
+        Assert.Contains("铎京城", map);
+        Assert.Contains("银辉城", map);
+        Assert.Contains("泰坦遗迹", map);
+        Assert.Contains("13 个地区", map);
+
+        // 编号 / 名称 / 不带参数三种写法
+        string byId = await RouteAsync(router, "/查地区 1");
+        Assert.Contains("星银合金", byId);
+        Assert.Contains("失控的悖论引擎", byId);
+        Assert.Contains("探索剧情", byId);
+        Assert.Contains(await RouteAsync(router, "/世界地图"), await RouteAsync(router, "/查地区"));
+
+        Assert.Contains("永燃坩埚", await RouteAsync(router, "/查地区 永燃坩埚"));
+        Assert.Contains("找不到", await RouteAsync(router, "/查地区 99"));
+        Assert.Contains("铎京城", await RouteAsync(router, "/主城"));
+    }
+
+    [Fact]
     public async Task Router_ActivityCommandsAreReachable()
     {
         using GameplayCommandDatabase db = new();
@@ -240,7 +265,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(131, registry.All.Count);
+        Assert.Equal(134, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -322,12 +347,14 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
             services.AddSingleton<IActivityService, ActivityService>();
+            services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
+            services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
 
             Dependencies = new CommandDependencies(
-                null!, null!, null!,
+                Provider.GetRequiredService<FunGameQueryService>(), null!, null!,
                 Provider.GetRequiredService<IUserSessionService>(),
                 Provider.GetRequiredService<IPlayerService>(),
                 null!,

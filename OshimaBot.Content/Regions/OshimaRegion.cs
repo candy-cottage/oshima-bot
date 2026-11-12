@@ -1,7 +1,6 @@
 using System.Text;
 using FunGame.Core.Entity;
 using FunGame.Core.Interface.Entity;
-using FunGame.Core.Library.Constant;
 using OshimaBot.Content.Items;
 using OshimaBot.Content.Units;
 
@@ -43,7 +42,6 @@ public class OshimaRegion : Region
             builder.AppendLine("== 探索剧情 ==");
             builder.AppendLine(string.Join("、", AllQuests.Select(q => $"{q.Key}：{q.Value.Description}")));
         }
-        builder.AppendLine($"探索难度：{CharacterSet.GetRarityTypeName(Difficulty)}");
         return builder.ToString().TrimEnd();
     }
 

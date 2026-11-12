@@ -20,6 +20,7 @@ public static class CommandCatalog
     public static readonly IReadOnlyList<string> Keys =
     [
         "help", "battle-help", "cancel", "bind", "uptime", "legacy-help",
+        "world-map", "region-info", "home-city",
         "magic-card", "magic-card-pack",
         "char", "skill", "item", "stats", "team-stats",
         "rank-win", "rank-team-win", "rank-rating", "rank-team-rating",
@@ -1044,6 +1045,23 @@ public static class CommandCatalog
                     text, context.CancellationToken));
             }),
 
+        // ---- 世界地图（旧版 世界地图 / 查地区 / 主城）----
+        "world-map" => new DelegateCommand(
+            key: "world-map", name: "世界地图", aliases: ["看地图", "地区列表"], usage: "/世界地图",
+            description: "列出全部地区：编号、分类、难度、天气与可采材料", group: CommandGroups.Query,
+            handler: context => Task.FromResult(WorldMapAsync(deps, context))),
+
+        "region-info" => new DelegateCommand(
+            key: "region-info", name: "查地区", aliases: ["查询地区", "地区"], usage: "/查地区 [编号|名称]",
+            description: "地区详情：头目、生物、材料、NPC、区域与探索剧情", group: CommandGroups.Query,
+            prefixMatch: true,
+            handler: context => Task.FromResult(RegionInfoAsync(deps, context))),
+
+        "home-city" => new DelegateCommand(
+            key: "home-city", name: "主城", aliases: ["铎京"], usage: "/主城",
+            description: "查看主城铎京城", group: CommandGroups.Query,
+            handler: context => Task.FromResult(HomeCityAsync(deps, context))),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -1366,6 +1384,53 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    // ---- 世界地图 ----
+
+    private static BotReply WorldMapAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<RegionSummary> regions = deps.Queries.GetRegions();
+        if (regions.Count == 0)
+        {
+            return CommandReplies.Error("世界地图暂时无法显示", "没有列出任何地区",
+                "内容包可能未加载，稍后重试", "/帮助");
+        }
+        List<string> lines = [.. regions.Select(region =>
+            $"- {region.Id}. {region.Name}　{region.Category}　{region.Difficulty}　{region.Weather}"
+            + (region.Materials.Count == 0 ? "" : $"\n  {string.Join("、", region.Materials)}"))];
+        lines.Add("- /查地区 编号 看详情　·　/主城 看铎京城");
+        return CommandReplies.ListPage("🗺️ 世界地图", $"{regions.Count} 个地区", lines, context.Page,
+            "/世界地图", ["/查地区 1", "/主城"]);
+    }
+
+    private static BotReply RegionInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        string? raw = context.FirstArgument;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return WorldMapAsync(deps, context);      // 旧版「查地区」不带参数就是世界地图
+        }
+        string info = int.TryParse(raw, out int index)
+            ? deps.Queries.GetRegionInfo(index)
+            : deps.Queries.GetRegionInfo(raw);
+        if (string.IsNullOrWhiteSpace(info))
+        {
+            return CommandReplies.Error($"找不到「{raw}」这个地区", "没有显示任何信息",
+                "用 /世界地图 查看编号，或直接写地区名", "/世界地图");
+        }
+        string command = $"/查地区 {raw}";
+        return info.Length > QQMarkdown.DefaultMaxLength - 300
+            ? CommandReplies.Paginated($"🗺️ {raw}", info, context.Page, command)
+            : CommandReplies.Detail($"🗺️ {raw}", info, actions: ["/世界地图", "/查地区 0"]);
+    }
+
+    private static BotReply HomeCityAsync(CommandDependencies deps, CommandContext context)
+    {
+        string info = deps.Queries.GetRegionInfo(0);
+        return string.IsNullOrWhiteSpace(info)
+            ? CommandReplies.Error("主城数据缺失", "没有显示任何信息", "内容包可能未加载", "/世界地图")
+            : CommandReplies.Detail("🏙️ 铎京城", info, actions: ["/世界地图", "/状态"]);
+    }
 
     private static async Task<BotReply> ActivitiesAsync(CommandDependencies deps, CommandContext context)
     {
