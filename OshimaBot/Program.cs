@@ -92,6 +92,8 @@ builder.Services.AddSingleton<IMailService, MailService>();
 builder.Services.AddSingleton<IActivityService, ActivityService>();
 // 世界探索：探索许可按日配额（虚物品），探索 2 分钟，结算时遭遇战走真实战斗。
 builder.Services.AddSingleton<IExploreService, ExploreService>();
+// 任务板（旧版 任务列表/做任务/任务信息/任务结算）：状态存 ActivityProgress，不新建表。
+builder.Services.AddSingleton<IQuestBoardService, QuestBoardService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -106,6 +108,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IMailService>(),
     sp.GetRequiredService<IActivityService>(),
     sp.GetRequiredService<IExploreService>(),
+    sp.GetRequiredService<IQuestBoardService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

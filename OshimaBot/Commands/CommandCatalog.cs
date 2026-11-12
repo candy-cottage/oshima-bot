@@ -21,6 +21,7 @@ public static class CommandCatalog
     [
         "help", "battle-help", "cancel", "bind", "uptime", "legacy-help",
         "world-map", "region-info", "home-city", "explore", "explore-info", "explore-claim",
+        "quest-board", "quest-do", "quest-info", "quest-settle",
         "magic-card", "magic-card-pack",
         "char", "skill", "item", "stats", "team-stats",
         "rank-win", "rank-team-win", "rank-rating", "rank-team-rating",
@@ -1045,6 +1046,39 @@ public static class CommandCatalog
                     text, context.CancellationToken));
             }),
 
+        // ---- 任务板（旧版 任务列表 / 做任务 / 任务信息 / 任务结算）----
+        "quest-board" => new DelegateCommand(
+            key: "quest-board", name: "任务列表", aliases: ["任务板", "委托"], usage: "/任务列表",
+            description: "可接的持续 / 即时 / 渐进任务与奖励", group: CommandGroups.Player,
+            handler: context => QuestBoardAsync(deps, context)),
+
+        "quest-do" => new DelegateCommand(
+            key: "quest-do", name: "做任务", aliases: ["接受任务", "开始任务"], usage: "/做任务 <编号> [@物品]",
+            description: "接取任务；渐进任务用 @物品 提交一件", group: CommandGroups.Player,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int index) || index <= 0)
+                {
+                    return CommandReplies.Error("缺少任务编号", "没有接取任何任务",
+                        "用 /任务列表 查看编号：/做任务 1", "/任务列表");
+                }
+                return CommandReplies.FromResult(await deps.Quests.AcceptAsync(
+                    context.UserId, index, RefIndex(context, 1), context.CancellationToken));
+            }),
+
+        "quest-info" => new DelegateCommand(
+            key: "quest-info", name: "任务信息", aliases: ["进行中任务"], usage: "/任务信息",
+            description: "进行中/已完成的任务与剩余时间", group: CommandGroups.Player,
+            handler: context => QuestInfoAsync(deps, context)),
+
+        "quest-settle" => new DelegateCommand(
+            key: "quest-settle", name: "任务结算", aliases: ["交任务"], usage: "/任务结算",
+            description: "领取所有已完成任务的奖励", group: CommandGroups.Player,
+            audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Quests.SettleAsync(context.UserId, context.CancellationToken))),
+
         // ---- 世界探索（旧版 探索 / 小队探索 / 探索信息 / 探索结算）----
         "explore" => new DelegateCommand(
             key: "explore", name: "探索", aliases: ["前往", "小队探索"],
@@ -1432,6 +1466,47 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    // ---- 任务板 ----
+
+    private static async Task<BotReply> QuestBoardAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<QuestBoardEntry> entries = await deps.Quests.ListAsync(
+            context.UserId, context.CancellationToken);
+        if (entries.Count == 0)
+        {
+            return CommandReplies.Compose("📋 任务列表", "暂时没有委托",
+                ["- 等协会发布新任务"], ["/每日任务", "/帮助"]);
+        }
+        List<string> lines = [.. entries.Select(entry =>
+            $"- @{entry.Index} {entry.Name}（{entry.TypeName}）　{entry.State}"
+            + $"\n  {entry.Requirement}　奖励 {entry.Reward}")];
+        lines.Add("- 接取：/做任务 编号　·　进度：/任务信息　·　领奖：/任务结算");
+        return CommandReplies.Compose("📋 任务列表", $"{entries.Count} 个委托", lines,
+            ["/做任务 1", "/任务信息", "/任务结算"]);
+    }
+
+    private static async Task<BotReply> QuestInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<QuestBoardEntry> entries = await deps.Quests.WorkingAsync(
+            context.UserId, context.CancellationToken);
+        if (entries.Count == 0)
+        {
+            return CommandReplies.Compose("📄 任务信息", "没有进行中的任务",
+                ["- 用 /任务列表 看看有什么可接的"], ["/任务列表"]);
+        }
+        List<string> lines = [.. entries.Select(entry =>
+        {
+            string state = entry.Completed
+                ? "✅ 已完成，可 /任务结算"
+                : entry.RemainingSeconds > 0
+                    ? $"还需 {entry.RemainingSeconds / 60} 分 {entry.RemainingSeconds % 60} 秒"
+                    : $"{entry.Progress}/{entry.Target} 件";
+            return $"- @{entry.Index} {entry.Name}（{entry.TypeName}）　{state}\n  {entry.Requirement}　奖励 {entry.Reward}";
+        })];
+        return CommandReplies.Compose("📄 任务信息", $"{entries.Count} 个任务", lines,
+            ["/任务结算", "/任务列表"]);
+    }
 
     private static async Task<BotReply> ExploreInfoAsync(CommandDependencies deps, CommandContext context)
     {

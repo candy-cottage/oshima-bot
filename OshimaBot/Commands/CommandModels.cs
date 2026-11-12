@@ -31,6 +31,7 @@ public sealed record CommandDependencies(
     IMailService Mail,
     IActivityService Activities,
     IExploreService Explore,
+    IQuestBoardService Quests,
     ILogger Logger);
 
 public interface ICommand

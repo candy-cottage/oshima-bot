@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(137, registry.All.Count);
+        Assert.Equal(141, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -165,6 +165,31 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_QuestBoardCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        string board = await RouteAsync(router, "/任务列表");
+        Assert.Contains("巡逻铎京", board);
+        Assert.Contains("清理下水道", board);
+        Assert.Contains("物资征调", board);
+
+        Assert.Contains("没有进行中的任务", await RouteAsync(router, "/任务信息"));
+        Assert.Contains("没有进行中的任务", await RouteAsync(router, "/任务结算"));
+        Assert.Contains("缺少任务编号", await RouteAsync(router, "/做任务"));
+
+        // 接一个持续任务 → 任务信息里能看到剩余时间
+        Assert.Contains("已接取任务", await RouteAsync(router, "/做任务 1"));
+        string info = await RouteAsync(router, "/任务信息");
+        Assert.Contains("巡逻铎京", info);
+        Assert.Contains("还需", info);
+
+        // 没到时间结算会被拒
+        Assert.Contains("还没完成", await RouteAsync(router, "/任务结算"));
+    }
+
+    [Fact]
     public async Task Router_ExploreCommandsAreReachable()
     {
         using GameplayCommandDatabase db = new();
@@ -296,7 +321,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(137, registry.All.Count);
+        Assert.Equal(141, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -379,6 +404,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IMailService, MailService>();
             services.AddSingleton<IActivityService, ActivityService>();
             services.AddSingleton<IExploreService, ExploreService>();
+            services.AddSingleton<IQuestBoardService, QuestBoardService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -395,6 +421,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IMailService>(),
                 Provider.GetRequiredService<IActivityService>(),
                 Provider.GetRequiredService<IExploreService>(),
+                Provider.GetRequiredService<IQuestBoardService>(),
                 NullLogger.Instance);
         }
 
