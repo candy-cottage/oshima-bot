@@ -53,6 +53,8 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
     public DbSet<ClubApplication> ClubApplications => Set<ClubApplication>();
     public DbSet<ClubInvite> ClubInvites => Set<ClubInvite>();
+    public DbSet<ClubTaskProgress> ClubTaskProgresses => Set<ClubTaskProgress>();
+    public DbSet<ClubMarketListing> ClubMarketListings => Set<ClubMarketListing>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,6 +152,18 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.ClubId, x.UserId }).IsUnique();
             entity.HasIndex(x => x.UserId);
+        });
+        modelBuilder.Entity<ClubTaskProgress>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            // 一个社团在一个周期里，每个任务只有一行进度。
+            entity.HasIndex(x => new { x.ClubId, x.Period, x.Key }).IsUnique();
+        });
+        modelBuilder.Entity<ClubMarketListing>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ClubId, x.Status });
+            entity.HasIndex(x => x.SellerUserId);
         });
 
         // ---- 经济与交易 ----

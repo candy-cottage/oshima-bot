@@ -64,3 +64,47 @@ public sealed class ClubInvite
     public long UserId { get; set; }
     public DateTime InvitedAtUtc { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// 社团周常任务的进度（每个社团每个周期每个任务一行）。
+/// <para>旧版没有社团任务，这一层按「社团行为累计」设计：捐献、招募、物资征集各自推进一条。</para>
+/// </summary>
+public sealed class ClubTaskProgress
+{
+    public long Id { get; set; }
+    public long ClubId { get; set; }
+
+    /// <summary>对应 <c>ClubRules.Tasks</c> 里的任务 key。</summary>
+    public string Key { get; set; } = "";
+
+    /// <summary>周期 key（<c>yyyy-Www</c>，周一起算）；换周即重新从 0 计。</summary>
+    public string Period { get; set; } = "";
+
+    public int Progress { get; set; }
+
+    /// <summary>已结算时间；null 表示还没领。</summary>
+    public DateTime? ClaimedAtUtc { get; set; }
+
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 社团内部挂单：只对本社团成员可见，货币是金币，手续费进社团基金。
+/// <para>与全局市场的区别是「按社团隔离」+「手续费回流社团」，物品同样在成交前托管给
+/// <see cref="GameplayRules.EscrowUserId"/>。</para>
+/// </summary>
+public sealed class ClubMarketListing
+{
+    public long Id { get; set; }
+    public long ClubId { get; set; }
+    public long SellerUserId { get; set; }
+    public long ItemInstanceId { get; set; }
+    public long Price { get; set; }
+    public long Fee { get; set; }
+
+    /// <summary>0 在售 / 1 已成交 / 2 已下架 / 3 被社长清空 / 4 卖家离团退回。</summary>
+    public int Status { get; set; }
+
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? ClosedAtUtc { get; set; }
+}

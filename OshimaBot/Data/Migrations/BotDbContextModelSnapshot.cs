@@ -421,6 +421,45 @@ namespace OshimaBot.Data.Migrations
                     b.ToTable("ClubInvites");
                 });
 
+            modelBuilder.Entity("OshimaBot.Data.Entities.ClubMarketListing", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ClosedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ClubId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Fee")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ItemInstanceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Price")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SellerUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SellerUserId");
+
+                    b.HasIndex("ClubId", "Status");
+
+                    b.ToTable("ClubMarketListings");
+                });
+
             modelBuilder.Entity("OshimaBot.Data.Entities.ClubMember", b =>
                 {
                     b.Property<long>("Id")
@@ -450,6 +489,40 @@ namespace OshimaBot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ClubMembers");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Entities.ClubTaskProgress", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ClaimedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ClubId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "Period", "Key")
+                        .IsUnique();
+
+                    b.ToTable("ClubTaskProgresses");
                 });
 
             modelBuilder.Entity("OshimaBot.Data.Entities.DailyQuest", b =>

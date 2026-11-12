@@ -44,7 +44,8 @@ public static class CommandCatalog
         // ---- 社团 ----
         "club-create", "club-list", "club-info", "club-mine", "club-join", "club-quit", "club-disband",
         "club-members", "club-admins", "club-applications", "club-invites", "club-approve", "club-reject",
-        "club-invite", "club-kick", "club-transfer", "club-settings", "club-donate"
+        "club-invite", "club-kick", "club-transfer", "club-settings", "club-donate",
+        "club-tasks", "club-store", "club-market"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -823,6 +824,108 @@ public static class CommandCatalog
                     context.UserId, credits, context.CancellationToken));
             }),
 
+        "club-tasks" => new DelegateCommand(
+            key: "club-tasks", name: "社团任务", aliases: ["社团周常"], usage: "/社团任务 [提交 @编号 [x数量] | 领取 编号]",
+            description: "周常任务进度；提交物资推进征集，领取把奖励打进社团基金", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string action = (context.FirstArgument ?? "").Trim();
+                if (action.Length == 0 || action is "列表" or "list")
+                {
+                    return await ClubTasksAsync(deps, context);
+                }
+                if (action is "提交" or "submit" or "上交")
+                {
+                    return CommandReplies.FromResult(await deps.Clubs.ContributeTaskAsync(
+                        context.UserId, RefIndex(context, 1), Quantity(context, 2, 1), context.CancellationToken));
+                }
+                if (action is "领取" or "结算" or "claim")
+                {
+                    if (!context.TryInt(1, out int index) || index <= 0)
+                    {
+                        return CommandReplies.Error("没有给任务编号", "没有结算任何任务",
+                            "用法：/社团任务 领取 1　编号用 /社团任务 查看", "/社团任务");
+                    }
+                    return CommandReplies.FromResult(await deps.Clubs.ClaimTaskAsync(
+                        context.UserId, index, context.CancellationToken));
+                }
+                return CommandReplies.Error("不认识的子命令", "没有执行任何操作",
+                    "用法：/社团任务　/社团任务 提交 @编号 x2　/社团任务 领取 1", "/社团任务");
+            }),
+
+        "club-store" => new DelegateCommand(
+            key: "club-store", name: "社团商店", aliases: ["社团兑换"], usage: "/社团商店 [买 编号 [x数量] | 卖 @编号 [x数量]]",
+            description: "用社团基金兑换钻石与突破材料；管理可用基金收购成员物品", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string action = (context.FirstArgument ?? "").Trim();
+                if (action.Length == 0 || action is "列表" or "list")
+                {
+                    return await ClubStoreAsync(deps, context);
+                }
+                if (action is "买" or "购买" or "兑换" or "buy")
+                {
+                    if (!context.TryInt(1, out int index) || index <= 0)
+                    {
+                        return CommandReplies.Error("没有给商品编号", "没有扣基金，也没有发放物品",
+                            "用法：/社团商店 买 1 x2　编号用 /社团商店 查看", "/社团商店");
+                    }
+                    return CommandReplies.FromResult(await deps.Clubs.StoreBuyAsync(
+                        context.UserId, index, Quantity(context, 2, 1), context.CancellationToken));
+                }
+                if (action is "卖" or "出售" or "收购" or "sell")
+                {
+                    return CommandReplies.FromResult(await deps.Clubs.StoreSellAsync(
+                        context.UserId, RefIndex(context, 1), Quantity(context, 2, 1), context.CancellationToken));
+                }
+                return CommandReplies.Error("不认识的子命令", "没有执行任何操作",
+                    "用法：/社团商店　/社团商店 买 1　/社团商店 卖 @编号", "/社团商店");
+            }),
+
+        "club-market" => new DelegateCommand(
+            key: "club-market", name: "社团市场", aliases: ["社团交易"], usage: "/社团市场 [上架 @编号 价格 | 下架 编号 | 买 编号 | 清空]",
+            description: "社团内部的二手交易，手续费进社团基金", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string action = (context.FirstArgument ?? "").Trim();
+                if (action.Length == 0 || action is "列表" or "list")
+                {
+                    return await ClubMarketAsync(deps, context);
+                }
+                if (action is "上架" or "出售" or "挂单" or "sell")
+                {
+                    int itemIndex = RefIndex(context, 1);
+                    if (itemIndex <= 0 || !long.TryParse(context.Args.Count > 2 ? context.Args[2] : "", out long price))
+                    {
+                        return CommandReplies.Error("上架参数不完整", "没有上架任何物品",
+                            "用法：/社团市场 上架 @物品编号 800", "/社团市场");
+                    }
+                    return CommandReplies.FromResult(await deps.Clubs.MarketListAsync(
+                        context.UserId, itemIndex, price, context.CancellationToken));
+                }
+                if (action is "下架" or "撤回" or "delist")
+                {
+                    return CommandReplies.FromResult(await deps.Clubs.MarketDelistAsync(
+                        context.UserId, RefIndex(context, 1), context.CancellationToken));
+                }
+                if (action is "买" or "购买" or "buy")
+                {
+                    return CommandReplies.FromResult(await deps.Clubs.MarketBuyAsync(
+                        context.UserId, RefIndex(context, 1), context.CancellationToken));
+                }
+                if (action is "清空" or "clear")
+                {
+                    return CommandReplies.FromResult(await deps.Clubs.MarketClearAsync(
+                        context.UserId, context.CancellationToken));
+                }
+                return CommandReplies.Error("不认识的子命令", "没有执行任何操作",
+                    "用法：/社团市场　/社团市场 上架 @编号 800　/社团市场 买 1　/社团市场 下架 1　/社团市场 清空",
+                    "/社团市场");
+            }),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -1146,6 +1249,68 @@ public static class CommandCatalog
 
     // ---- 社团指令辅助 ----
 
+    private static async Task<BotReply> ClubTasksAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubTaskEntry> tasks = await deps.Clubs.TasksAsync(context.UserId, context.CancellationToken);
+        if (tasks.Count == 0)
+        {
+            return CommandReplies.Error("你当前没有加入任何社团", "没有任务可显示",
+                "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
+        }
+        List<string> lines = [.. tasks.Select(task =>
+        {
+            string state = task.Claimed ? "已结算"
+                : task.Done ? "✅ 可结算"
+                : $"{task.Progress}/{task.Target} {task.Unit}";
+            return $"- @{task.Index} {task.Name}　{state}　奖励 {task.RewardFunds} 基金\n"
+                + $"  {task.Hint}";
+        })];
+        lines.Add("- 提交物资：/社团任务 提交 @物品编号 [x数量]（按分解价一半折算基金）");
+        lines.Add("- 结算：/社团任务 领取 编号（社长或管理）");
+        lines.Add("- 奖励进社团基金，可在 /社团商店 兑换物资");
+        return CommandReplies.Compose("🏁 社团任务", $"本周 · {GameplayRules.ClubWeek(DateTime.UtcNow)}",
+            lines, ["/社团任务 领取 1", "/社团商店", "/我的社团"]);
+    }
+
+    private static async Task<BotReply> ClubStoreAsync(CommandDependencies deps, CommandContext context)
+    {
+        ClubStoreView view = await deps.Clubs.StoreAsync(context.UserId, context.CancellationToken);
+        if (view.Goods.Count == 0)
+        {
+            return CommandReplies.Error("你当前没有加入任何社团", "没有货架可显示",
+                "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
+        }
+        List<string> lines = [.. view.Goods.Select(good =>
+            $"- @{good.Index} {good.Name}　{good.Price} 基金　{good.Description}")];
+        lines.Add($"- 可用基金：{view.Funds:0.##}（成员 /社团捐献 与社团市场手续费都会进来）");
+        lines.Add("- 兑换：/社团商店 买 编号 [x数量]（社长或管理操作）");
+        lines.Add("- 收购：/社团商店 卖 @物品编号 [x数量]（管理用基金按分解价一半收成员物资）");
+        return CommandReplies.Compose("🛍️ 社团商店", $"社团基金 {view.Funds:0.##}", lines,
+            ["/社团商店 买 1", "/社团捐献", "/我的社团"]);
+    }
+
+    private static async Task<BotReply> ClubMarketAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubMarketEntry> listings = await deps.Clubs.MarketAsync(
+            context.UserId, context.CancellationToken);
+        if (listings.Count == 0)
+        {
+            return CommandReplies.Compose("🏪 社团市场", "暂无挂单",
+                [
+                    "- 上架：/社团市场 上架 @物品编号 价格",
+                    "- 手续费 5% 进社团基金，比全局市场的 15% 低",
+                    "- 只能在本社团成员之间交易"
+                ], ["/背包", "/我的社团"]);
+        }
+        List<string> lines = [.. listings.Select(listing =>
+            $"- @{listing.Index} {listing.Name}（{GameplayRules.QualityName(listing.Quality)}）"
+            + $"　{listing.Price} 金币　卖家 {listing.Seller}{(listing.Mine ? "（你）" : "")}")];
+        lines.Add("- /社团市场 买 编号　·　/社团市场 下架 编号　·　/社团市场 上架 @物品编号 价格");
+        lines.Add("- 社长可用 /社团市场 清空 把全部挂单退回卖家");
+        return CommandReplies.Compose("🏪 社团市场", $"{listings.Count} 件在售", lines,
+            ["/社团市场 买 1", "/社团商店", "/我的社团"]);
+    }
+
     private static async Task<BotReply> ClubListAsync(CommandDependencies deps, CommandContext context)
     {
         IReadOnlyList<ClubSummary> clubs = await deps.Clubs.ListAsync(context.CancellationToken);
@@ -1266,7 +1431,7 @@ public static class CommandCatalog
             $"- 成立于 {detail.CreatedOn}"
         ];
         List<string> actions = detail.IsMember
-            ? ["/查看社团成员", "/社团捐献", "/社团设置"]
+            ? ["/社团任务", "/社团商店", "/社团市场", "/查看社团成员", "/社团捐献", "/社团设置"]
             : [$"/加入社团 {detail.Id}", "/社团列表"];
         if (detail.IsMember) actions.Add("/退出社团");
         return CommandReplies.Compose("🏛️ 社团信息", $"{detail.Prefix}·{detail.Name}", lines, actions);

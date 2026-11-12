@@ -24,6 +24,26 @@ public sealed record ClubDetail(
     bool IsPublic, bool NeedApproval, double Funds, int Members, int MaxMembers,
     bool IsMember, bool IsAdmin, bool IsMaster, string CreatedOn);
 
+/// <summary>社团周常任务的一行。</summary>
+public sealed record ClubTaskEntry(
+    int Index, string Key, string Name, string Unit, int Target, int Progress,
+    int RewardFunds, bool Claimed, string Hint)
+{
+    public bool Done => Progress >= Target;
+    public bool Claimable => Done && !Claimed;
+}
+
+/// <summary>社团商店的一行（<see cref="Balance"/> 是社团基金，方便直接判断买不买得起）。</summary>
+public sealed record ClubStoreEntry(
+    int Index, string Name, long Price, string Description, double Balance);
+
+/// <summary>社团商店视图：基金余额 + 货架。</summary>
+public sealed record ClubStoreView(double Funds, IReadOnlyList<ClubStoreEntry> Goods);
+
+/// <summary>社团市场的一行。</summary>
+public sealed record ClubMarketEntry(
+    int Index, long Id, string Name, int Quality, long Price, string Seller, bool Mine);
+
 /// <summary>
 /// 社团（旧版 <c>Club</c> + 那一堆 club* 端点）。
 /// <para>旧版每个社团是一个 JSON 文件、用户身上记 <c>club</c> 编号；这里改成四张表，
@@ -48,9 +68,26 @@ public interface IClubService
     Task<ActionResult> TransferAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> UpdateSettingsAsync(long userId, string action, string? value, CancellationToken cancellationToken = default);
     Task<ActionResult> DonateAsync(long userId, long credits, CancellationToken cancellationToken = default);
+
+    // ---- 周常任务 ----
+    Task<IReadOnlyList<ClubTaskEntry>> TasksAsync(long userId, CancellationToken cancellationToken = default);
+    Task<ActionResult> ContributeTaskAsync(long userId, int itemIndex, int quantity, CancellationToken cancellationToken = default);
+    Task<ActionResult> ClaimTaskAsync(long userId, int index, CancellationToken cancellationToken = default);
+
+    // ---- 社团商店（基金当货币）----
+    Task<ClubStoreView> StoreAsync(long userId, CancellationToken cancellationToken = default);
+    Task<ActionResult> StoreBuyAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default);
+    Task<ActionResult> StoreSellAsync(long userId, int itemIndex, int quantity, CancellationToken cancellationToken = default);
+
+    // ---- 社团市场（社团内部交易，手续费进基金）----
+    Task<IReadOnlyList<ClubMarketEntry>> MarketAsync(long userId, CancellationToken cancellationToken = default);
+    Task<ActionResult> MarketListAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
+    Task<ActionResult> MarketDelistAsync(long userId, int index, CancellationToken cancellationToken = default);
+    Task<ActionResult> MarketBuyAsync(long userId, int index, CancellationToken cancellationToken = default);
+    Task<ActionResult> MarketClearAsync(long userId, CancellationToken cancellationToken = default);
 }
 
-public sealed class ClubService(
+public sealed partial class ClubService(
     IServiceScopeFactory scopeFactory,
     ILogger<ClubService> logger,
     IGameClock clock,
@@ -194,6 +231,7 @@ public sealed class ClubService(
             ClubApplication? application = await db.ClubApplications
                 .FirstOrDefaultAsync(x => x.ClubId == clubId && x.UserId == userId, ct);
             if (application is not null) db.ClubApplications.Remove(application);
+            await AdvanceTaskAsync(db, clubId, ClubTaskKind.Recruit, 1, ct);
 
             return ActionResult.Success("🏛️ 加入社团成功", $"[ {club.Name} ] 编号 {club.Id}",
                 [$"- 社长：{await DisplayOfAsync(db, club.MasterUserId, ct)}", "- 现在可以 /社团捐献、/社团成员"],
@@ -218,6 +256,8 @@ public sealed class ClubService(
             }
 
             db.ClubMembers.Remove(member);
+            // 离团时在售挂单先退回，否则物品会一直托管在社团市场里。
+            await ReleaseListingsAsync(db, member.ClubId, userId, ClubListingStatus.SellerLeft, ct);
             return ActionResult.Success("🚪 已退出社团", $"[ {name} ]",
                 ["- 你对社团的捐献记录已经计入社团基金，不会退回"], ["/社团列表", "/状态"]);
         }, cancellationToken);
@@ -239,9 +279,14 @@ public sealed class ClubService(
             if (club is null) return ActionResult.Fail("社团不存在", "没有解散任何社团", "稍后重试", "/社团列表");
 
             int members = await db.ClubMembers.CountAsync(x => x.ClubId == club.Id, ct);
+            List<ClubMarketListing> listings = await db.ClubMarketListings
+                .Where(x => x.ClubId == club.Id && x.Status == 0).ToListAsync(ct);
+            await ReleaseListingRowsAsync(db, listings, ClubListingStatus.ClubDisbanded, ct);
+
             db.ClubMembers.RemoveRange(db.ClubMembers.Where(x => x.ClubId == club.Id));
             db.ClubApplications.RemoveRange(db.ClubApplications.Where(x => x.ClubId == club.Id));
             db.ClubInvites.RemoveRange(db.ClubInvites.Where(x => x.ClubId == club.Id));
+            db.ClubTaskProgresses.RemoveRange(db.ClubTaskProgresses.Where(x => x.ClubId == club.Id));
             db.Clubs.Remove(club);
 
             return ActionResult.Success("💥 社团已解散", $"[ {club.Name} ] · {members} 名成员离开",
@@ -314,6 +359,7 @@ public sealed class ClubService(
                 ClubId = club.Id, UserId = application.UserId, Role = ClubRole.Member, JoinedAtUtc = clock.UtcNow
             });
             db.ClubApplications.Remove(application);
+            await AdvanceTaskAsync(db, club.Id, ClubTaskKind.Recruit, 1, ct);
             return ActionResult.Success("✅ 已批准入团",
                 $"{await DisplayOfAsync(db, application.UserId, ct)} → [ {club.Name} ]",
                 [$"- 当前成员：{count + 1}/{MaxMembers}"], ["/社团成员", "/查看申请人"]);
@@ -400,6 +446,7 @@ public sealed class ClubService(
 
             string display = await DisplayOfAsync(db, target.UserId, ct);
             db.ClubMembers.Remove(target);
+            await ReleaseListingsAsync(db, club.Id, target.UserId, ClubListingStatus.SellerLeft, ct);
             return ActionResult.Success("👢 已踢出社团", display,
                 [$"- 剩余成员：{members.Count - 1}/{MaxMembers}"], ["/社团成员", "/状态"]);
         }, cancellationToken);
@@ -553,6 +600,7 @@ public sealed class ClubService(
             club.Funds += credits;
             member.Contribution += credits;
             account.UpdatedAtUtc = clock.UtcNow;
+            await AdvanceTaskAsync(db, club.Id, ClubTaskKind.Donate, (int)credits, ct);
 
             return ActionResult.Success("💰 捐献成功",
                 $"{credits} 金币 → [ {club.Name} ]",

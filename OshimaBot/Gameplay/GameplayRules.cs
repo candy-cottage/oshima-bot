@@ -117,6 +117,17 @@ public static class GameplayRules
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// 社团周常周期 key（<c>yyyy-Www</c>，ISO 周、周一起算，边界沿用商店日的 4:00）。
+    /// <para>与 <see cref="StoreDay"/> 同一套时区与切日口径，避免玩家在凌晨 3 点看到「任务已刷新」。</para>
+    /// </summary>
+    public static string ClubWeek(DateTime utcNow)
+    {
+        DateTime day = DateTime.ParseExact(
+            StoreDay(utcNow), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return $"{ISOWeek.GetYear(day):0000}-W{ISOWeek.GetWeekOfYear(day):00}";
+    }
+
+    /// <summary>
     /// 分解返还的**材料**数量（旧版 <c>FunGameConstant.DecomposedMaterials</c>，按品质固定值）。
     /// <para>1 普通 = 1、2 优秀 = 3、3 稀有 = 8、4 史诗 = 16、5 传说 = 32、6 神话 = 64、7 不朽 = 128；
     /// 旧版返还的是 <c>Inventory.Materials</c>（即「钻石」），不是金币。</para>

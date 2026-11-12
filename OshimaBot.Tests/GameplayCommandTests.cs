@@ -27,7 +27,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(117, registry.All.Count);
+        Assert.Equal(120, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -164,6 +164,33 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_ClubSubsystemIsReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        // 没社团时三条子域都给明确引导，而不是崩或空回复
+        Assert.Contains("没有加入任何社团", await RouteAsync(router, "/社团任务"));
+        Assert.Contains("没有加入任何社团", await RouteAsync(router, "/社团商店"));
+        Assert.Contains("暂无挂单", await RouteAsync(router, "/社团市场"));
+
+        // 建团后能看到周常三个任务与货架
+        Assert.Contains("社团创建成功", await RouteAsync(router, "/创建社团 ABC"));
+        string tasks = await RouteAsync(router, "/社团任务");
+        Assert.Contains("社团捐献", tasks);
+        Assert.Contains("招募新血", tasks);
+        Assert.Contains("物资征集", tasks);
+
+        string store = await RouteAsync(router, "/社团商店");
+        Assert.Contains("钻石", store);
+        Assert.Contains("社团基金", store);
+
+        // 子命令缺参数时给出用法，而不是静默失败
+        Assert.Contains("领取", await RouteAsync(router, "/社团任务 领取"));
+        Assert.Contains("上架", await RouteAsync(router, "/社团市场 上架"));
+    }
+
+    [Fact]
     public async Task Router_LookAndLegacyHelpReflectMigratedP1()
     {
         using GameplayCommandDatabase db = new();
@@ -188,7 +215,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(117, registry.All.Count);
+        Assert.Equal(120, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

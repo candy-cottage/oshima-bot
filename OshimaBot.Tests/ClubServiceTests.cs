@@ -202,6 +202,187 @@ public sealed class ClubServiceTests
         Assert.Null(await clubs.MineAsync(Member));
     }
 
+    [Fact]
+    public async Task Tasks_ProgressFromDonateRecruitAndCollect()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await db.CreatePlayerAsync(Member, "路人");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        long clubId = (await clubs.MineAsync(Master))!.Id;
+
+        Assert.True((await clubs.DonateAsync(Master, 5000)).Ok);        // 捐献 → 任务 1
+        Assert.True((await clubs.JoinAsync(Member, clubId)).Ok);        // 加入 → 任务 2
+        await db.AddItemAsync(Master, "测试矿石", 1, 20);                // 提交 → 任务 3
+
+        IReadOnlyList<ClubTaskEntry> tasks = await clubs.TasksAsync(Master);
+        Assert.Equal(3, tasks.Count);
+        Assert.Equal(5000, tasks[0].Progress);
+        Assert.True(tasks[0].Done);
+        Assert.Equal(1, tasks[1].Progress);
+        Assert.False(tasks[1].Done);
+
+        // 还没完成的任务不能结算
+        Assert.False((await clubs.ClaimTaskAsync(Master, 2)).Ok);
+
+        Assert.True((await clubs.ContributeTaskAsync(Master, 1, 20)).Ok);
+        tasks = await clubs.TasksAsync(Master);
+        Assert.Equal(20, tasks[2].Progress);
+        Assert.True(tasks[2].Done);
+
+        double funds = (await clubs.MineAsync(Master))!.Funds;
+        ActionResult claimed = await clubs.ClaimTaskAsync(Master, 1);
+        Assert.True(claimed.Ok, claimed.Title);
+        Assert.Equal(funds + ClubRules.Tasks[0].RewardFunds, (await clubs.MineAsync(Master))!.Funds, 3);
+
+        // 同一个任务一个周期只结算一次
+        Assert.False((await clubs.ClaimTaskAsync(Master, 1)).Ok);
+        Assert.True((await clubs.TasksAsync(Master))[0].Claimed);
+
+        // 普通成员不能结算
+        Assert.False((await clubs.ClaimTaskAsync(Member, 3)).Ok);
+    }
+
+    [Fact]
+    public async Task Tasks_ContributeConsumesItemAndRejectsLocked()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+
+        await db.AddItemAsync(Master, "测试矿石", 2, 5);
+        double funds = (await clubs.MineAsync(Master))!.Funds;
+
+        ActionResult submitted = await clubs.ContributeTaskAsync(Master, 1, 3);
+        Assert.True(submitted.Ok, submitted.Title);
+        Assert.Equal(2, (await db.ItemsAsync(Master)).Single().Quantity);
+        // 优秀品质：分解 3 材料，征集折算 3/2 = 1 基金/件
+        Assert.Equal(funds + 3, (await clubs.MineAsync(Master))!.Funds, 3);
+
+        await db.SetLockAsync(Master, "测试矿石", true);
+        ActionResult locked = await clubs.ContributeTaskAsync(Master, 1, 1);
+        Assert.False(locked.Ok);
+        Assert.Contains("锁定", locked.Title);
+    }
+
+    [Fact]
+    public async Task Store_ExchangesFundsForGoodsAndBuysItemsBack()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        Assert.True((await clubs.DonateAsync(Master, 2000)).Ok);
+
+        ClubStoreView view = await clubs.StoreAsync(Master);
+        Assert.Equal(2000, view.Funds, 3);
+        Assert.Equal(ClubRules.Goods.Count, view.Goods.Count);
+        ClubStoreGoodSpec diamond = ClubRules.Goods[0];
+        Assert.True(ClubRules.IsCurrencyGood(diamond));
+
+        double materials = await db.MaterialsAsync(Master);
+        Assert.True((await clubs.StoreBuyAsync(Master, 1, 2)).Ok);
+        Assert.Equal(materials + 2, await db.MaterialsAsync(Master), 3);
+        Assert.Equal(2000 - diamond.Price * 2, (await clubs.MineAsync(Master))!.Funds, 3);
+
+        // 基金不够就整笔拒绝
+        Assert.False((await clubs.StoreBuyAsync(Master, 1, 99)).Ok);
+
+        // 收购：优秀品质分解 3 材料 → 3 * 100 = 300 金币
+        await db.AddItemAsync(Master, "测试矿石", 2, 1);
+        double credits = await db.CreditsAsync(Master);
+        double fundsBefore = (await clubs.MineAsync(Master))!.Funds;
+        ActionResult sold = await clubs.StoreSellAsync(Master, 1, 1);
+        Assert.True(sold.Ok, sold.Title);
+        Assert.Equal(credits + 300, await db.CreditsAsync(Master), 3);
+        Assert.Equal(fundsBefore - 300, (await clubs.MineAsync(Master))!.Funds, 3);
+    }
+
+    [Fact]
+    public async Task Store_OnlyAdminsMaySpendFunds()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await db.CreatePlayerAsync(Member, "路人");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        long clubId = (await clubs.MineAsync(Master))!.Id;
+        Assert.True((await clubs.JoinAsync(Member, clubId)).Ok);
+        Assert.True((await clubs.DonateAsync(Master, 1000)).Ok);
+
+        ActionResult denied = await clubs.StoreBuyAsync(Member, 1, 1);
+        Assert.False(denied.Ok);
+        Assert.Contains("社长或管理", denied.Title);
+
+        // 任命管理后就能花基金了
+        Assert.True((await clubs.UpdateSettingsAsync(Master, "任命", "2")).Ok);
+        Assert.True((await clubs.StoreBuyAsync(Member, 1, 1)).Ok);
+    }
+
+    [Fact]
+    public async Task Market_MovesItemBetweenMembersAndFeeGoesToFunds()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await db.CreatePlayerAsync(Member, "路人");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        long clubId = (await clubs.MineAsync(Master))!.Id;
+        Assert.True((await clubs.JoinAsync(Member, clubId)).Ok);
+
+        await db.AddItemAsync(Master, "测试矿石", 3, 1);
+        double funds = (await clubs.MineAsync(Master))!.Funds;
+
+        ActionResult listed = await clubs.MarketListAsync(Master, 1, 1000);
+        Assert.True(listed.Ok, listed.Title);
+        Assert.Equal(funds + ClubRules.MarketFee(1000), (await clubs.MineAsync(Master))!.Funds, 3);
+        Assert.Empty(await db.ItemsAsync(Master));                     // 物品已托管
+
+        ClubMarketEntry entry = Assert.Single(await clubs.MarketAsync(Member));
+        Assert.True(entry.Mine == false);
+        Assert.False((await clubs.MarketBuyAsync(Master, 1)).Ok);       // 不能买自己的
+
+        double buyer = await db.CreditsAsync(Member);
+        double seller = await db.CreditsAsync(Master);
+        Assert.True((await clubs.MarketBuyAsync(Member, 1)).Ok);
+        Assert.Equal(buyer - 1000, await db.CreditsAsync(Member), 3);
+        Assert.Equal(seller + 1000, await db.CreditsAsync(Master), 3);
+        Assert.Single(await db.ItemsAsync(Member));
+        Assert.Empty(await clubs.MarketAsync(Member));
+    }
+
+    [Fact]
+    public async Task Market_DelistAndClearReturnItems()
+    {
+        using ClubDatabase db = new();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Master, "社长");
+        await db.CreatePlayerAsync(Member, "路人");
+        await clubs.CreateAsync(Master, "ABC", isPublic: true);
+        long clubId = (await clubs.MineAsync(Master))!.Id;
+        Assert.True((await clubs.JoinAsync(Member, clubId)).Ok);
+
+        await db.AddItemAsync(Member, "测试矿石", 1, 1);
+        Assert.True((await clubs.MarketListAsync(Member, 1, 500)).Ok);
+        Assert.True((await clubs.MarketDelistAsync(Member, 1)).Ok);
+        Assert.Single(await db.ItemsAsync(Member));
+        Assert.Empty(await clubs.MarketAsync(Member));
+
+        // 退团时在售挂单自动退回
+        Assert.True((await clubs.MarketListAsync(Member, 1, 500)).Ok);
+        Assert.True((await clubs.QuitAsync(Member)).Ok);
+        Assert.Single(await db.ItemsAsync(Member));
+
+        // 社长清空市场
+        await db.AddItemAsync(Master, "测试矿石", 1, 1);
+        Assert.True((await clubs.MarketListAsync(Master, 1, 800)).Ok);
+        ActionResult cleared = await clubs.MarketClearAsync(Master);
+        Assert.True(cleared.Ok, cleared.Title);
+        Assert.Single(await db.ItemsAsync(Master));
+    }
+
     private sealed class ClubDatabase : IDisposable
     {
         public SqliteConnection Connection { get; }
@@ -245,6 +426,43 @@ public sealed class ClubServiceTests
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             CorePlayerRecord wallet = await context.CorePlayers.AsNoTracking().FirstAsync(x => x.UserId == userId);
             return wallet.Credits;
+        }
+
+
+        /// <summary>塞一件测试物品（品质按玩法档位 1–7）。</summary>
+        public async Task AddItemAsync(long userId, string name, int quality, int quantity)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            await ItemStore.AddAsync(context, userId, name, quality, quantity, default, "test");
+            await context.SaveChangesAsync();
+        }
+
+        public async Task<List<PlayerItem>> ItemsAsync(long userId)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            return await ItemStore.ListAsync(context, userId, default);
+        }
+
+        /// <summary>给某件物品上锁（征集/市场都拒绝锁定物品）。</summary>
+        public async Task SetLockAsync(long userId, string name, bool locked)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            List<PlayerItem> items = await ItemStore.ListAsync(context, userId, default);
+            PlayerItem item = items.First(x => x.Name == name);
+            item.Locked = locked;
+            ItemStore.Sync(item);
+            await context.SaveChangesAsync();
+        }
+
+        public async Task<double> MaterialsAsync(long userId)
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord wallet = await context.CorePlayers.AsNoTracking().FirstAsync(x => x.UserId == userId);
+            return wallet.Materials;
         }
 
         public void Dispose()
