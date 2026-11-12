@@ -190,11 +190,17 @@ public static class LegacyFixtureProbes
 
     private static JsonObject Forge() => new()
     {
-        ["costCredits"] = GameplayRules.ForgeCostCredits,
-        ["materialQuantity"] = GameplayRules.ForgeMaterialQuantity,
-        ["defaultMinutes"] = GameplayRules.ForgeDefaultMinutes,
-        ["maxMinutes"] = GameplayRules.ForgeMaxMinutes,
-        ["outputQuality"] = GameplayRules.ForgeOutputQuality
+        ["costCredits"] = ForgeRules.CostCredits,
+        ["defaultMinutes"] = ForgeRules.DefaultMinutes,
+        ["maxMinutes"] = ForgeRules.MaxMinutes,
+        ["materialNeedyByQuality"] = new JsonObject(ForgeRules.Needy
+            .OrderBy(x => x.Value)
+            .Select(x => KeyValuePair.Create(x.Key.ToString(), (JsonNode?)JsonValue.Create(x.Value)))),
+        ["regionCoefficientByRarity"] = new JsonObject(ForgeRules.Coefficients
+            .OrderBy(x => x.Value)
+            .Select(x => KeyValuePair.Create(x.Key.ToString(), (JsonNode?)JsonValue.Create(x.Value)))),
+        ["generalPointsPerCount"] = ForgeRules.GeneralPointsPerCount,
+        ["failPointsPerCount"] = ForgeRules.FailPointsPerCount
     };
 
     private static JsonObject Store()

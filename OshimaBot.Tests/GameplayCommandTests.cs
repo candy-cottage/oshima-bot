@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(141, registry.All.Count);
+        Assert.Equal(144, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -162,6 +162,20 @@ public sealed class GameplayCommandTests
         Assert.Contains("人数不足", await RouteGroupAsync(router, "/开始游戏"));
         Assert.Contains("已离开房间", await RouteGroupAsync(router, "/退出房间"));
         Assert.Contains("暂无房间", await RouteGroupAsync(router, "/房间列表"));
+    }
+
+    [Fact]
+    public async Task Router_RerollCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        await RouteAsync(router, "/我的角色");                       // 建档：自建角色
+
+        // 新号没有钻石，先被余额拦住
+        Assert.Contains("钻石不足", await RouteAsync(router, "/角色重随"));
+        Assert.Contains("没有待确认的重随", await RouteAsync(router, "/确认重随"));
+        Assert.Contains("没有待确认的重随", await RouteAsync(router, "/取消重随"));
     }
 
     [Fact]
@@ -321,7 +335,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(141, registry.All.Count);
+        Assert.Equal(144, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

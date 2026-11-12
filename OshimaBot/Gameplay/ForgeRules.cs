@@ -26,8 +26,8 @@ public static class ForgeRules
     /// <summary>成本：每次锻造 200 金币（旧版 <c>ForgeCost</c>）。</summary>
     public const long CostCredits = 200;
 
-    /// <summary>默认时长 5 分钟，上限 120 分钟。</summary>
-    public const int DefaultMinutes = 5;
+    /// <summary>默认时长 1 分钟，上限 120 分钟（旧版是直接出结果，这里保留「开始 → 收取」但只等一分钟）。</summary>
+    public const int DefaultMinutes = 1;
     public const int MaxMinutes = 120;
 
     /// <summary>品质门槛（旧版 <c>ForgeNeedy</c>）：达到多少有效用量才能出这一档。</summary>

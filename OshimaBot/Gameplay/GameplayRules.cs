@@ -389,17 +389,10 @@ public static class GameplayRules
     public const long MarketMaxPrice = 1_000_000;
     public const int MarketMaxListingsPerUser = 5;
 
-    public const int ForgeCostCredits = 200;
-    public const int ForgeMaterialQuantity = 2;
-    public const int ForgeDefaultMinutes = 5;
-    public const int ForgeOutputQuality = 3;
-    public const int ForgeMaxMinutes = 120;
+    // 锻造的数值与配方规则集中在 ForgeRules（按材料所属地区折算），这里不再重复定义。
 
-    /// <summary>
-    /// 锻造积分 = 提交材料数 × 0.3（旧版 <c>count * 0.3</c>）。
-    /// <para>旧版还有失败补偿 0.2/材料、超量补偿，这些依赖「地区材料 + 品质门槛」，等 ② 锻造切片再补。</para>
-    /// </summary>
-    public const double ForgePointsPerMaterial = 0.3;
+    /// <summary>自建角色重随一次消耗的钻石（旧版 <c>reduce = 3</c>，扣的是 InGameMaterial）。</summary>
+    public const int CustomRerollCost = 3;
 
     public const int InstanceCostCredits = 80;
     public const int InstanceDefaultMinutes = 3;

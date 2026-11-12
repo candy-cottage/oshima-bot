@@ -3,15 +3,30 @@
   "behaviorId": "ITM-020",
   "command": "锻造配方",
   "probe": "forge",
-  "status": "intentional-divergence",
+  "status": "legacy-verified",
   "input": {},
   "expected": {
     "current": {
       "costCredits": 200,
-      "materialQuantity": 2,
-      "defaultMinutes": 5,
+      "defaultMinutes": 1,
       "maxMinutes": 120,
-      "outputQuality": 3
+      "materialNeedyByQuality": {
+        "White": 30,
+        "Green": 50,
+        "Blue": 80,
+        "Purple": 120,
+        "Orange": 170,
+        "Red": 230
+      },
+      "regionCoefficientByRarity": {
+        "OneStar": 0.5,
+        "TwoStar": 0.6,
+        "ThreeStar": 0.7,
+        "FourStar": 0.85,
+        "FiveStar": 1.0
+      },
+      "generalPointsPerCount": 0.3,
+      "failPointsPerCount": 0.2
     },
     "legacy": {
       "model": "region-material",
@@ -31,13 +46,15 @@
         "FiveStar": 1.0
       },
       "costCredits": 0,
-      "note": "旧版 GenerateForgeResult 按提交材料所属地区的难度系数换算等效量，够数才出对应品质；无金币费用、无固定时长。新版固定 2 个同类材料 + 200 金币 / 5 分钟、产出固定稀有（有意简化）"
+      "generalPointsPerCount": 0.3,
+      "failPointsPerCount": 0.2,
+      "note": "旧版 GenerateForgeResult 按提交材料所属地区的难度系数换算等效量，够数才出对应品质，无固定时长。新版照搬系数、门槛与三段积分，额外收 200 金币并保留 1 分钟的「开始 → 收取」，与练级/探索共用同一套交互"
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:2951",
     "method": "RainBOTService 锻造配方分支 + FunGameService.GenerateForgeResult",
-    "note": "旧版支持自定义配方、模拟与成功率；新版固定 2 个同类材料 + 200 金币 / 5 分钟，产出固定稀有品质"
+    "note": "旧版支持自定义配方、模拟与成功率；新版 ForgeService 同样支持自定义配方、模拟、取消与大师锻造，材料按所属地区折算"
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

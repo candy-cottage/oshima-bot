@@ -38,15 +38,28 @@ public sealed class BattleFlowTests
         _ = economy;
         await db.CreateSaveAsync(players, Me, "我");
 
-        // 给主战穿一件武器、把绝招点到 3 级
+        // 建档送的是自建角色（无签名技能），这里换成内容包角色来验证签名技能与装备
         Item weapon = FunGameService.AllItems.First(i => i.ItemType == ItemType.Weapon);
         string superName;
+        long mainId;
         using (IServiceScope scope = db.Provider.CreateScope())
         {
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == Me);
-            PlayerCharacter main = (await CharacterStore.ListAsync(context, Me, wallet.MainCharacterGuid, default))[0];
-            Assert.NotEmpty(main.Core.Skills);                       // 建档即挂签名技能
+            Character template = FunGameService.Characters[0];
+            PlayerCharacter created = CharacterStore.Create(
+                context, Me, template, template.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            wallet.MainCharacterGuid = created.Guid;
+            await context.SaveChangesAsync();
+        }
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == Me);
+            PlayerCharacter main = (await CharacterStore.MainAsync(context, Me, wallet.MainCharacterGuid, default))!;
+            Assert.NotEmpty(main.Core.Skills);                       // 抽到的角色带签名技能
+            mainId = main.Id;
             Skill super = main.Core.Skills.First(x => x.SkillType == SkillType.SuperSkill);
             super.Level = 3;
             superName = super.Name;
@@ -59,7 +72,7 @@ public sealed class BattleFlowTests
         {
             BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
             CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == Me);
-            PlayerCharacter main = (await CharacterStore.ListAsync(context, Me, wallet.MainCharacterGuid, default))[0];
+            PlayerCharacter main = (await CharacterStore.MainAsync(context, Me, wallet.MainCharacterGuid, default))!;
 
             // 模板重建（旧口径）拿不到装备与技能；快照口径两者都在
             Character plain = CombatCharacterFactory.FromCatalog(main.CatalogId, main.Level)!;
@@ -74,8 +87,41 @@ public sealed class BattleFlowTests
         }
 
         // 技能有等级了，/技能升级 的预览就能读到它
-        ActionResult preview = await players.UpgradeSkillAsync(Me, 1, superName, preview: true);
+        int slot = (await players.GetCharactersAsync(Me)).First(x => x.Id == mainId).Index;
+        ActionResult preview = await players.UpgradeSkillAsync(Me, slot, superName, preview: true);
         Assert.True(preview.Ok, preview.Title);
+    }
+
+    [Fact]
+    public async Task CombatUnits_CustomCharacterKeepsGeneratedInitials()
+    {
+        using BattleDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await db.CreateSaveAsync(players, Me, "自建角色");
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        CorePlayerRecord wallet = await context.CorePlayers.FirstAsync(x => x.UserId == Me);
+        PlayerCharacter main = (await CharacterStore.MainAsync(context, Me, wallet.MainCharacterGuid, default))!;
+
+        // 注册送的是自建角色：CatalogId 是哨兵、没有签名技能，但初始属性是随机的
+        Assert.Equal(CharacterStore.CustomCatalogId, main.CatalogId);
+        Assert.Empty(main.Core.Skills);
+        Assert.True(main.Core.InitialHP > 0 && main.Core.InitialATK > 0);
+
+        // 穿上武器后进战斗：属性来自存档（没有内容包模板可重建），装备照样生效
+        Item weapon = FunGameService.AllItems.First(i => i.ItemType == ItemType.Weapon);
+        double before = main.Core.ATK;
+        main.Core.Equip(weapon.Copy(), out Item? _);
+        Character battle = CombatUnits.FromPlayer(main)!;
+
+        Assert.Equal(CharacterStore.CustomCharacterId, battle.Id);
+        Assert.Equal(main.Name, battle.Name);
+        Assert.Equal(main.Core.InitialHP, battle.InitialHP, 3);
+        Assert.Equal(main.Core.InitialATK, battle.InitialATK, 3);
+        Assert.True(battle.ATK > before, $"装备应计入攻击力：{battle.ATK} vs {before}");
+        Assert.Equal(battle.MaxHP, battle.HP, 3);
+        Assert.Equal(200, battle.EP, 3);
     }
 
     [Fact]

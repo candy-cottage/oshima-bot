@@ -24,6 +24,11 @@ public static class CombatUnits
     /// <summary>主角色的战斗单位；内容包缺模板时返回 null。</summary>
     public static CoreCharacter? FromPlayer(PlayerCharacter player)
     {
+        if (player.CatalogId == CharacterStore.CustomCatalogId)
+        {
+            return FromCustom(player);
+        }
+
         CoreCharacter? battle = CombatCharacterFactory.FromCatalog(
             player.CatalogId, player.Level, player.Exp, player.BreakLevel);
         if (battle is null) return null;
@@ -35,6 +40,46 @@ public static class CombatUnits
         TransferEquipment(player.Core, battle);
 
         // 旧版每场战斗前都会 Recovery：满血满蓝进场，EP 归 200。
+        battle.Recovery(EP: 200);
+        return battle;
+    }
+
+    /// <summary>
+    /// 自建角色（<see cref="CharacterStore.CustomCatalogId"/>）没有内容包模板可重建，
+    /// 初始生命/魔法/攻击/三围/成长都是建档时随机生成的，只能按存档里的数值重新造一个。
+    /// <para>它本来就没有签名技能，所以「存档里的技能会退化成 OpenSkill」这条对它不生效；
+    /// 战斗里能用的技能全部来自装备（魔法卡包），由 <see cref="TransferEquipment"/> 带进来。</para>
+    /// </summary>
+    private static CoreCharacter FromCustom(PlayerCharacter player)
+    {
+        CoreCharacter source = player.Core;
+        CoreCharacter battle = new OshimaBot.Content.Characters.CustomCharacter(
+            CharacterStore.CustomCharacterId, player.Name, nickname: player.Name);
+
+        battle.PrimaryAttribute = source.PrimaryAttribute;
+        battle.InitialHP = source.InitialHP;
+        battle.InitialMP = source.InitialMP;
+        battle.InitialATK = source.InitialATK;
+        battle.InitialDEF = source.InitialDEF;
+        battle.InitialSTR = source.InitialSTR;
+        battle.InitialAGI = source.InitialAGI;
+        battle.InitialINT = source.InitialINT;
+        battle.STRGrowth = source.STRGrowth;
+        battle.AGIGrowth = source.AGIGrowth;
+        battle.INTGrowth = source.INTGrowth;
+        battle.InitialSPD = source.InitialSPD;
+        battle.InitialHR = source.InitialHR;
+        battle.InitialMR = source.InitialMR;
+
+        battle.Level = source.Level;
+        battle.EXP = source.EXP;
+        battle.ExLevel = source.ExLevel;
+        battle.MaxLevel = source.MaxLevel;
+        battle.LevelBreak = source.LevelBreak;
+        battle.Promotion = source.Promotion;
+        battle.NormalAttack.Level = source.NormalAttack.Level;
+
+        TransferEquipment(source, battle);
         battle.Recovery(EP: 200);
         return battle;
     }

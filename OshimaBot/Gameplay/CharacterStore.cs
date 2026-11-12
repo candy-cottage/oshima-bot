@@ -96,6 +96,15 @@ public static class CharacterStore
         return list.FirstOrDefault(x => x.IsMain) ?? list.FirstOrDefault();
     }
 
+    /// <summary>
+    /// 自建角色的 <see cref="CoreCharacterRecord.CatalogId"/> 哨兵：它不属于内容包，
+    /// 初始属性是建档时随机生成的（旧版 <c>FunGameConstant.CustomCharacterId = -1</c>）。
+    /// </summary>
+    public const string CustomCatalogId = "custom";
+
+    /// <summary>自建角色的 Core Id，与旧版一致用 -1（内容包角色是 1..18）。</summary>
+    public const long CustomCharacterId = -1;
+
     /// <summary>用内容包模板造一个新角色（回满血、1 级、0 突破），并加入待保存集合。</summary>
     public static PlayerCharacter Create(BotDbContext db, long userId, CoreCharacter template, string catalogId)
     {
@@ -106,7 +115,44 @@ public static class CharacterStore
         character.LevelBreak = -1;           // Core 语义：-1 表示还没突破过，第一次突破是 -1 → 0
         character.HP = character.MaxHP;      // 旧版抽到角色时也是 AddCharacterSkills(character, 1, 0, 0)：
         AttachSignatureSkills(character);    // 被动 1 级、绝招 0 级（未学），靠 /技能升级 往上点
+        return AddRecord(db, userId, character, catalogId);
+    }
 
+    /// <summary>
+    /// 建档即送的自建角色（旧版 <c>new CustomCharacter(-1, username, nickname: username)</c>）。
+    /// <para>初始生命 / 魔法 / 攻击 / 三围 / 成长 / 速度 / 回复都是当场随机出来的，
+    /// 内容包里没有对应模板，所以只能靠存档快照保留；它没有签名技能，能力全靠装备与魔法卡。</para>
+    /// </summary>
+    public static PlayerCharacter CreateCustom(BotDbContext db, long userId, string nickname)
+    {
+        CoreCharacter character = new OshimaBot.Content.Characters.CustomCharacter(
+            CustomCharacterId, nickname, nickname: nickname);
+        character.Guid = Guid.NewGuid();
+        character.Level = 1;
+        character.EXP = 0;
+        character.LevelBreak = -1;
+        NormalizePrimaryAttribute(character);
+        character.HP = character.MaxHP;
+        return AddRecord(db, userId, character, CustomCatalogId);
+    }
+
+    /// <summary>
+    /// 把主属性校正为三围里最高的那一项（旧版 <c>SetCharacterPrimaryAttribute</c>）。
+    /// <para><see cref="OshimaBot.Content.Characters.CustomCharacter"/> 的构造函数是「先随机主属性、再随机分配三围」，
+    /// 两者可能对不上；建档与重随时统一按实际三围校正。</para>
+    /// </summary>
+    public static void NormalizePrimaryAttribute(CoreCharacter character)
+    {
+        double max = Math.Max(Math.Max(character.STR, character.AGI), character.INT);
+        character.PrimaryAttribute = max == character.STR
+            ? PrimaryAttribute.STR
+            : max == character.AGI ? PrimaryAttribute.AGI : PrimaryAttribute.INT;
+    }
+
+    /// <summary>把内存角色落成一条记录并加入待保存集合。</summary>
+    private static PlayerCharacter AddRecord(
+        BotDbContext db, long userId, CoreCharacter character, string catalogId)
+    {
         CoreCharacterRecord record = new()
         {
             Guid = character.Guid.ToString(),

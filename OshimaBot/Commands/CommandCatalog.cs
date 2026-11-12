@@ -35,6 +35,7 @@ public static class CommandCatalog
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
         "normal-attack-upgrade", "normal-attack-upgrade-info",
         "skill-upgrade", "skill-upgrade-info", "rename-character",
+        "reroll", "reroll-confirm", "reroll-cancel",
         // ---- P2：经济与战斗 ----
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
         "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
@@ -259,6 +260,26 @@ public static class CommandCatalog
             handler: async context => CommandReplies.FromResult(
                 await deps.Players.RenameAsync(context.UserId, JoinFrom(context, 0),
                     context.CancellationToken))),
+
+        // 自建角色重随（旧版 RandomCustomCharacter）：预览 → 确认 / 取消
+        "reroll" => new DelegateCommand(
+            key: "reroll", name: "角色重随", aliases: ["重随属性"], usage: "/角色重随",
+            description: "重摇自建角色的初始属性（消耗 3 钻石，先出预览）",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.RerollPreviewAsync(context.UserId, context.CancellationToken))),
+
+        "reroll-confirm" => new DelegateCommand(
+            key: "reroll-confirm", name: "确认重随", aliases: ["确认角色重随"], usage: "/确认重随",
+            description: "把重随预览的属应用到自建角色", group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.RerollConfirmAsync(context.UserId, context.CancellationToken))),
+
+        "reroll-cancel" => new DelegateCommand(
+            key: "reroll-cancel", name: "取消重随", aliases: ["取消角色重随"], usage: "/取消重随",
+            description: "丢弃重随预览（钻石不退）", group: CommandGroups.Player,
+            handler: async context => CommandReplies.FromResult(
+                await deps.Players.RerollCancelAsync(context.UserId, context.CancellationToken))),
 
         "bag" => new DelegateCommand(
             key: "bag", name: "背包", aliases: ["查看库存", "bag", "inventory"], usage: "/背包 [p2]",
@@ -509,7 +530,7 @@ public static class CommandCatalog
                         context.UserId, regionId, context.Args[2], context.CancellationToken));
                 }
                 return CommandReplies.FromResult(await deps.Forge.StartAsync(
-                    context.UserId, Submissions(context, 0), GameplayRules.ForgeDefaultMinutes,
+                    context.UserId, Submissions(context, 0), ForgeRules.DefaultMinutes,
                     context.CancellationToken));
             }),
 

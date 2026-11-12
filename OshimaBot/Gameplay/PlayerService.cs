@@ -58,6 +58,18 @@ public interface IPlayerService
 
     Task<ActionResult> RenameAsync(long userId, string newName, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 自建角色重随：预览（扣 <see cref="GameplayRules.CustomRerollCost"/> 钻摇一组新属性）。
+    /// <para>只对建档即送的自建角色生效——内容包角色的属性由模板决定，没有可重摇的部分。</para>
+    /// </summary>
+    Task<ActionResult> RerollPreviewAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>确认重随：把预览属性写到自建角色上并回满状态。</summary>
+    Task<ActionResult> RerollConfirmAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>取消重随：丢弃预览（钻石不退，同旧版）。</summary>
+    Task<ActionResult> RerollCancelAsync(long userId, CancellationToken cancellationToken = default);
+
     Task<ActionResult> SetMainAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> LevelUpAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> BreakAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -981,6 +993,175 @@ public sealed class PlayerService(
                 ["- 主战角色的名字已更新"], ["/角色", "/状态"]);
         }, cancellationToken);
 
+    // ---------------- 自建角色重随（旧版 RandomCustomCharacter）----------------
+
+    /// <summary>预览暂存在 ActivityProgress 里，确认或取消时清掉；键名固定。</summary>
+    private const string RerollKey = "custom-reroll";
+
+    private sealed record RerollAttributes(
+        int PrimaryAttribute, double HP, double MP, double ATK, double DEF,
+        double STR, double AGI, double INT,
+        double STRG, double AGIG, double INTG,
+        double SPD, double HR, double MR);
+
+    private sealed record RerollRecord(string Guid, RerollAttributes Attributes);
+
+    public Task<ActionResult> RerollPreviewAsync(long userId, CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, state, ct) =>
+        {
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
+            if (main is null) return NoMainCharacter();
+            if (main.CatalogId != CharacterStore.CustomCatalogId)
+            {
+                return ActionResult.Fail("只有自建角色能重随", "没有扣除任何钻石",
+                    $"{main.Name} 来自内容包，属性由模板决定，没有可重摇的部分", "/我的角色");
+            }
+
+            ActivityProgress? row = await db.ActivityProgress
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.ActivityKey == RerollKey, ct);
+            RerollAttributes? pending = row is null ? null : ReadReroll(row.ProgressJson, main.Guid);
+            if (pending is not null)
+            {
+                // 旧版同一个待确认预览会重复展示，不会重复扣钻。
+                List<string> existing = [.. RerollLines(main, pending)];
+                existing.Add("- 用 /确认重随 应用，或 /取消重随 放弃这一组");
+                return new ActionResult(false, "你还有一组待确认的重随属性",
+                    "没有重复扣除钻石", existing, ["/确认重随", "/取消重随"]);
+            }
+            if (state.Materials < GameplayRules.CustomRerollCost)
+            {
+                return ActionResult.Fail("钻石不足", "没有扣除任何钻石",
+                    $"重随一次需要 {GameplayRules.CustomRerollCost} 钻石，当前 {state.Materials:0.##}", "/状态");
+            }
+
+            Character roll = new OshimaBot.Content.Characters.CustomCharacter(
+                CharacterStore.CustomCharacterId, main.Name, nickname: main.Name);
+            CharacterStore.NormalizePrimaryAttribute(roll);
+            RerollAttributes attributes = RerollAttributesOf(roll);
+
+            PlayerService.ApplyCurrency(db, state, -GameplayRules.CustomRerollCost, "diamonds",
+                "custom_reroll", "character", main.Guid);
+            state.UpdatedAtUtc = clock.UtcNow;
+
+            string json = JsonSerializer.Serialize(new RerollRecord(main.Guid, attributes));
+            if (row is null)
+            {
+                db.ActivityProgress.Add(new ActivityProgress
+                {
+                    UserId = userId, ActivityKey = RerollKey, ProgressJson = json,
+                    ClaimedJson = "[]", UpdatedAtUtc = clock.UtcNow
+                });
+            }
+            else
+            {
+                row.ProgressJson = json;
+                row.UpdatedAtUtc = clock.UtcNow;
+            }
+
+            List<string> lines = [.. RerollLines(main, attributes)];
+            lines.Add("- 满意就 /确认重随，不满意可以 /取消重随（钻石不退，同旧版）");
+            return ActionResult.Success("🎲 重随预览",
+                $"消耗 {GameplayRules.CustomRerollCost} 钻石 · 当前钻石 {state.Materials:0.##}", lines,
+                ["/确认重随", "/取消重随", "/我的角色"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> RerollConfirmAsync(long userId, CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, _, ct) =>
+        {
+            PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
+            if (main is null) return NoMainCharacter();
+
+            ActivityProgress? row = await db.ActivityProgress
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.ActivityKey == RerollKey, ct);
+            RerollAttributes? pending = row is null ? null : ReadReroll(row.ProgressJson, main.Guid);
+            if (pending is null)
+            {
+                return ActionResult.Fail("没有待确认的重随", "没有修改任何属性",
+                    "先 /角色重随 摇一组属性", "/角色重随");
+            }
+
+            Character target = main.Core;
+            target.PrimaryAttribute = (PrimaryAttribute)pending.PrimaryAttribute;
+            target.InitialHP = pending.HP;
+            target.InitialMP = pending.MP;
+            target.InitialATK = pending.ATK;
+            target.InitialDEF = pending.DEF;
+            target.InitialSTR = pending.STR;
+            target.InitialAGI = pending.AGI;
+            target.InitialINT = pending.INT;
+            target.STRGrowth = pending.STRG;
+            target.AGIGrowth = pending.AGIG;
+            target.INTGrowth = pending.INTG;
+            target.InitialSPD = pending.SPD;
+            target.InitialHR = pending.HR;
+            target.InitialMR = pending.MR;
+            // 初始值变了，最大生命/魔法跟着变，回满才不会带着上一套数值的残血。
+            target.Recovery();
+            CharacterStore.Sync(main);
+            db.ActivityProgress.Remove(row!);
+
+            List<string> lines = [.. RerollLines(main, pending)];
+            lines.Add("- 已回满生命与魔法");
+            return ActionResult.Success("✅ 重随已确认", $"{main.Name} 的属性已更新", lines,
+                ["/我的角色", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> RerollCancelAsync(long userId, CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, _, ct) =>
+        {
+            ActivityProgress? row = await db.ActivityProgress
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.ActivityKey == RerollKey, ct);
+            if (row is null)
+            {
+                return ActionResult.Fail("没有待确认的重随", "没有修改任何属性",
+                    "用 /角色重随 摇一组属性", "/角色重随");
+            }
+            db.ActivityProgress.Remove(row);
+            return ActionResult.Success("↩️ 已取消重随", "预览已丢弃，属性保持原样",
+                ["- 已扣的钻石不退还（同旧版）"], ["/我的角色", "/角色重随"]);
+        }, cancellationToken);
+
+    private static RerollAttributes RerollAttributesOf(Character character) => new(
+        (int)character.PrimaryAttribute, character.InitialHP, character.InitialMP, character.InitialATK,
+        character.InitialDEF, character.InitialSTR, character.InitialAGI, character.InitialINT,
+        character.STRGrowth, character.AGIGrowth, character.INTGrowth,
+        character.InitialSPD, character.InitialHR, character.InitialMR);
+
+    private static RerollAttributes? ReadReroll(string json, string guid)
+    {
+        try
+        {
+            RerollRecord? record = JsonSerializer.Deserialize<RerollRecord>(json);
+            if (record is null || !string.Equals(record.Guid, guid, StringComparison.Ordinal)) return null;
+            return record.Attributes;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>「旧值 => 新值」对比行，口径与旧版 RandomCustomCharacter 一致。</summary>
+    private static IEnumerable<string> RerollLines(PlayerCharacter main, RerollAttributes next)
+    {
+        Character now = main.Core;
+        yield return $"- 核心属性：{CharacterSet.GetPrimaryAttributeName(now.PrimaryAttribute)}"
+            + $" => {CharacterSet.GetPrimaryAttributeName((PrimaryAttribute)next.PrimaryAttribute)}";
+        yield return $"- 初始生命：{now.InitialHP:0.##} => {next.HP:0.##}";
+        yield return $"- 初始魔法：{now.InitialMP:0.##} => {next.MP:0.##}";
+        yield return $"- 初始攻击：{now.InitialATK:0.##} => {next.ATK:0.##}";
+        yield return $"- 初始防御：{now.InitialDEF:0.##} => {next.DEF:0.##}";
+        yield return $"- 初始力量：{now.InitialSTR:0.##}（+{now.STRGrowth:0.##}/Lv） => "
+            + $"{next.STR:0.##}（+{next.STRG:0.##}/Lv）";
+        yield return $"- 初始敏捷：{now.InitialAGI:0.##}（+{now.AGIGrowth:0.##}/Lv） => "
+            + $"{next.AGI:0.##}（+{next.AGIG:0.##}/Lv）";
+        yield return $"- 初始智力：{now.InitialINT:0.##}（+{now.INTGrowth:0.##}/Lv） => "
+            + $"{next.INT:0.##}（+{next.INTG:0.##}/Lv）";
+        yield return $"- 初始速度：{now.InitialSPD:0.##} => {next.SPD:0.##}";
+        yield return $"- 生命回复：{now.InitialHR:0.##} => {next.HR:0.##}";
+        yield return $"- 魔法回复：{now.InitialMR:0.##} => {next.MR:0.##}";
+    }
+
     /// <summary>升级类操作共用的前置校验 + 扣除；返回 null 表示成功扣完。</summary>
     private static async Task<string?> ConsumeUpgradeAsync(
         BotDbContext db, PlayerAccount state, PlayerCharacter character,
@@ -1369,14 +1550,14 @@ public sealed class PlayerService(
         };
         db.CorePlayers.Add(wallet);
 
-        var characterTemplates = FunGameService.Characters;
-        if (characterTemplates.Count > 0)
-        {
-            var template = characterTemplates[0];
-            PlayerCharacter starter = CharacterStore.Create(
-                db, userId, template, template.Id.ToString(CultureInfo.InvariantCulture));
-            wallet.MainCharacterGuid = starter.Guid;
-        }
+        // 旧版注册即送一个与昵称同名的自建角色（CustomCharacter），不是内容包里的预制角色。
+        string nickname = await db.Users.AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => x.Nickname)
+            .FirstOrDefaultAsync(ct) ?? "";
+        string starterName = string.IsNullOrWhiteSpace(nickname) ? $"旅人{userId}" : nickname.Trim();
+        PlayerCharacter starter = CharacterStore.CreateCustom(db, userId, starterName);
+        wallet.MainCharacterGuid = starter.Guid;
         var itemTemplates = FunGameService.AllItems;
         for (int i = 0; i < Math.Min(GameplayRules.StartingItems, itemTemplates.Count); i++)
         {
