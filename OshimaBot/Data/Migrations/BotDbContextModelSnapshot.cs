@@ -162,6 +162,9 @@ namespace OshimaBot.Data.Migrations
                     b.Property<double>("HorseRacingPoints")
                         .HasColumnType("REAL");
 
+                    b.Property<DateTime?>("LastStoreAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastStoreKey")
                         .IsRequired()
                         .HasColumnType("TEXT");

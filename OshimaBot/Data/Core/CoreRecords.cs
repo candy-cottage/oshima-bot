@@ -38,6 +38,12 @@ public sealed class CorePlayerRecord
     /// <summary>上次查看的商店 key（旧版 <c>UserLastVisitStore</c>）；/购买 默认作用于它。</summary>
     public string LastStoreKey { get; set; } = "";
 
+    /// <summary>
+    /// 上次打开商店的时间。旧版用「2 分钟内才能下单」防止多商店来回切换时买错货
+    /// （当时为了少打点字，商店用序号而不是名字，窗口是配套的安全阀）。
+    /// </summary>
+    public DateTime? LastStoreAtUtc { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
 
     public int Version { get; set; }

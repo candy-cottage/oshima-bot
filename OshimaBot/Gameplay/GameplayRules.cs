@@ -389,6 +389,12 @@ public static class GameplayRules
     public const long MarketMaxPrice = 1_000_000;
     public const int MarketMaxListingsPerUser = 5;
 
+    /// <summary>
+    /// 商店下单窗口（分钟）。旧版 <c>UserLastVisitStore</c> 的 2 分钟有效期：
+    /// 商店用序号指代，容易连着看几家后买错，所以超时要求重新打开。
+    /// </summary>
+    public const int StoreWindowMinutes = 2;
+
     // 锻造的数值与配方规则集中在 ForgeRules（按材料所属地区折算），这里不再重复定义。
 
     /// <summary>自建角色重随一次消耗的钻石（旧版 <c>reduce = 3</c>，扣的是 InGameMaterial）。</summary>

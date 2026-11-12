@@ -57,6 +57,12 @@ public sealed record StoreEntry(
 public sealed record MarketEntry(
     int Index, long Id, string ItemName, int Quality, long Price, long Fee, string SellerHandle, bool IsMine);
 
+/// <param name="WindowEndsAtUtc">当前下单窗口的截止时间；过了要重新打开商店。</param>
+public sealed record StoreDetail(
+    int Index, string StoreKey, string StoreName, string StoreDescription,
+    string Name, string Currency, long Price, int Stock, int Quota, int Bought,
+    DateTime WindowEndsAtUtc);
+
 public sealed record OfferEntry(
     int Index, long Id, string ItemName, long Price, string SellerHandle, bool IsMine);
 

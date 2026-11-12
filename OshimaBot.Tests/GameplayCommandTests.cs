@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(144, registry.All.Count);
+        Assert.Equal(145, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -162,6 +162,28 @@ public sealed class GameplayCommandTests
         Assert.Contains("人数不足", await RouteGroupAsync(router, "/开始游戏"));
         Assert.Contains("已离开房间", await RouteGroupAsync(router, "/退出房间"));
         Assert.Contains("暂无房间", await RouteGroupAsync(router, "/房间列表"));
+    }
+
+    [Fact]
+    public async Task Router_StoreDetailAndWindowAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");
+
+        // 缺编号给用法
+        Assert.Contains("缺少商品编号", await RouteAsync(router, "/商店详情"));
+
+        // 打开商店：列表里提示 2 分钟窗口与详情入口
+        string shop = await RouteAsync(router, "/商店");
+        Assert.Contains("2 分钟内有效", shop);
+        Assert.Contains("商店详情", shop);
+
+        string detail = await RouteAsync(router, "/商店详情 1");
+        Assert.Contains("下单窗口", detail);
+        Assert.Contains("价格", detail);
+
+        Assert.Contains("不存在", await RouteAsync(router, "/商店详情 99"));
     }
 
     [Fact]
@@ -335,7 +357,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(144, registry.All.Count);
+        Assert.Equal(145, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -413,6 +435,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IUserSessionService, UserSessionService>();
             services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
+            services.AddSingleton<IEconomyService, EconomyService>();
             services.AddSingleton<IRoomService, RoomService>();
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
@@ -430,7 +453,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<FunGameQueryService>(), null!, null!,
                 Provider.GetRequiredService<IUserSessionService>(),
                 Provider.GetRequiredService<IPlayerService>(),
-                null!,
+                Provider.GetRequiredService<IEconomyService>(),
                 Provider.GetRequiredService<IRoomService>(),
                 Provider.GetRequiredService<IClubService>(),
                 Provider.GetRequiredService<IMailService>(),

@@ -15,6 +15,9 @@ public interface IEconomyService
 {
     /// <param name="storeKey">商店 key；为空时用玩家上次查看的商店（默认每日商店）。</param>
     Task<IReadOnlyList<StoreEntry>> GetStoreAsync(long userId, string? storeKey = null, CancellationToken cancellationToken = default);
+    /// <summary>单个商品的详情（旧版「商店查看」）；同时刷新 2 分钟下单窗口。</summary>
+    Task<StoreDetail?> GetStoreDetailAsync(long userId, int index, CancellationToken cancellationToken = default);
+
     Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MarketEntry>> GetMarketAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> ListOnMarketAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
@@ -328,12 +331,11 @@ public sealed class EconomyService(
             List<StoreGood> goods = await EnsureStoreAsync(db, key, userId, ct);
             if (goods.Count == 0) return [];
 
-            // 记住「上次看的店」，/购买 不带参数时就用它（旧版 UserLastVisitStore）。
-            if (!string.Equals(account.Wallet.LastStoreKey, key, StringComparison.Ordinal))
-            {
-                account.Wallet.LastStoreKey = key;
-                await db.SaveChangesAsync(ct);
-            }
+            // 记住「上次看的店」，/购买 不带参数时就用它（旧版 UserLastVisitStore）；
+            // 同时刷新时间戳——超过 2 分钟就得重新打开，防止连着看几家之后买错货。
+            account.Wallet.LastStoreKey = key;
+            account.Wallet.LastStoreAtUtc = clock.UtcNow;
+            await db.SaveChangesAsync(ct);
 
             return [.. goods.Select((good, i) => new StoreEntry(
                 i + 1, good.Id, good.Name,
@@ -343,10 +345,43 @@ public sealed class EconomyService(
                 good.Quota, ReadBoughtCount(good, userId)))];
         }, cancellationToken);
 
+    public Task<StoreDetail?> GetStoreDetailAsync(long userId, int index,
+        CancellationToken cancellationToken = default)
+        => ReadAsync<StoreDetail?>(async (db, ct) =>
+        {
+            if (index <= 0) return null;
+            PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
+            string key = ResolveStoreKey(null, account);
+            List<StoreGood> goods = await EnsureStoreAsync(db, key, userId, ct);
+            if (index > goods.Count) return null;
+
+            account.Wallet.LastStoreKey = key;
+            account.Wallet.LastStoreAtUtc = clock.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            StoreGood good = goods[index - 1];
+            StoreSpec? spec = StoreCatalog.Find(key);
+            return new StoreDetail(
+                index, key, spec?.Name ?? "商店", spec?.Description ?? "",
+                good.Name, StoreCatalog.CurrencyName(ParseCurrency(good.PriceCurrency)),
+                good.Price,
+                good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount),
+                good.Quota, ReadBoughtCount(good, userId),
+                account.Wallet.LastStoreAtUtc!.Value.AddMinutes(GameplayRules.StoreWindowMinutes));
+        }, cancellationToken);
+
     public Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity,
         CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
+            // 不带 storeKey 就是「买刚看的那家店」：必须还在 2 分钟窗口内（旧版同）。
+            if (storeKey is null && !StoreWindowAlive(state.Wallet))
+            {
+                return ActionResult.Fail("商店窗口已过期", "没有扣款，也没有发放物品",
+                    $"打开商店后 {GameplayRules.StoreWindowMinutes} 分钟内才能下单，先用 /商店 或 /商店1–7 重新打开",
+                    "/商店");
+            }
+
             string key = ResolveStoreKey(storeKey, state);
             List<StoreGood> goods = await EnsureStoreAsync(db, key, userId, ct);
             if (index <= 0 || index > goods.Count) return NoListing("商品");
@@ -412,6 +447,11 @@ public sealed class EconomyService(
                     "- 已写入账本 ledger"
                 ], ["/商店", "/背包", "/状态"]);
         }, cancellationToken);
+
+    /// <summary>下单窗口是否还有效；从没打开过也算过期。</summary>
+    private bool StoreWindowAlive(CorePlayerRecord wallet)
+        => wallet.LastStoreAtUtc is { } at
+           && clock.UtcNow - at <= TimeSpan.FromMinutes(GameplayRules.StoreWindowMinutes);
 
     private string ResolveStoreKey(string? storeKey, PlayerAccount state)
     {

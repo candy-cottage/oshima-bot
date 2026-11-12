@@ -38,7 +38,7 @@ public static class CommandCatalog
         "reroll", "reroll-confirm", "reroll-cancel",
         // ---- P2：经济与战斗 ----
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
-        "shop-forge", "shop-horse", "shop-coop", "buy", "market", "list-item", "delist", "market-buy",
+        "shop-forge", "shop-horse", "shop-coop", "shop-detail", "buy", "market", "list-item", "delist", "market-buy",
         "offers", "offer", "offer-accept", "offer-cancel",
         "forge", "forge-claim", "instance", "instance-claim",
         "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
@@ -429,9 +429,15 @@ public static class CommandCatalog
             description: "铎京补给站货架", group: CommandGroups.Economy,
             handler: context => ShopAsync(context)),
 
+        "shop-detail" => new DelegateCommand(
+            key: "shop-detail", name: "商店详情", aliases: ["商店查看"], usage: "/商店详情 <编号>",
+            description: "单个商品的详情与库存（打开商店后 2 分钟内可下单）",
+            group: CommandGroups.Economy, prefixMatch: true,
+            handler: context => ShopDetailAsync(context)),
+
         "buy" => new DelegateCommand(
             key: "buy", name: "购买", aliases: ["buy"], usage: "/购买 @1 [x2]",
-            description: "购买当前商店的商品（作用于上次查看的店）", group: CommandGroups.Economy, audit: true,
+            description: "购买当前商店的商品（需在打开商店后 2 分钟内）", group: CommandGroups.Economy, audit: true,
             handler: async context => CommandReplies.FromResult(await deps.Economy.BuyAsync(
                 context.UserId, null, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
 
@@ -2122,6 +2128,41 @@ public static class CommandCatalog
             description: description, group: CommandGroups.Economy,
             handler: context => ShopAsync(context, storeKey));
 
+    /// <summary>单个商品详情（旧版「商店查看」）：价格、库存、限购与下单窗口。</summary>
+    private static async Task<BotReply> ShopDetailAsync(CommandContext context)
+    {
+        CommandDependencies deps = context.Dependencies;
+        if (!context.TryInt(0, out int index) || index <= 0)
+        {
+            return CommandReplies.Error("缺少商品编号", "没有显示任何详情",
+                "用法：/商店详情 1　编号用 /商店 查", "/商店");
+        }
+        StoreDetail? detail = await deps.Economy.GetStoreDetailAsync(
+            context.UserId, index, context.CancellationToken);
+        if (detail is null)
+        {
+            return CommandReplies.Error($"商品 @{index} 不存在", "没有显示任何详情",
+                "编号从 1 开始，用 /商店 查看当前货架", "/商店");
+        }
+
+        string stock = detail.Stock < 0 ? "无限" : detail.Stock.ToString(CultureInfo.InvariantCulture);
+        string quota = detail.Quota > 0 ? $"每人限购 {detail.Quota}，你已买 {detail.Bought}" : "不限购";
+        string price = detail.Currency == "免费" ? "免费" : $"{detail.Price} {detail.Currency}";
+        int seconds = Math.Max(0, (int)(detail.WindowEndsAtUtc - DateTime.UtcNow).TotalSeconds);
+
+        List<string> lines =
+        [
+            $"- 商品：{detail.Name}",
+            $"- 价格：{price}",
+            $"- 库存：{stock}　{quota}",
+            $"- 所属：{detail.StoreName}",
+            detail.StoreDescription.Length == 0 ? "" : $"- 店铺：{detail.StoreDescription}",
+            $"- 下单窗口还剩 {seconds} 秒，超时要重新打开商店"
+        ];
+        return CommandReplies.Detail($"🏪 {detail.Name}", string.Join("\n", lines.Where(x => x.Length > 0)),
+            null, [$"/购买 @{index}", "/商店", "/背包"]);
+    }
+
     private static async Task<BotReply> ShopAsync(CommandContext context, string? storeKey = null)
     {
         CommandDependencies deps = context.Dependencies;
@@ -2141,7 +2182,8 @@ public static class CommandCatalog
             string price = good.Currency == "免费" ? "免费" : $"{good.Price} {good.Currency}";
             return $"- @{good.Index} {good.Name}　{price}　库存 {stock}{quota}";
         })];
-        lines.Add("- /购买 @编号 [x数量]　·　作用于当前商店");
+        lines.Add($"- /购买 @编号 [x数量]　·　{GameplayRules.StoreWindowMinutes} 分钟内有效，超时要重新打开");
+        lines.Add("- /商店详情 编号 看单件详情");
         string title = storeKey is null ? "🏪 每日商店（每 4:00 刷新）"
             : $"🏪 {StoreCatalog.Find(storeKey)?.Name ?? "商店"}";
         return CommandReplies.ListPage(title, $"{goods.Count} 种商品", lines,

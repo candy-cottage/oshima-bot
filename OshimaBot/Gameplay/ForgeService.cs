@@ -300,7 +300,6 @@ public sealed class ForgeService(
             long regionId = plan.RegionId;
             QualityType quality = plan.Quality;
             string masterNote = "";
-            bool masterApplied = false;
             if (state.Master is { } master && (master.RegionId != regionId || master.Quality != quality))
             {
                 PlayerItem? ticket = (await ItemStore.ListAsync(db, userId, ct))
@@ -310,7 +309,6 @@ public sealed class ForgeService(
                     PlayerService.Consume(db, ticket, 1);
                     regionId = master.RegionId;
                     quality = master.Quality;
-                    masterApplied = true;
                     masterNote = $"- 大师锻造券生效：产物改判为 {RegionName(regionId)} · {ForgeRules.QualityName(quality)}";
                 }
                 else
