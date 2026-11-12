@@ -88,6 +88,8 @@ builder.Services.AddSingleton<IRoomService, RoomService>();
 builder.Services.AddSingleton<IClubService, ClubService>();
 // 私信：旧版 user_mails 表一直在但没有收发入口，这里补上（内容过 NamingPolicy）。
 builder.Services.AddSingleton<IMailService, MailService>();
+// 活动与运营公告：进度复用既有 ActivityProgress 表，公告写 AppConfigs。
+builder.Services.AddSingleton<IActivityService, ActivityService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -100,6 +102,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IRoomService>(),
     sp.GetRequiredService<IClubService>(),
     sp.GetRequiredService<IMailService>(),
+    sp.GetRequiredService<IActivityService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

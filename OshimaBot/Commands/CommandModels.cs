@@ -29,6 +29,7 @@ public sealed record CommandDependencies(
     IRoomService Rooms,
     IClubService Clubs,
     IMailService Mail,
+    IActivityService Activities,
     ILogger Logger);
 
 public interface ICommand

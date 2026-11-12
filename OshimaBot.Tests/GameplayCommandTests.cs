@@ -27,7 +27,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(126, registry.All.Count);
+        Assert.Equal(131, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -164,6 +164,31 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
+    public async Task Router_ActivityCommandsAreReachable()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+
+        string list = await RouteAsync(router, "/活动");
+        Assert.Contains("旅人试炼", list);
+        Assert.Contains("周末疾行", list);
+        Assert.Contains("双旦活动", list);
+
+        string detail = await RouteAsync(router, "/查活动 1");
+        Assert.Contains("物资征调", detail);
+        Assert.Contains("以币换印", detail);
+
+        // 新号只有 5000 金币，做不了 15000 的任务
+        Assert.Contains("金币不足", await RouteAsync(router, "/做活动任务 1 2"));
+        // 没做满不能领奖
+        Assert.Contains("还没做满", await RouteAsync(router, "/领取奖励 1 2"));
+        // 编号缺失给用法
+        Assert.Contains("活动或任务编号缺失", await RouteAsync(router, "/做活动任务"));
+        // 公告只有管理员能改
+        Assert.Contains("权限不足", await RouteAsync(router, "/设置公告 周末双倍"));
+    }
+
+    [Fact]
     public async Task Router_ClubSubsystemIsReachable()
     {
         using GameplayCommandDatabase db = new();
@@ -215,7 +240,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(126, registry.All.Count);
+        Assert.Equal(131, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -296,6 +321,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IRoomService, RoomService>();
             services.AddSingleton<IClubService, ClubService>();
             services.AddSingleton<IMailService, MailService>();
+            services.AddSingleton<IActivityService, ActivityService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
@@ -308,6 +334,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IRoomService>(),
                 Provider.GetRequiredService<IClubService>(),
                 Provider.GetRequiredService<IMailService>(),
+                Provider.GetRequiredService<IActivityService>(),
                 NullLogger.Instance);
         }
 

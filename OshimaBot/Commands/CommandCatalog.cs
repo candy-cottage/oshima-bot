@@ -50,7 +50,9 @@ public static class CommandCatalog
         // ---- 审核（管理员）----
         "rename-review", "rename-approve", "rename-reject",
         // ---- 私信 ----
-        "mail-send", "mail-inbox", "mail-read"
+        "mail-send", "mail-inbox", "mail-read",
+        // ---- 活动与运营公告 ----
+        "activities", "activity-info", "activity-do", "activity-claim", "set-notice"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -982,6 +984,66 @@ public static class CommandCatalog
             handler: async context => CommandReplies.FromResult(await deps.Mail.ReadAsync(
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
+        // ---- 活动（旧版 GetEvents / PerformEvent / ClaimEventPrize）----
+        "activities" => new DelegateCommand(
+            key: "activities", name: "活动", aliases: ["活动中心", "events"], usage: "/活动",
+            description: "当前有哪些活动、进行中还是未开放", group: CommandGroups.Economy,
+            handler: context => ActivitiesAsync(deps, context)),
+
+        "activity-info" => new DelegateCommand(
+            key: "activity-info", name: "查活动", aliases: ["活动详情"], usage: "/查活动 <编号>",
+            description: "活动详情：任务进度、成本与奖励", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: context => ActivityInfoAsync(deps, context)),
+
+        "activity-do" => new DelegateCommand(
+            key: "activity-do", name: "做活动任务", aliases: ["做活动"], usage: "/做活动任务 <活动> <任务> [@物品]",
+            description: "提交资源推进活动任务；成本是物品时用 @编号 指定", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int activity) || activity <= 0
+                    || !context.TryInt(1, out int quest) || quest <= 0)
+                {
+                    return CommandReplies.Error("活动或任务编号缺失", "没有扣除任何资源",
+                        "用法：/做活动任务 1 2　成本是物品时 /做活动任务 1 2 @3", "/活动");
+                }
+                return CommandReplies.FromResult(await deps.Activities.PerformAsync(
+                    context.UserId, activity, quest, RefIndex(context, 2), context.CancellationToken));
+            }),
+
+        "activity-claim" => new DelegateCommand(
+            key: "activity-claim", name: "领取奖励", aliases: ["活动领奖"], usage: "/领取奖励 <活动> <任务>",
+            description: "领取已完成的活动任务奖励（每个任务一次）", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int activity) || activity <= 0
+                    || !context.TryInt(1, out int quest) || quest <= 0)
+                {
+                    return CommandReplies.Error("活动或任务编号缺失", "没有发放任何奖励",
+                        "用法：/领取奖励 1 2　编号用 /查活动 1 查看", "/活动");
+                }
+                return CommandReplies.FromResult(await deps.Activities.ClaimAsync(
+                    context.UserId, activity, quest, context.CancellationToken));
+            }),
+
+        "set-notice" => new DelegateCommand(
+            key: "set-notice", name: "设置公告", aliases: ["修改公告"], usage: "/设置公告 <文本>",
+            description: "更新运营公告（管理员），内容过命名规范校验", group: CommandGroups.Economy,
+            requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string text = context.ArgumentText.Trim();
+                if (text.Length == 0)
+                {
+                    return CommandReplies.Error("没有给公告内容", "没有修改公告",
+                        "用法：/设置公告 周末双倍经验，记得上线", "/公告");
+                }
+                return CommandReplies.FromResult(await deps.Activities.SetNoticeAsync(
+                    text, context.CancellationToken));
+            }),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -1304,6 +1366,55 @@ public static class CommandCatalog
     }
 
     // ---- 社团指令辅助 ----
+
+    private static async Task<BotReply> ActivitiesAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ActivityEntry> rows = await deps.Activities.ListAsync(
+            context.UserId, context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("🎪 活动中心", "暂时没有活动",
+                ["- 等运营开新活动，或先去 /每日任务 攒点资源"], ["/每日任务", "/帮助"]);
+        }
+        List<string> lines = [.. rows.Select(row =>
+            $"- @{row.Index} {row.Name}　{row.Phase}"
+            + $"　任务 {row.DoneQuests}/{row.TotalQuests}"
+            + (row.AllClaimed ? "（已全领）" : "")
+            + $"\n  {row.Window}")];
+        lines.Add("- /查活动 编号 看任务与奖励　·　/做活动任务 活动 任务 [@物品]　·　/领取奖励 活动 任务");
+        return CommandReplies.Compose("🎪 活动中心", $"{rows.Count} 个活动", lines,
+            ["/查活动 1", "/领取奖励 1 1", "/活动"]);
+    }
+
+    private static async Task<BotReply> ActivityInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        if (!context.TryInt(0, out int index) || index <= 0)
+        {
+            return CommandReplies.Error("缺少活动编号", "没有显示任何信息",
+                "用 /活动 查看编号", "/活动");
+        }
+        ActivityDetail? detail = await deps.Activities.InfoAsync(
+            context.UserId, index, context.CancellationToken);
+        if (detail is null)
+        {
+            return CommandReplies.Error($"活动 @{index} 不存在", "没有显示任何信息",
+                "用 /活动 查看当前活动", "/活动");
+        }
+
+        List<string> lines = [$"- 状态：{detail.Phase}　{detail.Window}", $"- {detail.Description}", "- 任务："];
+        lines.AddRange(detail.Quests.Select(quest =>
+        {
+            string state = quest.Claimed ? "已领取"
+                : quest.Ready ? "✅ 可领取"
+                : $"{quest.Progress}/{quest.Target}";
+            return $"  @{quest.Index} {quest.Name}　{state}\n"
+                + $"    成本：{quest.Cost}　奖励：{quest.Reward}";
+        }));
+        lines.Add("- 做任务：/做活动任务 " + index + " 任务编号 [@物品]");
+        lines.Add(detail.AnyReady ? "- 有任务可领奖了：/领取奖励 " + index + " 任务编号" : "- 做满进度后即可领奖");
+        return CommandReplies.Compose($"🎪 {detail.Name}", detail.Phase, lines,
+            [$"/做活动任务 {index} 1", $"/领取奖励 {index} 1", "/活动"]);
+    }
 
     private static async Task<BotReply> MailInboxAsync(CommandDependencies deps, CommandContext context)
     {

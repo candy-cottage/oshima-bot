@@ -116,6 +116,14 @@ public static class GameplayRules
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, GameTimeZone))
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    /// <summary>本地时间（Asia/Shanghai）→ UTC；活动窗口这类按本地钟点定义的规则用它。</summary>
+    public static DateTime ToUtc(DateTime local)
+        => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), GameTimeZone);
+
+    /// <summary>UTC → 本地时间（Asia/Shanghai）。</summary>
+    public static DateTime ToLocal(DateTime utc)
+        => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), GameTimeZone);
+
     /// <summary>当前「商店日」的起点（本地 4:00）对应的 UTC 时间；私信频次上限等按它切日。</summary>
     public static DateTime StoreDayStartUtc(DateTime utcNow)
     {
