@@ -285,6 +285,22 @@ public static class GameplayRules
     }
 
     /// <summary>
+    /// 签到额外物品的品质（旧版 <c>GetSignInResult</c> 里那段「按签到天数调整概率」）。
+    /// <para>旧版给每一档概率统一加 <c>min(days * 0.03, 30)</c> 个百分点，再从高品到低品比阈值；
+    /// 因为每档加的是同一个常数，等价于把判定阈值整体上移，这里按同一语义实现。</para>
+    /// </summary>
+    public static int RollSignInQuality(IRandomSource random, int streakDays)
+    {
+        double q = random.NextDouble() * 100;
+        double factor = Math.Min(Math.Max(0, streakDays) * 0.03, 30);
+        foreach ((int tier, double percent) in GachaQualityWeights)
+        {
+            if (q <= percent + factor) return tier;
+        }
+        return 1;
+    }
+
+    /// <summary>
     /// 旧版抽卡品质判定：<c>q = NextDouble() * 100</c>，按 <see cref="GachaQualityWeights"/>
     /// 从高品到低品逐个比较 <c>q &lt;= 该档阈值</c>，命中即止；都不命中落到普通。
     /// </summary>

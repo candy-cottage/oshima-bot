@@ -289,14 +289,72 @@ public sealed class PlayerService(
                 CreatedAtUtc = DateTime.UtcNow
             });
             await AdvanceQuestAsync(db, userId, "signin", ct);
+
+            // 旧版 GetSignInResult 还会额外发一件东西，品质随连续天数上浮（+3%/天，封顶 +30%）。
+            string extra = await GrantSignInExtraAsync(db, userId, state.SignInStreak - 1, ct);
+            List<string> lines =
+            [
+                $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
+                "- 金币 1000–2999、钻石 5–14，连续天数越高加成越多",
+                extra.Length == 0 ? "- 本次没有额外掉落" : $"- 额外获得：{extra}",
+                "- 今日任务「今日签到」进度已更新"
+            ];
             return ActionResult.Success("📅 签到成功",
-                $"连续 {state.SignInStreak} 天 · 金币 +{credits}{(materials > 0 ? $" · 钻石 +{materials}" : "")}",
-                [
-                    $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
-                    "- 旧版规则：金币 1000–2999，钻石 5–14，连续天数越高加成越多",
-                    "- 今日任务「今日签到」进度已更新"
-                ], ["/每日任务", "/状态", "/抽卡"]);
+                $"连续 {state.SignInStreak} 天 · 金币 +{credits}"
+                + (materials > 0 ? $" · 钻石 +{materials}" : "")
+                + (extra.Length == 0 ? "" : $" · {extra}"),
+                lines, ["/每日任务", "/状态", "/抽卡", "/背包"]);
         }, cancellationToken);
+
+    /// <summary>
+    /// 签到的额外掉落（旧版 <c>GetSignInResult</c> 的 <c>switch (Next(6))</c>）：
+    /// 1 武器 / 2 防具 / 3 鞋子 / 4 饰品（按 Id 前缀 11–14 取同品质模板）、5 魔法卡、0 魔法卡包；
+    /// 橙品以上自动锁定（旧版同为「防止误分解」）。双旦活动期间再送一张十连奖券。
+    /// </summary>
+    private async Task<string> GrantSignInExtraAsync(
+        BotDbContext db, long userId, int streakDays, CancellationToken ct)
+    {
+        QualityType quality = GameplayRules.QualityTypeOf(GameplayRules.RollSignInQuality(random, streakDays));
+        string qualityName = GameplayRules.QualityName(GameplayRules.QualityTierOf(quality));
+        Random local = GameplayRules.NewRandom(random);
+
+        Item? item = local.Next(6) switch
+        {
+            1 => PickEquipment(local, quality, "11"),
+            2 => PickEquipment(local, quality, "12"),
+            3 => PickEquipment(local, quality, "13"),
+            4 => PickEquipment(local, quality, "14"),
+            5 => FunGameService.GenerateMagicCard(local, quality),
+            _ => FunGameService.GenerateMagicCardPack(local, GameplayRules.MagicCardPackMaxMagics, quality)
+        };
+
+        List<string> gained = [];
+        if (item is not null)
+        {
+            item.IsLock = item.QualityType >= QualityType.Orange;   // 旧版：橙以上不能被误分解
+            ItemStore.AddSnapshot(db, userId, item, $"signin-{item.ItemType.ToString().ToLowerInvariant()}");
+            gained.Add($"{qualityName}{ItemSet.GetItemTypeName(item.ItemType)}【{item.Name}】");
+        }
+
+        // 旧版：双旦活动进行中，签到再送一张十连奖券。
+        (DateTime? start, DateTime? end) = ActivityCatalog.Window(ActivityWindow.WinterFestival, clock.UtcNow);
+        if (ActivityCatalog.Phase((start, end), clock.UtcNow) == ActivityPhase.InProgress)
+        {
+            await AddItemAsync(db, userId, "十连奖券", 1, 1, ct, "18009");
+            gained.Add("十连奖券 ×1（双旦活动）");
+        }
+        return string.Join("、", gained);
+    }
+
+    /// <summary>按 Id 前缀（11 武器 / 12 防具 / 13 鞋子 / 14 饰品）与品质取一件装备副本。</summary>
+    private static Item? PickEquipment(Random random, QualityType quality, string idPrefix)
+    {
+        List<Item> pool = [.. FunGameService.AllItems
+            .Where(i => i.Id.ToString(CultureInfo.InvariantCulture).StartsWith(idPrefix, StringComparison.Ordinal)
+                        && i.QualityType == quality)];
+        if (pool.Count == 0) return null;
+        return pool[random.Next(pool.Count)].Copy();
+    }
 
     public Task<ActionResult> GachaAsync(long userId, int count, bool useMaterial,
         CancellationToken cancellationToken = default)

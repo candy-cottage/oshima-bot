@@ -141,6 +141,40 @@ public sealed class ActivityServiceTests
         Assert.Equal("周末双倍经验，记得上线", await players.GetNoticeAsync());
     }
 
+    [Fact]
+    public async Task SignIn_GrantsExtraDropAndStreakLiftsQuality()
+    {
+        using ActivityDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await db.CreatePlayerAsync(Player);
+
+        ActionResult signed = await players.SignInAsync(Player);
+        Assert.True(signed.Ok, signed.Title);
+        Assert.Contains("额外", string.Join(" ", signed.Lines));
+        Assert.NotEmpty(await db.ItemNamesAsync(Player));       // 至少掉了一件
+
+        // 同一天不能重复签到
+        Assert.False((await players.SignInAsync(Player)).Ok);
+    }
+
+    [Fact]
+    public void SignInQuality_StreakRaisesTier()
+    {
+        // q = 20：无加成时落在普通（49.53 以下）；天数拉满（+30）后先命中红装（3.06 + 30）
+        Assert.Equal(1, GameplayRules.RollSignInQuality(new FixedDoubleRandomSource(0.20), 0));
+        Assert.Equal(6, GameplayRules.RollSignInQuality(new FixedDoubleRandomSource(0.20), 1_000));
+    }
+
+    /// <summary>固定 <c>NextDouble</c> 的随机源，用来卡品质判定的边界。</summary>
+    private sealed class FixedDoubleRandomSource(double value) : IRandomSource
+    {
+        public int Next(int maxExclusive) => 0;
+
+        public int Next(int minInclusive, int maxExclusive) => minInclusive;
+
+        public double NextDouble() => value;
+    }
+
     private sealed class ActivityDatabase : IDisposable
     {
         public SqliteConnection Connection { get; }
