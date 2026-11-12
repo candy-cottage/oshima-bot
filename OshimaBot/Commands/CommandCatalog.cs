@@ -1,4 +1,5 @@
 using System.Globalization;
+using OshimaBot.Data.Entities;
 using OshimaBot.Game.Combat;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
@@ -39,7 +40,11 @@ public static class CommandCatalog
         "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
         "rank-horse", "rank-coop", "rank-forge",
         // ---- 多人房间 ----
-        "room-create", "room-join", "horse-join", "room-quit", "room-start", "room-list", "room-info"
+        "room-create", "room-join", "horse-join", "room-quit", "room-start", "room-list", "room-info",
+        // ---- 社团 ----
+        "club-create", "club-list", "club-info", "club-mine", "club-join", "club-quit", "club-disband",
+        "club-members", "club-admins", "club-applications", "club-invites", "club-approve", "club-reject",
+        "club-invite", "club-kick", "club-transfer", "club-settings", "club-donate"
     ];
 
     public static CommandRegistry Build(CommandDependencies deps)
@@ -664,6 +669,160 @@ public static class CommandCatalog
             description: "按锻造积分排行（/锻造 来攒）", group: CommandGroups.Economy,
             handler: context => RankAsync(deps, context, "forge")),
 
+        // ---- 社团（M6.2）：旧版一个社团一个 JSON 文件，这里落库；一个人只能在一个社团 ----
+        "club-create" => new DelegateCommand(
+            key: "club-create", name: "创建社团", aliases: ["建社团"], usage: "/创建社团 <前缀> [私密]",
+            description: "前缀 3–4 位；名字自动生成，可用 /社团设置 名称 改", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? prefix = context.FirstArgument;
+                if (string.IsNullOrWhiteSpace(prefix))
+                {
+                    return CommandReplies.Error("没有给社团前缀", "没有创建任何社团",
+                        "用法：/创建社团 ABC　后面加「私密」则是邀请制", "/社团列表");
+                }
+                bool isPublic = !context.HasFlag("私密") && !context.HasFlag("private");
+                return CommandReplies.FromResult(await deps.Clubs.CreateAsync(
+                    context.UserId, prefix, isPublic, context.CancellationToken));
+            }),
+
+        "club-list" => new DelegateCommand(
+            key: "club-list", name: "社团列表", aliases: ["社团"], usage: "/社团列表 [p2]",
+            description: "本服所有社团", group: CommandGroups.Economy,
+            handler: context => ClubListAsync(deps, context)),
+
+        "club-info" => new DelegateCommand(
+            key: "club-info", name: "查看社团", aliases: ["社团信息"], usage: "/查看社团 <编号>",
+            description: "看社团公告、成员数、基金与加入规则", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: context => ClubInfoAsync(deps, context)),
+
+        "club-mine" => new DelegateCommand(
+            key: "club-mine", name: "我的社团", aliases: ["我的公会"], usage: "/我的社团",
+            description: "查看自己所在社团", group: CommandGroups.Economy,
+            handler: context => ClubMineAsync(deps, context)),
+
+        "club-join" => new DelegateCommand(
+            key: "club-join", name: "加入社团", aliases: ["申请入团"], usage: "/加入社团 <编号>",
+            description: "公开社团直接进；需批准的会进申请队列", group: CommandGroups.Economy,
+            prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int clubId) || clubId <= 0)
+                {
+                    return CommandReplies.Error("缺少社团编号", "没有加入任何社团",
+                        "用 /社团列表 查看编号", "/社团列表");
+                }
+                return CommandReplies.FromResult(await deps.Clubs.JoinAsync(
+                    context.UserId, clubId, context.CancellationToken));
+            }),
+
+        "club-quit" => new DelegateCommand(
+            key: "club-quit", name: "退出社团", aliases: ["退团"], usage: "/退出社团",
+            description: "社长需先转让或解散", group: CommandGroups.Economy,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.QuitAsync(
+                context.UserId, context.CancellationToken))),
+
+        "club-disband" => new DelegateCommand(
+            key: "club-disband", name: "解散社团", aliases: ["解散公会"], usage: "/解散社团",
+            description: "社长解散整个社团", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.DisbandAsync(
+                context.UserId, context.CancellationToken))),
+
+        "club-members" => new DelegateCommand(
+            key: "club-members", name: "查看社团成员", aliases: ["社团成员"], usage: "/查看社团成员 [p2]",
+            description: "成员列表与身份（@编号 用于踢出/转让）", group: CommandGroups.Economy,
+            handler: context => ClubMembersAsync(deps, context)),
+
+        "club-admins" => new DelegateCommand(
+            key: "club-admins", name: "查看社团管理", aliases: ["社团管理"], usage: "/查看社团管理",
+            description: "社长与管理人员", group: CommandGroups.Economy,
+            handler: context => ClubAdminsAsync(deps, context)),
+
+        "club-applications" => new DelegateCommand(
+            key: "club-applications", name: "查看申请人列表", aliases: ["查看申请人"], usage: "/查看申请人列表",
+            description: "等待审批的入团申请（社长/管理）", group: CommandGroups.Economy,
+            handler: context => ClubApplicationsAsync(deps, context)),
+
+        "club-invites" => new DelegateCommand(
+            key: "club-invites", name: "查看受邀人列表", aliases: ["查看受邀人"], usage: "/查看受邀人列表",
+            description: "已发出但还没接受的邀请", group: CommandGroups.Economy,
+            handler: context => ClubInvitesAsync(deps, context)),
+
+        "club-approve" => new DelegateCommand(
+            key: "club-approve", name: "社团批准", aliases: ["批准入团"], usage: "/社团批准 @编号",
+            description: "批准申请人入团", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.ApproveAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "club-reject" => new DelegateCommand(
+            key: "club-reject", name: "社团拒绝", aliases: ["拒绝入团"], usage: "/社团拒绝 @编号",
+            description: "拒绝入团申请", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.RejectAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "club-invite" => new DelegateCommand(
+            key: "club-invite", name: "邀请加入", aliases: ["邀请入团"], usage: "/邀请加入 <UID|昵称>",
+            description: "邀请某人加入社团（可绕过审批）", group: CommandGroups.Economy, audit: true,
+            prefixMatch: true,
+            handler: async context =>
+            {
+                string? target = Target(context);
+                if (target is null)
+                {
+                    return CommandReplies.Error("没有指定邀请对象", "没有邀请任何人",
+                        "用法：/邀请加入 123456　（UID / Handle / 昵称）", "/社团成员");
+                }
+                return CommandReplies.FromResult(await deps.Clubs.InviteAsync(
+                    context.UserId, target, context.CancellationToken));
+            }),
+
+        "club-kick" => new DelegateCommand(
+            key: "club-kick", name: "社团踢出", aliases: ["踢出社团"], usage: "/社团踢出 @编号",
+            description: "踢出成员（管理不能踢管理）", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.KickAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "club-transfer" => new DelegateCommand(
+            key: "club-transfer", name: "社团转让", aliases: ["转让社团"], usage: "/社团转让 @编号",
+            description: "把社长转让给成员", group: CommandGroups.Economy, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Clubs.TransferAsync(
+                context.UserId, RefIndex(context), context.CancellationToken))),
+
+        "club-settings" => new DelegateCommand(
+            key: "club-settings", name: "社团设置", aliases: ["社团配置"], usage: "/社团设置 <公开|私密|需批准|免批准|公告 文本|名称 新名|任命 @编号|卸任 @编号>",
+            description: "改社团规则、公告、名字与管理人员", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                string? action = context.FirstArgument;
+                if (string.IsNullOrWhiteSpace(action))
+                {
+                    return CommandReplies.Error("没有说要改什么", "没有修改任何设置",
+                        "可用：公开 / 私密 / 需批准 / 免批准 / 公告 <文本> / 名称 <新名> / 任命 @编号 / 卸任 @编号",
+                        "/我的社团");
+                }
+                string? value = context.Args.Count > 1 ? JoinFrom(context, 1) : null;
+                return CommandReplies.FromResult(await deps.Clubs.UpdateSettingsAsync(
+                    context.UserId, action, value, context.CancellationToken));
+            }),
+
+        "club-donate" => new DelegateCommand(
+            key: "club-donate", name: "社团捐献", aliases: ["捐献社团"], usage: "/社团捐献 <金币>",
+            description: "往社团基金投金币，计入个人捐献", group: CommandGroups.Economy,
+            audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                if (!context.TryInt(0, out int credits) || credits <= 0)
+                {
+                    return CommandReplies.Error("捐献数量不合法", "没有捐献任何金币",
+                        "用法：/社团捐献 1000", "/社团捐献");
+                }
+                return CommandReplies.FromResult(await deps.Clubs.DonateAsync(
+                    context.UserId, credits, context.CancellationToken));
+            }),
+
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
             key: "magic-card", name: "预览魔法卡", aliases: ["魔法卡", "card"], usage: "/预览魔法卡",
@@ -984,6 +1143,141 @@ public static class CommandCatalog
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
             "/我的角色", ["/状态", "/背包"]);
     }
+
+    // ---- 社团指令辅助 ----
+
+    private static async Task<BotReply> ClubListAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubSummary> clubs = await deps.Clubs.ListAsync(context.CancellationToken);
+        if (clubs.Count == 0)
+        {
+            return CommandReplies.Compose("🏛️ 社团列表", "还没有任何社团",
+                ["- 用 /创建社团 <前缀> 开一个"], ["/创建社团 ABC", "/帮助"]);
+        }
+        List<string> lines = [.. clubs.Select(club =>
+            $"- #{club.Id} {club.Prefix}·{club.Name}　{club.Members}/{club.MaxMembers} 人"
+            + $"　社长 {club.MasterName}"
+            + $"　{(club.IsPublic ? "公开" : "🔒仅邀请")}{(club.NeedApproval ? " · 需批准" : "")}"
+            + $"　基金 {club.Funds:0.##}")];
+        lines.Add("- /查看社团 编号　·　/加入社团 编号");
+        return CommandReplies.ListPage("🏛️ 社团列表", $"共 {clubs.Count} 个", lines, context.Page,
+            "/社团列表", ["/创建社团 ABC"]);
+    }
+
+    private static async Task<BotReply> ClubInfoAsync(CommandDependencies deps, CommandContext context)
+    {
+        if (!context.TryInt(0, out int clubId) || clubId <= 0)
+        {
+            return CommandReplies.Error("缺少社团编号", "没有显示任何信息",
+                "用 /社团列表 查看编号", "/社团列表");
+        }
+        ClubDetail? detail = await deps.Clubs.InfoAsync(clubId, context.UserId, context.CancellationToken);
+        if (detail is null)
+        {
+            return CommandReplies.Error($"不存在编号 {clubId} 的社团", "没有显示任何信息",
+                "用 /社团列表 查看现有社团", "/社团列表");
+        }
+        return RenderClub(detail);
+    }
+
+    private static async Task<BotReply> ClubMineAsync(CommandDependencies deps, CommandContext context)
+    {
+        ClubDetail? detail = await deps.Clubs.MineAsync(context.UserId, context.CancellationToken);
+        if (detail is null)
+        {
+            return CommandReplies.Error("你当前没有加入任何社团", "没有显示任何信息",
+                "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
+        }
+        return RenderClub(detail);
+    }
+
+    private static async Task<BotReply> ClubMembersAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubMemberEntry> members = await deps.Clubs.MembersAsync(
+            context.UserId, context.CancellationToken);
+        if (members.Count == 0)
+        {
+            return CommandReplies.Error("你当前没有加入任何社团", "没有成员可显示",
+                "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
+        }
+        List<string> lines = [.. members.Select((member, i) =>
+            $"- @{i + 1} {member.Display}　{RoleName(member.Role)}"
+            + $"　入团 {member.JoinedOn}　捐献 {member.Contribution:0.##}")];
+        lines.Add("- 社长/管理：/社团踢出 @编号 · /社团转让 @编号 · /社团设置 任命 @编号");
+        return CommandReplies.ListPage("👥 社团成员", $"{members.Count}/{ClubService.MaxMembers} 人",
+            lines, context.Page, "/查看社团成员", ["/我的社团", "/查看社团管理"]);
+    }
+
+    private static async Task<BotReply> ClubAdminsAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubMemberEntry> members = await deps.Clubs.MembersAsync(
+            context.UserId, context.CancellationToken);
+        List<ClubMemberEntry> admins = [.. members.Where(x => x.Role >= ClubRole.Admin)];
+        if (admins.Count == 0)
+        {
+            return CommandReplies.Error("你当前没有加入任何社团", "没有管理人员可显示",
+                "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
+        }
+        List<string> lines = [.. admins.Select(member => $"- {member.Display}　{RoleName(member.Role)}")];
+        lines.Add("- 社长可 /社团设置 任命 @编号 提升管理，或 卸任 @编号");
+        return CommandReplies.Compose("🎖️ 社团管理", $"{admins.Count} 人", lines,
+            ["/查看社团成员", "/社团设置"]);
+    }
+
+    private static async Task<BotReply> ClubApplicationsAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubApplicantEntry> rows = await deps.Clubs.ApplicationsAsync(
+            context.UserId, context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("📋 申请人列表", "暂无申请",
+                ["- 社员用 /加入社团 编号 提交申请后会出现在这里"], ["/我的社团", "/社团设置 需批准"]);
+        }
+        List<string> lines = [.. rows.Select(row =>
+            $"- @{row.Index} {row.Display}　申请于 {row.AppliedOn}")];
+        lines.Add("- /社团批准 @编号 · /社团拒绝 @编号");
+        return CommandReplies.Compose("📋 申请人列表", $"共 {rows.Count} 人", lines,
+            ["/社团批准 @1", "/社团拒绝 @1"]);
+    }
+
+    private static async Task<BotReply> ClubInvitesAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<ClubInviteEntry> rows = await deps.Clubs.InvitesAsync(
+            context.UserId, context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("✉️ 受邀人列表", "暂无邀请",
+                ["- 用 /邀请加入 昵称 发邀请"], ["/邀请加入", "/我的社团"]);
+        }
+        List<string> lines = [.. rows.Select(row => $"- @{row.Index} {row.Display}　邀请于 {row.InvitedOn}")];
+        lines.Add("- 对方用 /加入社团 编号 即可加入（可绕过未公开与审批）");
+        return CommandReplies.Compose("✉️ 受邀人列表", $"共 {rows.Count} 人", lines, ["/社团成员", "/我的社团"]);
+    }
+
+    private static BotReply RenderClub(ClubDetail detail)
+    {
+        List<string> lines =
+        [
+            $"- 编号：{detail.Id}　名称：{detail.Prefix}·{detail.Name}",
+            $"- 社长：{detail.MasterName}" + (detail.IsMaster ? "（你）" : "") + $"　成员 {detail.Members}/{detail.MaxMembers}",
+            $"- 加入规则：{(detail.IsPublic ? "公开" : "🔒 仅邀请")}{(detail.NeedApproval ? " · 需批准" : " · 免批准")}",
+            $"- 社团基金：{detail.Funds:0.##}",
+            detail.Notice.Length == 0 ? "- 公告：（空）" : $"- 公告：{detail.Notice}",
+            $"- 成立于 {detail.CreatedOn}"
+        ];
+        List<string> actions = detail.IsMember
+            ? ["/查看社团成员", "/社团捐献", "/社团设置"]
+            : [$"/加入社团 {detail.Id}", "/社团列表"];
+        if (detail.IsMember) actions.Add("/退出社团");
+        return CommandReplies.Compose("🏛️ 社团信息", $"{detail.Prefix}·{detail.Name}", lines, actions);
+    }
+
+    private static string RoleName(ClubRole role) => role switch
+    {
+        ClubRole.Master => "👑 社长",
+        ClubRole.Admin => "🎖️ 管理",
+        _ => "成员"
+    };
 
     // ---- 房间指令辅助 ----
 

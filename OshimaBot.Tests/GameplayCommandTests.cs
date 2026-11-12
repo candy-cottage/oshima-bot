@@ -27,7 +27,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(99, registry.All.Count);
+        Assert.Equal(117, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -188,7 +188,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(99, registry.All.Count);
+        Assert.Equal(117, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -267,6 +267,7 @@ public sealed class GameplayCommandTests
             services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
             services.AddSingleton<IRoomService, RoomService>();
+            services.AddSingleton<IClubService, ClubService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
@@ -277,6 +278,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IPlayerService>(),
                 null!,
                 Provider.GetRequiredService<IRoomService>(),
+                Provider.GetRequiredService<IClubService>(),
                 NullLogger.Instance);
         }
 

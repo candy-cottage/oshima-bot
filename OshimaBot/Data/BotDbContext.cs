@@ -48,6 +48,12 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<CoreCharacterRecord> CoreCharacters => Set<CoreCharacterRecord>();
     public DbSet<CoreItemRecord> CoreItems => Set<CoreItemRecord>();
 
+    // ---- 社团（M6.2）----
+    public DbSet<Club> Clubs => Set<Club>();
+    public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
+    public DbSet<ClubApplication> ClubApplications => Set<ClubApplication>();
+    public DbSet<ClubInvite> ClubInvites => Set<ClubInvite>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -119,6 +125,32 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
             entity.HasIndex(x => new { x.Status, x.CreatedAtUtc });
         });
         modelBuilder.Entity<UserSession>().HasKey(x => x.UserId);
+
+        // ---- 社团 ----
+        modelBuilder.Entity<Club>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.Name);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<ClubMember>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            // 一个人只能待在一个社团：这条唯一索引比业务层的检查更硬。
+            entity.HasIndex(x => x.UserId).IsUnique();
+            entity.HasIndex(x => x.ClubId);
+        });
+        modelBuilder.Entity<ClubApplication>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ClubId, x.UserId }).IsUnique();
+        });
+        modelBuilder.Entity<ClubInvite>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ClubId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+        });
 
         // ---- 经济与交易 ----
         modelBuilder.Entity<LedgerEntry>(entity =>

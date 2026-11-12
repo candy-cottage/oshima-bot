@@ -27,6 +27,7 @@ public sealed record CommandDependencies(
     IPlayerService Players,
     IEconomyService Economy,
     IRoomService Rooms,
+    IClubService Clubs,
     ILogger Logger);
 
 public interface ICommand

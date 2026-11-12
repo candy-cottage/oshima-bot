@@ -28,7 +28,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(99, registry.All.Count);
+        Assert.Equal(117, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -173,6 +173,7 @@ public sealed class EconomyCommandTests
             services.AddSingleton<IPlayerService, PlayerService>();
             services.AddSingleton<IEconomyService, EconomyService>();
             services.AddSingleton<IRoomService, RoomService>();
+            services.AddSingleton<IClubService, ClubService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();
@@ -183,6 +184,7 @@ public sealed class EconomyCommandTests
                 Provider.GetRequiredService<IPlayerService>(),
                 Provider.GetRequiredService<IEconomyService>(),
                 Provider.GetRequiredService<IRoomService>(),
+                Provider.GetRequiredService<IClubService>(),
                 NullLogger.Instance);
         }
 

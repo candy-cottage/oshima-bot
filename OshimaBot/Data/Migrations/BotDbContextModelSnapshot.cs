@@ -329,6 +329,129 @@ namespace OshimaBot.Data.Migrations
                     b.ToTable("BindCodes");
                 });
 
+            modelBuilder.Entity("OshimaBot.Data.Entities.Club", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Funds")
+                        .HasColumnType("REAL");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("MasterUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NeedApproval")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notice")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("Clubs");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Entities.ClubApplication", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AppliedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ClubId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ClubApplications");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Entities.ClubInvite", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ClubId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("InvitedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ClubId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ClubInvites");
+                });
+
+            modelBuilder.Entity("OshimaBot.Data.Entities.ClubMember", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ClubId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Contribution")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("JoinedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("ClubMembers");
+                });
+
             modelBuilder.Entity("OshimaBot.Data.Entities.DailyQuest", b =>
                 {
                     b.Property<long>("UserId")
