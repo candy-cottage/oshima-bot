@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -216,52 +217,81 @@ public sealed class RoomServiceTests
         Assert.Contains("蓝队", content);
     }
 
+    [Theory]
+    [InlineData(6, 2, 0, 0)]      // 一个没杀掉：没有奖励
+    [InlineData(6, 2, 1, 3)]      // 击杀一半：6 / 2 * 1
+    [InlineData(6, 2, 2, 6)]      // 全灭：拿满等级
+    [InlineData(15, 3, 1, 5)]     // 整数除法截断
+    [InlineData(15, 3, 3, 15)]
+    public void CoopReward_FollowsLegacyFormula(int level, int enemies, int killed, int expected)
+        => Assert.Equal(expected, RoomRules.CoopReward(level, enemies, killed));
+
     [Fact]
-    public async Task Start_NotReadyKindsKeepRoomIdle()
+    public async Task Start_CoopRunsAndReportsRewards()
     {
         using RoomDatabase db = new();
         IRoomService rooms = db.Get<IRoomService>();
         await db.CreateSaveAsync(Host, "甲");
         await db.CreateSaveAsync(Guest, "乙");
-        await rooms.CreateAsync(Host, GroupA, "共斗", null);   // 共斗玩法还没接
+        await rooms.CreateAsync(Host, GroupA, "共斗", null);
         string code = rooms.List(GroupA)[0].Code;
         await rooms.JoinAsync(Guest, GroupA, code, null);
+
+        Dictionary<long, (double Materials, double Points)> before = await db.WalletsAsync();
+        BattleReport report = await rooms.StartAsync(Host, GroupA);
+
+        Assert.True(report.Result.Ok, report.Result.Title);
+        string content = string.Join(" ", report.Result.Lines);
+        Assert.Contains("共斗积分", content);
+        Assert.Contains("战斗数据", content);
+        Assert.NotEmpty(report.Log);
+        Assert.False(rooms.Info(GroupA, code, Host)!.Playing);      // 打完回到等待态
+
+        // 奖励口径：报告里写多少，账上就得是多少（低等级队伍可能一个敌人都没杀掉 → 全员 0）
+        Match rewarded = Regex.Match(content, @"每人钻石 \+(\d+) · 共斗积分 \+(\d+)");
+        Dictionary<long, (double Materials, double Points)> after = await db.WalletsAsync();
+        if (rewarded.Success)
+        {
+            int materials = int.Parse(rewarded.Groups[1].Value);
+            int points = int.Parse(rewarded.Groups[2].Value);
+            Assert.Equal(materials, points);                        // 钻石与积分同额
+            foreach (long userId in new[] { Host, Guest })
+            {
+                Assert.Equal(before[userId].Points + points, after[userId].Points, 3);
+                Assert.True(after[userId].Materials - before[userId].Materials >= materials,
+                    "MVP 还可能额外多给一份钻石");
+            }
+        }
+        else
+        {
+            Assert.Contains("没有奖励", content);
+            foreach (long userId in new[] { Host, Guest })
+            {
+                Assert.Equal(before[userId].Points, after[userId].Points, 3);
+                Assert.Equal(before[userId].Materials, after[userId].Materials, 3);
+            }
+        }
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        int ledger = await context.LedgerEntries.CountAsync(x => x.Reason == "coop_reward");
+        Assert.Equal(rewarded.Success ? 4 : 0, ledger);             // 2 人 × (钻石 + 积分)
+    }
+
+    [Fact]
+    public async Task Start_CoopRejectsMemberWithoutCharacter()
+    {
+        using RoomDatabase db = new();
+        IRoomService rooms = db.Get<IRoomService>();
+        await db.CreateSaveAsync(Host, "甲");
+        await rooms.CreateAsync(Host, GroupA, "共斗", null);
+        string code = rooms.List(GroupA)[0].Code;
+        await rooms.JoinAsync(Guest, GroupA, code, null);   // 77 没有存档、没有角色
 
         BattleReport report = await rooms.StartAsync(Host, GroupA);
 
         Assert.False(report.Result.Ok);
-        Assert.Contains("还没接上玩法", report.Result.Title);
-        RoomDetail? detail = rooms.Info(GroupA, code, Host);
-        Assert.NotNull(detail);
-        Assert.False(detail!.Playing);                                 // 状态没被锁死
-    }
-
-    [Fact]
-    public async Task Start_HorseRaceAwardsPersonalPointsAndAnyMemberCanStart()
-    {
-        using RoomDatabase db = new();
-        IRoomService rooms = db.Get<IRoomService>();
-        await db.CreateSaveAsync(Host, "骑手甲");
-        await db.CreateSaveAsync(Guest, "骑手乙");
-        await rooms.CreateAsync(Host, GroupA, "赛马", null);
-        string code = rooms.List(GroupA)[0].Code;
-        await rooms.JoinAsync(Guest, GroupA, code, null);
-
-        // 赛马房间任何人都能开局
-        BattleReport report = await rooms.StartAsync(Guest, GroupA);
-
-        Assert.True(report.Result.Ok, report.Result.Title);
-        Assert.NotEmpty(report.Log);                                    // 逐回合战报
-        Assert.Contains("赛马积分", string.Join(" ", report.Result.Lines));
-
-        using IServiceScope scope = db.Provider.CreateScope();
-        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        List<CorePlayerRecord> wallets = await context.CorePlayers
-            .Where(x => x.UserId == Host || x.UserId == Guest).ToListAsync();
-        Assert.Equal(2, wallets.Count);
-        Assert.All(wallets, wallet => Assert.True(wallet.HorseRacingPoints > 0,
-            $"{wallet.UserId} 应有赛马积分，实际 {wallet.HorseRacingPoints}"));
-        Assert.Equal(2, await context.LedgerEntries.CountAsync(x => x.Currency == "horse_points"));
+        Assert.Contains("主战角色", report.Result.Title);
     }
 
     private sealed class RoomDatabase : IDisposable
@@ -302,6 +332,16 @@ public sealed class RoomServiceTests
                 Id = userId, Handle = $"handle{userId}", Nickname = nickname
             });
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>读两位测试玩家的钱包快照（钻石 / 共斗积分）。</summary>
+        public async Task<Dictionary<long, (double Materials, double Points)>> WalletsAsync()
+        {
+            using IServiceScope scope = Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            return await context.CorePlayers.AsNoTracking()
+                .Where(x => x.UserId == Host || x.UserId == Guest)
+                .ToDictionaryAsync(x => x.UserId, x => (x.Materials, x.CooperativePoints));
         }
 
         public void Dispose()

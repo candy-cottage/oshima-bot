@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OshimaBot.Data;
 using OshimaBot.Game.Combat;
+using OshimaBot.Game.Services;
 using FunGame.Core.Library.Constant;
 using CoreCharacter = FunGame.Core.Entity.Character;
 using CoreTeam = FunGame.Core.Entity.Team;
@@ -341,6 +342,7 @@ public sealed class RoomService(
             return room.Kind switch
             {
                 RoomKind.HorseRacing => await RunHorseRaceAsync(room, members, cancellationToken),
+                RoomKind.Cooperative => await RunCoopRoomAsync(room, members, cancellationToken),
                 RoomKind.Mix => await RunMixRoomAsync(room, members, cancellationToken),
                 RoomKind.Team => await RunTeamRoomAsync(room, members, cancellationToken),
                 _ => BattleReport.Empty(ActionResult.Fail("玩法尚未接入", "没有开始游戏", "后续切片会补上", "/帮助"))
@@ -459,6 +461,151 @@ public sealed class RoomService(
         await db.SaveChangesAsync(ct);
         return total;
     }
+
+    /// <summary>
+    /// 共斗（旧版 <c>Cooperative.RunCooperativeGame</c>）：房间成员各出自家的主战角色组一队，
+    /// 一起去打一波按平均等级 +5 生成的敌人。
+    /// <para>旧版三个口径照搬：敌人数量 = 参战人数、胜利发 <c>普通等级</c> 的钻石与共斗积分、
+    /// 失败按「击杀数 / 敌人总数」折算；MVP 额外拿一份钻石。</para>
+    /// <para>旧版还有「主战 HP &lt; 10% 不许进场」的门槛——本作角色没有持久 HP（只在战斗内存在），
+    /// 这条门槛丢掉，改为要求每位成员都有主战角色，避免有人白嫖战绩。</para>
+    /// </summary>
+    private async Task<BattleReport> RunCoopRoomAsync(
+        GameRoom room, IReadOnlyList<RoomMemberInfo> members, CancellationToken ct)
+    {
+        List<(RoomMemberInfo Member, CoreCharacter Fighter)> fighters = await LoadFightersAsync(members, ct);
+        List<string> missing = [.. members
+            .Where(member => fighters.All(fighter => fighter.Member.UserId != member.UserId))
+            .Select(member => member.Display)];
+        if (missing.Count > 0)
+        {
+            return BattleReport.Empty(ActionResult.Fail("有成员还没有主战角色", "没有开始讨伐",
+                $"{string.Join("、", missing)} 先用 /注册 建档或 /抽卡 拿角色，也可以让他先 /退出房间",
+                "/我的角色"));
+        }
+        if (fighters.Count == 0)
+        {
+            return BattleReport.Empty(ActionResult.Fail("没有可出战的角色", "没有开始讨伐",
+                "房间里没有人有主战角色", "/我的角色"));
+        }
+
+        // 动态难度：旧版 cLevel = 平均等级 + 5，技能/魔法/普攻等级按 7 / 9 折算。
+        int coopLevel = Math.Max(1, (int)fighters.Average(x => x.Fighter.Level) + 5);
+        int skillLevel = Math.Max(1, coopLevel / 7);
+        int magicLevel = Math.Max(1, coopLevel / 9);
+        int attackLevel = magicLevel;
+
+        Random local = GameplayRules.NewRandom(random);
+        List<CoreCharacter> enemies = [];
+        for (int i = 0; i < fighters.Count; i++)
+        {
+            CoreCharacter template = FunGameService.Characters[local.Next(FunGameService.Characters.Count)];
+            CoreCharacter enemy = CombatCharacterFactory.Build(template, coopLevel);
+            string baseName = $"共斗敌人·{template.Name}";
+            int same = enemies.Count(x => x.Name.StartsWith(baseName, StringComparison.Ordinal));
+            enemy.Name = same == 0 ? baseName : $"{baseName}{Duplicates(same)}";
+            enemy.NormalAttack.Level = attackLevel;
+            BossEnhance.EquipRedGear(enemy, local);
+            BossEnhance.EquipMagicCardPack(enemy, local, magicLevel);
+            BossEnhance.AddBossSkills(enemy, local, skillLevel);
+            BossEnhance.ApplyDynamics(enemy, coopLevel, "共斗敌人被动");
+            enemy.Recovery();
+            enemies.Add(enemy);
+        }
+
+        BattleResult battle = FunGameActionQueue.RunTeam(
+            [new CoreTeam("讨伐队", [.. fighters.Select(x => x.Fighter)]), new CoreTeam("共斗敌人", enemies)],
+            new BattleOptions { MaxRound = 200, UseRoundRewards = false });
+
+        bool win = enemies.All(enemy => enemy.HP <= 0);
+        int killed = enemies.Count(enemy => enemy.HP <= 0);
+        int award = RoomRules.CoopReward(coopLevel, enemies.Count, killed);
+
+        // MVP 取技术得分最高的参战角色（旧版口径）。
+        CoreCharacter? mvp = battle.Queue.CharacterStatistics
+            .Where(entry => fighters.Any(fighter => ReferenceEquals(fighter.Fighter, entry.Key)))
+            .OrderByDescending(entry => entry.Value.Rating)
+            .Select(entry => entry.Key)
+            .FirstOrDefault();
+        // 一个敌人都没杀掉就不发 MVP 奖——旧版在这里也会发，但「全员没奖励、MVP 却拿钻石」不合理。
+        int mvpBonus = mvp is null || award <= 0 ? 0 : coopLevel / 5;
+
+        await AwardCoopRewardsAsync(room.Code, fighters, award, mvp, mvpBonus, ct);
+
+        List<string> lines =
+        [
+            $"- 房间：[ {room.Code} ] {RoomRules.Name(room.Kind)}　敌人 {enemies.Count} 名（Lv.{coopLevel}）",
+            $"- 我方：{string.Join("、", fighters.Select(x => $"{x.Member.Display} Lv.{x.Fighter.Level}"))}",
+            win
+                ? $"- 结果：全员击杀成功（{battle.Rounds} 回合）· 每人钻石 +{award} · 共斗积分 +{award}"
+                : killed > 0
+                    ? $"- 结果：只击杀 {killed}/{enemies.Count} 名（{battle.Rounds} 回合）· 每人钻石 +{award} · 共斗积分 +{award}"
+                    : $"- 结果：一个敌人都没杀掉（{battle.Rounds} 回合）· 没有奖励",
+            mvp is null || mvpBonus <= 0
+                ? "- MVP：本场无有效统计"
+                : $"- MVP：{NameOf(fighters, mvp)}　额外钻石 +{mvpBonus}",
+            "- 战斗数据："
+        ];
+        lines.AddRange(fighters
+            .Select(fighter => (fighter.Member, fighter.Fighter))
+            .Select(entry =>
+            {
+                var stats = battle.Queue.CharacterStatistics
+                    .Where(pair => ReferenceEquals(pair.Key, entry.Fighter))
+                    .Select(pair => pair.Value)
+                    .FirstOrDefault();
+                string score = stats is null
+                    ? "无统计"
+                    : $"评分 {stats.Rating:0.0#} · 伤害 {stats.TotalDamage:0.0} · 击杀 {stats.Kills} · 死亡 {stats.Deaths}";
+                return $"  · {entry.Member.Display}（{entry.Fighter.Name}）：{score}";
+            }));
+        if (!win)
+        {
+            lines.Add("- 敌人按队伍平均等级 +5 强化（红装 + 增益特效），等级低时很难打，先 /练级 或换更强的装备再来");
+        }
+        lines.Add("- 共斗积分可以在 /商店7 兑换奖券与突破材料");
+
+        return new BattleReport(
+            ActionResult.Success(win ? "🐉 共斗胜利" : "🛡️ 共斗失败",
+                win ? $"钻石 +{award} · 共斗积分 +{award}" : $"击杀 {killed}/{enemies.Count} · 钻石 +{award}",
+                lines, ["/开始游戏", "/商店7", "/房间信息"]),
+            battle.Log);
+    }
+
+    /// <summary>共斗结算：每人一份钻石 + 共斗积分，MVP 再加一份钻石；都走 ledger。</summary>
+    private async Task AwardCoopRewardsAsync(
+        string roomCode, List<(RoomMemberInfo Member, CoreCharacter Fighter)> fighters,
+        int award, CoreCharacter? mvp, int mvpBonus, CancellationToken ct)
+    {
+        if (award <= 0 && mvpBonus <= 0) return;
+
+        using IServiceScope scope = scopeFactory.CreateScope();
+        BotDbContext db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        foreach ((RoomMemberInfo member, CoreCharacter fighter) in fighters)
+        {
+            PlayerAccount account = await PlayerService.EnsureAsync(db, member.UserId, ct);
+            if (award > 0)
+            {
+                PlayerService.ApplyCurrency(db, account, award, "diamonds", "coop_reward", "room", roomCode);
+                PlayerService.ApplyCurrency(db, account, award, "coop_points", "coop_reward", "room", roomCode);
+            }
+            if (mvpBonus > 0 && mvp is not null && ReferenceEquals(fighter, mvp))
+            {
+                PlayerService.ApplyCurrency(db, account, mvpBonus, "diamonds", "coop_mvp", "room", roomCode);
+            }
+            account.UpdatedAtUtc = clock.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>同名敌人的序号后缀（旧版用希腊字母，这里用更直观的中文序数）。</summary>
+    private static string Duplicates(int index) => index switch
+    {
+        1 => "·二",
+        2 => "·三",
+        3 => "·四",
+        _ => $"·{index + 1}"
+    };
 
     private async Task<BattleReport> RunMixRoomAsync(
         GameRoom room, IReadOnlyList<RoomMemberInfo> members, CancellationToken ct)

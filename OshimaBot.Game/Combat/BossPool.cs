@@ -162,12 +162,11 @@ public static class BossPool
         boss.Name = $"{template.Name}·讨伐目标";
         boss.NormalAttack.Level = attackLevel;
 
-        EquipRedGear(boss, random);
-        EquipMagicCardPack(boss, random, magicLevel);
-        AddConsumables(boss, random);
-        AddBossSkills(boss, random, skillLevel);
-
-        ApplyDynamicsEffect(boss, level);
+        BossEnhance.EquipRedGear(boss, random);
+        BossEnhance.EquipMagicCardPack(boss, random, magicLevel);
+        BossEnhance.AddConsumables(boss, random);
+        BossEnhance.AddBossSkills(boss, random, skillLevel);
+        BossEnhance.ApplyDynamics(boss, level);
 
         // 旧版以 Recovery() 收尾：让 MaxHP/MaxMP 按新装备与加成重算，并回满状态。
         boss.Recovery();
@@ -179,112 +178,5 @@ public static class BossPool
             Level = level,
             Character = boss
         };
-    }
-
-    /// <summary>
-    /// 旧版把强化做成挂在「BOSS专属被动」上的**技能特效**（`DynamicsEffect` + `ExMDF`），
-    /// 而不是直接改角色字段——这样角色信息里能看到加成，且随重建/复活一起恢复，符合 Core 的特效体系。
-    /// <para>**带 2 的参数（exhp2/exmp2）是百分比加成**，对应 `Ex*Percentage`；不带 2 的 exatk/exdef 才是加值。</para>
-    /// </summary>
-    private static void ApplyDynamicsEffect(CoreCharacter boss, int level)
-    {
-        Skill carrier = new OpenSkill(0, "BOSS专属被动", [], boss);
-
-        DynamicsEffect dynamics = new(carrier, new Dictionary<string, object>
-        {
-            ["exatk"] = 3.4 * level,       // 加值
-            ["exdef"] = 3.4 * level,       // 加值
-            ["exhp2"] = 1.5,               // 百分比
-            ["exmp2"] = 0.8,               // 百分比
-            ["exhr"] = 0.15 * level,
-            ["exmr"] = 0.1 * level,
-            ["excr"] = 0.35,
-            ["excrd"] = 0.9,
-            ["excdr"] = 0.25,
-            ["exacc"] = 0.25
-        }, boss);
-        HookContext context = new(null, boss);
-        dynamics.OnEffectGained(context);
-        carrier.Effects.Add(dynamics);
-
-        // 旧版另挂的 ExMDF：mdftype=0（MagicType.None）、mdfvalue=0.15。
-        ExMDF exMdf = new(carrier, new Dictionary<string, object>
-        {
-            ["mdftype"] = (int)MagicType.None,
-            ["mdfvalue"] = 0.15
-        }, boss);
-        exMdf.OnEffectGained(context);
-        carrier.Effects.Add(exMdf);
-
-        boss.Skills.Add(carrier);
-    }
-
-    /// <summary>旧版给 Boss 穿 5 件 Red 品质装备（武器/防具/鞋子/饰品×2），每类随机挑一件。</summary>
-    private static void EquipRedGear(CoreCharacter boss, Random random)
-    {
-        ItemType[] slots = [ItemType.Weapon, ItemType.Armor, ItemType.Shoes, ItemType.Accessory, ItemType.Accessory];
-        foreach (ItemType type in slots)
-        {
-            List<Item> pool = [.. FunGameService.AllItems
-                .Where(i => i.ItemType == type && i.QualityType == QualityType.Red)];
-            if (pool.Count == 0) continue;
-
-            Item gear = pool[random.Next(pool.Count)].Copy();
-            gear.Guid = Guid.NewGuid();
-            gear.IsLock = true;
-            boss.Equip(gear);
-        }
-    }
-
-    /// <summary>旧版给 Boss 挂 5 张魔法卡合成的金色卡包，卡内魔法等级按 <paramref name="magicLevel"/> 折算。</summary>
-    private static void EquipMagicCardPack(CoreCharacter boss, Random random, int magicLevel)
-    {
-        List<Item> cards = FunGameService.GenerateMagicCards(random, 5, QualityType.Red);
-        Item? pack = FunGameService.ConflateMagicCardPack(random, cards);
-        if (pack is null) return;
-
-        pack.QualityType = QualityType.Gold;
-        foreach (Skill magic in pack.Skills.Magics) magic.Level = magicLevel;
-        pack.Guid = Guid.NewGuid();
-        pack.IsLock = true;
-        boss.Equip(pack);
-    }
-
-    /// <summary>旧版在非 Unit 场景下给 Boss 塞 2 个消耗品（仅当背包未满 5 格）。</summary>
-    private static void AddConsumables(CoreCharacter boss, Random random)
-    {
-        if (boss.Items.Count >= 5) return;
-
-        List<Item> pool = [.. FunGameService.Items.Where(i => i.ItemType == ItemType.Consumable)];
-        if (pool.Count == 0) return;
-
-        for (int i = 0; i < 2; i++)
-        {
-            Item consumable = pool[random.Next(pool.Count)].Copy();
-            consumable.Guid = Guid.NewGuid();
-            boss.Items.Add(consumable);
-        }
-    }
-
-    /// <summary>旧版随机挂一个被动与一个绝招（等级按 cutRate 折算）。</summary>
-    private static void AddBossSkills(CoreCharacter boss, Random random, int skillLevel)
-    {
-        List<Skill> passives = [.. FunGameService.PassiveSkills, .. FunGameService.CommonPassiveSkills];
-        if (passives.Count > 0)
-        {
-            Skill passive = passives[random.Next(passives.Count)].Copy();
-            passive.Character = boss;
-            passive.Level = 1;
-            boss.Skills.Add(passive);
-        }
-
-        List<Skill> supers = [.. FunGameService.SuperSkills, .. FunGameService.CommonSuperSkills];
-        if (supers.Count > 0)
-        {
-            Skill super = supers[random.Next(supers.Count)].Copy();
-            super.Character = boss;
-            super.Level = skillLevel;
-            boss.Skills.Add(super);
-        }
     }
 }

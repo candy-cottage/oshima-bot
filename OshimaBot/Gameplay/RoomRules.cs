@@ -36,12 +36,10 @@ public static class RoomRules
     public static int MaxUsers(RoomKind kind) => Kinds.First(x => x.Kind == kind).MaxUsers;
 
     /// <summary>
-    /// 玩法是否已经接入。<see cref="RoomKind.Mix"/> / <see cref="RoomKind.Team"/> 复用
-    /// <c>FunGameActionQueue</c> 的混战与分队战（旧版这两条其实是空壳）；
-    /// <see cref="RoomKind.HorseRacing"/> 是独立的跑马小游戏；共斗房间可以先建，开赛等后续切片。
+    /// 玩法是否已经接入：四种房间都已能开局（混战/团战走战斗队列、赛马是独立小游戏、共斗是组队讨伐）。
+    /// 保留这个开关，后续新增房型（如赛事竞猜）可以先把房间建出来再接玩法。
     /// </summary>
-    public static bool IsPlayable(RoomKind kind)
-        => kind is RoomKind.Mix or RoomKind.Team or RoomKind.HorseRacing;
+    public static bool IsPlayable(RoomKind kind) => true;
 
     /// <summary>房号字符集：去掉容易看错的 0/O/1/I。</summary>
     public const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -61,6 +59,19 @@ public static class RoomRules
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 共斗奖励（旧版 <c>Cooperative</c>）：全灭敌人给 <paramref name="coopLevel"/>；
+    /// 没打完则按「击杀数 / 敌人数」折算（整数除法，可能为 0）。
+    /// </summary>
+    public static int CoopReward(int coopLevel, int enemyCount, int killed)
+    {
+        int level = Math.Max(0, coopLevel);
+        if (enemyCount <= 0) return 0;
+        int safeKilled = Math.Clamp(killed, 0, enemyCount);
+        if (safeKilled >= enemyCount) return level;
+        return level / enemyCount * safeKilled;
     }
 
     public static string KindHint()
