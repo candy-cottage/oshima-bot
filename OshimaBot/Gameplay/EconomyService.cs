@@ -721,6 +721,11 @@ public sealed class EconomyService(
             int duration = Math.Clamp(minutes, 1, GameplayRules.ForgeMaxMinutes);
             PlayerService.ApplyCurrency(db, state, -GameplayRules.ForgeCostCredits, "credits", "forge_start", "forge", userId.ToString(CultureInfo.InvariantCulture));
             PlayerService.Consume(db, material, GameplayRules.ForgeMaterialQuantity);
+
+            // 旧版按提交材料数给锻造积分（count × 0.3），是锻造商店与锻造榜的唯一来源。
+            double forgePoints = GameplayRules.ForgeMaterialQuantity * GameplayRules.ForgePointsPerMaterial;
+            PlayerService.ApplyCurrency(db, state, forgePoints, "forge_points", "forge_start", "forge",
+                userId.ToString(CultureInfo.InvariantCulture));
             DateTime now = clock.UtcNow;
             db.ForgingJobs.Add(new ForgingJob
             {
@@ -731,6 +736,8 @@ public sealed class EconomyService(
             return ActionResult.Success("🔨 开始锻造",
                 $"{name} ×{GameplayRules.ForgeMaterialQuantity} · {duration} 分钟后结算",
                 [$"- 消耗金币 {GameplayRules.ForgeCostCredits}，剩余 {state.Credits}",
+                    $"- 锻造积分 +{forgePoints:0.##}（提交 {GameplayRules.ForgeMaterialQuantity} 份材料，每份 "
+                    + $"{GameplayRules.ForgePointsPerMaterial:0.##} 分）",
                     $"- 成品品质：{GameplayRules.QualityName(GameplayRules.ForgeOutputQuality)}"],
                 ["/收取锻造", "/背包"]);
         }, cancellationToken);
@@ -1199,8 +1206,34 @@ public sealed class EconomyService(
             {
                 "level" or "等级" => "level",
                 "points" or "战绩" => "points",
+                "horse" or "赛马" or "赛马积分" => "horse",
+                "coop" or "共斗" or "共斗积分" => "coop",
+                "forge" or "锻造" or "锻造积分" => "forge",
                 _ => "credits"
             };
+
+            // 三种积分榜都直接读钱包（CorePlayers 上的三个积分字段），与赛马/共斗/锻造的发放口径同源。
+            if (normalized is "horse" or "coop" or "forge")
+            {
+                List<CorePlayerRecord> pointWallets = await db.CorePlayers.AsNoTracking().ToListAsync(ct);
+                List<(long UserId, double Value)> ranked = normalized switch
+                {
+                    "horse" => [.. pointWallets.Where(x => x.HorseRacingPoints > 0)
+                        .Select(x => (x.UserId, x.HorseRacingPoints))
+                        .OrderByDescending(x => x.Item2).Take(GameplayRules.RankingTop)],
+                    "coop" => [.. pointWallets.Where(x => x.CooperativePoints > 0)
+                        .Select(x => (x.UserId, x.CooperativePoints))
+                        .OrderByDescending(x => x.Item2).Take(GameplayRules.RankingTop)],
+                    _ => [.. pointWallets.Where(x => x.ForgePoints > 0)
+                        .Select(x => (x.UserId, x.ForgePoints))
+                        .OrderByDescending(x => x.Item2).Take(GameplayRules.RankingTop)]
+                };
+                List<long> pointIds = ranked.Select(x => x.UserId).ToList();
+                Dictionary<long, string> pointHandles = await db.Users.AsNoTracking()
+                    .Where(x => pointIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
+                return ranked.Select((row, i) => new RankEntry(i + 1,
+                    pointHandles.GetValueOrDefault(row.UserId, $"旅人{row.UserId}"), row.Value)).ToArray();
+            }
             if (normalized == "points")
             {
                 List<ActivityProgress> rows = await db.ActivityProgress.AsNoTracking()

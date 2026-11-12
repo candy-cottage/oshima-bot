@@ -37,6 +37,7 @@ public static class CommandCatalog
         "offers", "offer", "offer-accept", "offer-cancel",
         "forge", "forge-claim", "instance", "instance-claim",
         "duel", "full-duel", "team-duel", "boss", "boss-info", "boss-team", "rank",
+        "rank-horse", "rank-coop", "rank-forge",
         // ---- 多人房间 ----
         "room-create", "room-join", "horse-join", "room-quit", "room-start", "room-list", "room-info"
     ];
@@ -567,7 +568,7 @@ public static class CommandCatalog
 
         "rank" => new DelegateCommand(
             key: "rank", name: "排行榜", aliases: ["rank", "ranklist"], usage: "/排行榜 [金币|等级|战绩]",
-            description: "查看服务器排行榜", group: CommandGroups.Economy,
+            description: "查看排行榜：金币 / 等级 / 战绩 / 赛马 / 共斗 / 锻造", group: CommandGroups.Economy,
             handler: context => RankAsync(deps, context)),
 
         // ---- 多人房间（旧版 OnlineService）：按群隔离，房号 7 位，空闲 10 分钟解散 ----
@@ -647,6 +648,21 @@ public static class CommandCatalog
             key: "room-info", name: "房间信息", aliases: ["我的房间"], usage: "/房间信息 [房号]",
             description: "查看成员与状态；不给房号就看自己所在的房间", group: CommandGroups.Economy,
             handler: context => Task.FromResult(RoomInfo(deps, context))),
+
+        "rank-horse" => new DelegateCommand(
+            key: "rank-horse", name: "赛马排行榜", aliases: ["赛马积分榜"], usage: "/赛马排行榜",
+            description: "按赛马积分排行（/开始游戏 跑赛马来攒）", group: CommandGroups.Economy,
+            handler: context => RankAsync(deps, context, "horse")),
+
+        "rank-coop" => new DelegateCommand(
+            key: "rank-coop", name: "共斗排行榜", aliases: ["共斗积分榜"], usage: "/共斗排行榜",
+            description: "按共斗积分排行（共斗房间来攒）", group: CommandGroups.Economy,
+            handler: context => RankAsync(deps, context, "coop")),
+
+        "rank-forge" => new DelegateCommand(
+            key: "rank-forge", name: "锻造排行榜", aliases: ["锻造积分榜"], usage: "/锻造排行榜",
+            description: "按锻造积分排行（/锻造 来攒）", group: CommandGroups.Economy,
+            handler: context => RankAsync(deps, context, "forge")),
 
         // ---- 查询 ----
         "magic-card" => new DelegateCommand(
@@ -1185,14 +1201,20 @@ public static class CommandCatalog
             context.Page, "/报价列表", ["/市场", "/背包"]);
     }
 
-    private static async Task<BotReply> RankAsync(CommandDependencies deps, CommandContext context)
+    /// <param name="forcedBoard">旧版有独立的「赛马/共斗/锻造排行榜」指令，它们固定看对应积分榜。</param>
+    private static async Task<BotReply> RankAsync(
+        CommandDependencies deps, CommandContext context, string? forcedBoard = null)
     {
-        string board = context.FirstArgument ?? "credits";
+        string board = forcedBoard ?? context.FirstArgument ?? "credits";
         IReadOnlyList<RankEntry> ranks = await deps.Economy.GetRankingAsync(
             board, context.CancellationToken);
         List<string> lines = ranks.Select(rank =>
-            $"- @{rank.Index} {rank.Handle}　{rank.Value}").ToList();
-        if (lines.Count == 0) lines.Add("- 榜单还没有数据，先去 /决斗 或 /Boss 攒点战绩");
+            $"- @{rank.Index} {rank.Handle}　{rank.Value:0.##}").ToList();
+        if (lines.Count == 0)
+        {
+            lines.Add("- 榜单还没有数据：金币/等级靠日常养成，战绩靠 /决斗 与 /Boss，"
+                + "赛马/共斗积分靠对应的房间玩法，锻造积分靠 /锻造");
+        }
         return CommandReplies.ListPage("🏆 排行榜", GameplayRules.RankingBoardName(board), lines,
             context.Page, $"/排行榜 {board}", ["/决斗", "/Boss", "/状态"]);
     }

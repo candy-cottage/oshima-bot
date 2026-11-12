@@ -213,6 +213,15 @@ public sealed class EconomyTests
         await AddMaterialAsync(db, Seller, 3);                // @4
 
         Assert.True((await economy.ForgeAsync(Seller, 4, 1)).Ok);
+
+        // 锻造积分是锻造商店与锻造榜的唯一来源：提交材料数 × 0.3
+        using (IServiceScope forgeScope = db.Provider.CreateScope())
+        {
+            BotDbContext forgeContext = forgeScope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord wallet = await forgeContext.CorePlayers.FirstAsync(x => x.UserId == Seller);
+            Assert.Equal(GameplayRules.ForgeMaterialQuantity * GameplayRules.ForgePointsPerMaterial,
+                wallet.ForgePoints, 3);
+        }
         Assert.False((await economy.ClaimForgeAsync(Seller)).Ok);
         await ExpireAsync(db, "forge");
         Assert.True((await economy.ClaimForgeAsync(Seller)).Ok);
@@ -231,6 +240,48 @@ public sealed class EconomyTests
         Assert.True(levelRow.Level > 1 || levelRow.Exp > 0,
             $"秘境结算后角色应有经验或升级，实际 Lv.{levelRow.Level} / Exp {levelRow.Exp}");
         Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "instance_start") >= 1);
+    }
+
+    [Fact]
+    public async Task Ranking_HasHorseCoopAndForgeBoards()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await players.GetSnapshotAsync(Buyer);
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord seller = await context.CorePlayers.FirstAsync(x => x.UserId == Seller);
+            seller.HorseRacingPoints = 30;
+            seller.CooperativePoints = 4;
+            seller.ForgePoints = 7;
+            CorePlayerRecord buyer = await context.CorePlayers.FirstAsync(x => x.UserId == Buyer);
+            buyer.HorseRacingPoints = 10;
+            buyer.CooperativePoints = 9;
+            await context.SaveChangesAsync();
+        }
+
+        IReadOnlyList<RankEntry> horse = await economy.GetRankingAsync("赛马");
+        Assert.Equal(2, horse.Count);
+        Assert.Equal(30, horse[0].Value, 3);
+        Assert.Equal(10, horse[1].Value, 3);
+        Assert.Equal("赛马积分榜", GameplayRules.RankingBoardName("赛马"));
+
+        IReadOnlyList<RankEntry> coop = await economy.GetRankingAsync("共斗");
+        Assert.Equal(9, coop[0].Value, 3);                 // 共斗榜按积分降序，买家在前
+        Assert.Equal("共斗积分榜", GameplayRules.RankingBoardName("coop"));
+
+        IReadOnlyList<RankEntry> forge = await economy.GetRankingAsync("锻造");
+        Assert.Single(forge);                              // 只有卖家有锻造积分
+        Assert.Equal(7, forge[0].Value, 3);
+        Assert.Equal("锻造积分榜", GameplayRules.RankingBoardName("锻造"));
+
+        // 积分榜不混入金币榜
+        IReadOnlyList<RankEntry> credits = await economy.GetRankingAsync("credits");
+        Assert.NotEmpty(credits);
     }
 
     [Fact]

@@ -350,6 +350,12 @@ public static class GameplayRules
     public const int ForgeOutputQuality = 3;
     public const int ForgeMaxMinutes = 120;
 
+    /// <summary>
+    /// 锻造积分 = 提交材料数 × 0.3（旧版 <c>count * 0.3</c>）。
+    /// <para>旧版还有失败补偿 0.2/材料、超量补偿，这些依赖「地区材料 + 品质门槛」，等 ② 锻造切片再补。</para>
+    /// </summary>
+    public const double ForgePointsPerMaterial = 0.3;
+
     public const int InstanceCostCredits = 80;
     public const int InstanceDefaultMinutes = 3;
     public const int InstanceRewardExp = 200;
@@ -467,6 +473,9 @@ public static class GameplayRules
     {
         "level" or "等级" => "等级榜",
         "points" or "战绩" => "战绩榜",
+        "horse" or "赛马" or "赛马积分" => "赛马积分榜",
+        "coop" or "共斗" or "共斗积分" => "共斗积分榜",
+        "forge" or "锻造" or "锻造积分" => "锻造积分榜",
         _ => "金币榜"
     };
 
