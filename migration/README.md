@@ -29,7 +29,8 @@ python migration/gen_baseline.py
 ```
 
 旧版目录默认是 `C:/Users/mili/milimoe/FunGame.Legacy/OshimaGameModule`，
-其他机器上设置 `OSHIMA_LEGACY_ROOT` 即可。找不到旧版目录时，`gen_matrix.py`
+引擎源码默认是 `C:/Users/mili/milimoe/FunGame.Legacy/FunGame.Core`（只用于核对派生值公式，
+基线指纹不包含它）。其他机器上分别设置 `OSHIMA_LEGACY_ROOT` / `OSHIMA_CORE_SOURCE` 即可。找不到旧版目录时，`gen_matrix.py`
 会跳过命令集合与顺序比对并给出警告，其余结构校验照常执行（CI 依赖这个降级行为）。
 
 ## 校验规则

@@ -20,6 +20,10 @@ REPO = HERE.parent
 LEGACY = Path(os.environ.get(
     "OSHIMA_LEGACY_ROOT",
     r"C:/Users/mili/milimoe/FunGame.Legacy/OshimaGameModule"))
+# 旧版引用的引擎包对应的源码（可选）：有它才能把「派生属性」这类值对拍清楚。
+CORE_SOURCE = Path(os.environ.get(
+    "OSHIMA_CORE_SOURCE",
+    r"C:/Users/mili/milimoe/FunGame.Legacy/FunGame.Core"))
 OUT_MD = HERE / "LEGACY_BASELINE.md"
 OUT_TSV = HERE / "legacy-baseline-files.tsv"
 
@@ -35,6 +39,21 @@ KEY_FILES = [
     "OshimaServers/Model/QQBot.cs",
     "OshimaModules/Items/Collectible/幸运物.cs",
 ]
+
+
+def git_revision(repo: Path) -> tuple[str, str]:
+    """返回 (tag 描述, 短 commit)；不是 git 仓库或没有 git 时返回空串。"""
+    import subprocess
+
+    def run(*args: str) -> str:
+        try:
+            out = subprocess.run(["git", "-C", str(repo), *args],
+                                 capture_output=True, text=True, timeout=15)
+            return out.stdout.strip() if out.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    return run("describe", "--tags", "--always"), run("rev-parse", "--short", "HEAD")
 
 
 def sha256(path: Path) -> str:
@@ -126,9 +145,34 @@ def main() -> int:
     for name in sorted(deps):
         lines_out.append(f"| {name} | {', '.join(sorted(deps[name]))} |")
 
+    lines_out += ["", "## 4. 引擎源码（可选复核）", ""]
+    if CORE_SOURCE.exists():
+        tag, commit = git_revision(CORE_SOURCE)
+        lines_out += [
+            f"> 源码路径：`{CORE_SOURCE.as_posix()}`",
+            "",
+            "| 项 | 值 |",
+            "|---|---|",
+            f"| 版本 | `{tag or '未知'}` |",
+            f"| 提交 | `{commit or '未知'}` |",
+            "",
+            "引擎包本身没有源码可执行，但这份源码与 NuGet 上的同版本一致，"
+            "可以用来核对 `Character` / `Item` 这类「派生值」的公式（升级后属性、装备加成等）。",
+            "",
+            "### 版本变更记录",
+            "",
+            "| 日期 | 变更 | 原因 |",
+            "|---|---|---|",
+            "| 2026-11-14 | 旧版五个 `csproj` 的 `FunGame.Core` 从 2.1.0 升到 **2.1.1** | "
+            "与本地源码（tag 2.1.1 / `7ecb11f`「补齐核心属性百分比传导」）对齐；"
+            "旧指纹 `f1061043…` 随之作废，所有 fixture 的 `legacyBaseline` 已同步 |",
+        ]
+    else:
+        lines_out += [f"未找到引擎源码（{CORE_SOURCE.as_posix()}），跳过该节。", ""]
+
     lines_out += [
         "",
-        "## 4. 文件清单",
+        "## 5. 文件清单",
         "",
         f"共 {len(inventory)} 个文件，完整清单见 `legacy-baseline-files.tsv`"
         "（列：`path` `bytes` `lines` `sha256`）。",

@@ -107,6 +107,40 @@
 - **影响**：`库存搜索2` 的结果在新版是 `库存搜索` 的子集，玩家用一条命令就能拿到更多结果；英文名大小写不再影响命中。旧命令 `库存搜索2` 由 `LegacyAliases` 重写过来。
 - **回归保护**：`ItemFlowTests.Search_MatchesNameAndDescription`（名称命中、描述命中、无结果、大小写不敏感）。
 
+### DIV-014 旧存档的 Ex* 字段不能直接映射
+
+- **2.1.1** 的存档里 `ExSTR` 表示「额外力量固定点数」，`ExSTR2` 是同名字段下的派生百分比值（不可写）。
+- **v3** 把固定点数挪到了 `ExSTR2`，`ExSTR` 变成只读派生值（`ExSTR2 + ExSTR3`）。
+- **影响**：把 2.1.1 的 JSON 存档直接喂给 v3，`ExSTR` 会被当成只读值丢弃、`ExSTR2` 会被读成「固定点数」——
+  正是固定点数与百分比互换位置，数值会错。**本项目不导入旧 MySQL 存档**（数据已丢失），
+  但将来若做「旧存档导入工具」，必须写字段级迁移，不能靠反序列化直通。
+- **回归保护**：无（不导入旧存档）；此条用于阻止「顺手加个导入功能」时踩坑。
+
+## 引擎公式对拍（2026-11-14）
+
+旧版 NuGet 从 2.1.0 升到 **2.1.1**（tag `2.1.1` / commit `7ecb11f`「补齐核心属性百分比传导」），
+并对照了本地源码 `../FunGame.Legacy/FunGame.Core` 与 v3 的 `FunGame/FunGame.Core`。
+
+**逐条相同的部分**
+
+| 项 | 2.1.1 | v3 |
+|---|---|---|
+| `BaseHP` | `InitialHP + (Level-1)(LevelToHPFactor + HPGrowthFactor·InitialHP) + BaseSTR·STRtoHPFactor` | 同 |
+| `BaseMP` | 结构同上（MP 系数） | 同 |
+| `BaseSTR/AGI/INT` | `Initial + Growth·(Level-1)` | 同 |
+| `ATK` | `InitialATK + (Level-1)(LevelToATKFactor + ATKGrowthFactor·InitialATK)` | 同 |
+| `OnLevelUp` | 扣 EXP、受突破进度约束、`OnAttributeChanged()` + `Recovery()` | 同 |
+| 平衡常量 | 17 / 0.68 / 1.5 / 0.14 / 0.95 / 0.045 / 13 … | 同 |
+
+**只是改名、数值等价的部分（PR#207）**
+
+- 2.1.1：`ExSTR` = 固定点数（可写）、`ExSTR2` = `BaseSTR × ExSTRPercentage`（派生）、`STR = BaseSTR + ExSTR + ExSTR2`。
+- v3：`ExSTR2` = 固定点数（可写）、`ExSTR3 = BaseSTR × ExSTRPercentage`、`ExSTR = ExSTR2 + ExSTR3`。
+- HP 侧同理：2.1.1 `MaxHP = BaseHP + ExHP + ExHP2 + ExHP3`（`ExHP = (ExSTR+ExSTR2)·factor`）；
+  v3 `MaxHP = BaseHP + ExHP`（`ExHP = ExHPFromExSTR + ExHP2 + ExHP3`）。**展开后完全一致。**
+
+**由此确定**：升级/突破的属性派生值不需要「拿旧 DLL 采样」也能判定等价；真正需要注意的是**存档字段语义**（见 DIV-014）。
+
 ## 未结项
 
 | 项 | 状态 | 说明 |
@@ -115,5 +149,5 @@
 | 小队上限 3 人 vs 旧版 4 人 | **已决：恢复 4 人**（2026-11-13） | `GameplayRules.SquadSize = 4`，旧版「设置小队 1-4 个参数」对齐；`/小队` 编成页固定 4 个位置，第 5 人被拒 |
 | `GameplayRules.EquipmentSlots` 3 槽死常量 | **已删除**（2026-11-13） | 装备实际走 Core 的 6 槽，旧常量无人引用，删除以免误用 |
 | 市场手续费下限 1 | 待复核 | 见 DIV-003 |
-| Core 2.1 与 Core 3 的属性成长公式 | 未对拍 | 升级/突破的属性结算都走 Core 的 `OnLevelUp`/`OnLevelBreak`；旧版用 FunGame.Core 2.1（NuGet 包，无源码可执行），新版用 Core 3。等级上限表、经验表、突破材料表已逐条对齐，但「同一模板在 Lv.N 的 STR/HP」这类派生值没有对拍过，R2 后期需要拿旧 DLL 跑一次采样 |
+| Core 2.1 与 Core 3 的属性成长公式 | **已对拍（2026-11-14）** | 见下方「引擎公式对拍」：基础公式与平衡常量逐条相同，差异只在 `Ex*` 字段的命名，数值等价 |
 | 房间是否需要跨重启持久化 | 待决策 | 若不做，DIV-007 即为最终结论 |
