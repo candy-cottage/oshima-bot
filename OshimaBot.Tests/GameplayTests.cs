@@ -420,7 +420,7 @@ public sealed class GameplayTests
     }
 
     [Fact]
-    public async Task RenameCharacterUpdatesMainName()
+    public async Task RenameCharacterQueuesForReview()
     {
         using GameplayDatabase db = new();
         IPlayerService players = db.Get<IPlayerService>();
@@ -432,8 +432,9 @@ public sealed class GameplayTests
         ActionResult ok = await players.RenameAsync(UserId, "新名字");
         Assert.True(ok.Ok, ok.Title);
 
-        IReadOnlyList<CharacterEntry> characters = await players.GetCharactersAsync(UserId);
-        Assert.Equal("新名字", Assert.Single(characters).Name);
+        // 角色名是公开内容：提交只进队列，审核通过前名字不变（2026-11-12 用户要求）
+        Assert.NotEqual("新名字", Assert.Single(await players.GetCharactersAsync(UserId)).Name);
+        Assert.Equal("新名字", Assert.Single(await players.MyRenameRequestsAsync(UserId)).RequestedName);
     }
 
     [Fact]

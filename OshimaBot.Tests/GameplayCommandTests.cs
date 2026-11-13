@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(154, registry.All.Count);
+        Assert.Equal(155, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -162,6 +162,25 @@ public sealed class GameplayCommandTests
         Assert.Contains("人数不足", await RouteGroupAsync(router, "/开始游戏"));
         Assert.Contains("已离开房间", await RouteGroupAsync(router, "/退出房间"));
         Assert.Contains("暂无房间", await RouteGroupAsync(router, "/房间列表"));
+    }
+
+    [Fact]
+    public async Task Router_CharacterRenameGoesToReviewQueue()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");
+
+        Assert.Contains("没有在审核中的申请", await RouteAsync(router, "/我的改名"));
+        Assert.Contains("改名申请已提交", await RouteAsync(router, "/角色改名 夜航船"));
+
+        string mine = await RouteAsync(router, "/我的改名");
+        Assert.Contains("夜航船", mine);
+        Assert.Contains("角色名", mine);
+
+        // 重复提交被拒；审核台只对管理员开放
+        Assert.Contains("审核中", await RouteAsync(router, "/角色改名 另一个名字"));
+        Assert.Contains("权限不足", await RouteAsync(router, "/改名审核"));
     }
 
     [Fact]
@@ -374,7 +393,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(154, registry.All.Count);
+        Assert.Equal(155, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

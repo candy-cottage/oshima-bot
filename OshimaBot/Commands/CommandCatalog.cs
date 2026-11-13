@@ -34,7 +34,7 @@ public static class CommandCatalog
         "lock", "unlock", "equip", "unequip",
         "characters", "set-main", "levelup", "break", "train", "train-claim", "party",
         "normal-attack-upgrade", "normal-attack-upgrade-info",
-        "skill-upgrade", "skill-upgrade-info", "rename-character",
+        "skill-upgrade", "skill-upgrade-info", "rename-character", "rename-mine",
         "reroll", "reroll-confirm", "reroll-cancel",
         // ---- P2：经济与战斗 ----
         "shop", "shop-logistics", "shop-weapons", "shop-yuki", "shop-welfare",
@@ -257,11 +257,16 @@ public static class CommandCatalog
 
         "rename-character" => new DelegateCommand(
             key: "rename-character", name: "角色改名", aliases: ["改名"],
-            usage: "/角色改名 新名字", description: "修改主战角色的名字",
+            usage: "/角色改名 新名字", description: "提交主战角色改名申请（人工审核后生效）",
             group: CommandGroups.Player, audit: true,
             handler: async context => CommandReplies.FromResult(
                 await deps.Players.RenameAsync(context.UserId, JoinFrom(context, 0),
                     context.CancellationToken))),
+
+        "rename-mine" => new DelegateCommand(
+            key: "rename-mine", name: "我的改名", aliases: ["改名进度"], usage: "/我的改名",
+            description: "查看自己还没被处理的改名申请", group: CommandGroups.Player,
+            handler: context => MyRenamesAsync(deps, context)),
 
         // 自建角色重随（旧版 RandomCustomCharacter）：预览 → 确认 / 取消
         "reroll" => new DelegateCommand(
@@ -1916,20 +1921,42 @@ public static class CommandCatalog
             lines, context.Page, "/收件箱", ["/收件箱 未读", "/私信"]);
     }
 
+    private static async Task<BotReply> MyRenamesAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<RenameRequestEntry> rows = await deps.Players.MyRenameRequestsAsync(
+            context.UserId, context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("📨 我的改名", "没有在审核中的申请",
+                [
+                    "- 用 /角色改名 新名字 提交申请",
+                    "- 角色名会出现在群聊与交易里，所以要先过审"
+                ], ["/角色改名", "/角色"]);
+        }
+        List<string> lines = [.. rows.Select(row =>
+            $"- @{row.Index} [{row.TargetKind}] {row.TargetName} → 「{row.RequestedName}」"
+            + $"　提交于 {row.SubmittedOn}")];
+        lines.Add("- 审核通过后名字才会变；被拒绝可以换个名字重新提交");
+        return CommandReplies.Compose("📨 我的改名", $"待审 {rows.Count} 条", lines,
+            ["/角色", "/状态"]);
+    }
+
     private static async Task<BotReply> RenameReviewAsync(CommandDependencies deps, CommandContext context)
     {
         IReadOnlyList<RenameRequestEntry> rows = await deps.Clubs.PendingRenamesAsync(context.CancellationToken);
         if (rows.Count == 0)
         {
             return CommandReplies.Compose("🧾 改名审核", "没有待审申请",
-                ["- 玩家用 /社团设置 名称 新名 提交后才会出现在这里"], ["/社团列表", "/帮助"]);
+                ["- 玩家用 /角色改名 新名字 或 /社团设置 名称 新名 提交后才会出现在这里"],
+                ["/社团列表", "/帮助"]);
         }
         List<string> lines = [.. rows.Select(row =>
-            $"- @{row.Index} {row.TargetName} → 「{row.RequestedName}」　申请者 {row.Requester}　{row.SubmittedOn}")];
+            $"- @{row.Index} [{row.TargetKind}] {row.TargetName} → 「{row.RequestedName}」"
+            + $"　申请者 {row.Requester}　{row.SubmittedOn}")];
         lines.Add("- /批准改名 编号 · /拒绝改名 编号");
         lines.Add("- 自动校验只拦长度、不可见字符、冒充官方、站外引流；人工复核不能省");
         return CommandReplies.Compose("🧾 改名审核", $"待审 {rows.Count} 条", lines,
-            ["/批准改名 1", "/拒绝改名 1", "/社团列表"]);
+            ["/批准改名 1", "/拒绝改名 1", "/帮助"]);
     }
 
     private static async Task<BotReply> ClubTasksAsync(CommandDependencies deps, CommandContext context)

@@ -541,7 +541,7 @@ public sealed partial class ClubService(
                         return ActionResult.Fail($"社团名「{name}」已被占用", "没有提交改名申请", "换一个", "/社团设置 名称");
                     }
                     if (await db.RenameRequests.AnyAsync(
-                        x => x.TargetType == "club" && x.TargetId == club.Id.ToString(CultureInfo.InvariantCulture)
+                        x => x.TargetType == RenameTargets.Club && x.TargetId == club.Id.ToString(CultureInfo.InvariantCulture)
                              && x.Status == 0, ct))
                     {
                         return ActionResult.Fail("已有一个改名申请在审核中", "没有重复提交",
@@ -551,7 +551,7 @@ public sealed partial class ClubService(
                     db.RenameRequests.Add(new RenameRequest
                     {
                         UserId = userId,
-                        TargetType = "club",
+                        TargetType = RenameTargets.Club,
                         TargetId = club.Id.ToString(CultureInfo.InvariantCulture),
                         RequestedName = name,
                         Status = 0,

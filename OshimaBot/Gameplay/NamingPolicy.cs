@@ -65,3 +65,19 @@ public static class NamingPolicy
     public static (bool Ok, string Reason) CheckMessage(string? text)
         => Check(text, 1, 200, "私信内容");
 }
+
+/// <summary>
+/// <c>RenameRequests.TargetType</c> 的取值。名字类内容都要过审核，目前覆盖社团名与角色名。
+/// </summary>
+public static class RenameTargets
+{
+    public const string Club = "club";
+    public const string Character = "character";
+
+    public static string Display(string targetType) => targetType switch
+    {
+        Club => "社团名",
+        Character => "角色名",
+        _ => "名称"
+    };
+}

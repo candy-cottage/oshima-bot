@@ -110,23 +110,52 @@ public sealed class CharacterRerollTests
         IPlayerService players = db.Get<IPlayerService>();
         await db.CreatePlayerAsync(Player, nickname: null);
 
-        // QQ 事件只有 openid，库里 Nickname 初值为空：建档时补默认名，
+        // QQ 事件只有 openid，库里 Nickname 初值为空：建档时补一个随机初始名，
         // 否则报价列表、社团成员会显示成随机 Handle
-        Assert.Equal($"旅人{Player}", (await players.GetCharactersAsync(Player)).Single().Name);
-        Assert.Equal($"旅人{Player}", await db.NicknameAsync(Player));
+        string name = (await players.GetCharactersAsync(Player)).Single().Name;
+        Assert.StartsWith("旅人", name, StringComparison.Ordinal);
+        Assert.Equal(6, name.Length);                    // 旅人 + 4 位
+        Assert.Equal(name, await db.NicknameAsync(Player));
     }
 
     [Fact]
-    public async Task Rename_AlsoUpdatesStoredNickname()
+    public async Task Rename_GoesThroughReviewBeforeItTakesEffect()
+    {
+        using RerollDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        IClubService clubs = db.Get<IClubService>();
+        await db.CreatePlayerAsync(Player, "旧名字");
+
+        ActionResult submitted = await players.RenameAsync(Player, "夜航船");
+        Assert.True(submitted.Ok, submitted.Title);
+
+        // 审核期间：角色名与显示名都不动
+        Assert.Equal("旧名字", (await players.GetCharactersAsync(Player)).Single().Name);
+        Assert.Equal("旧名字", await db.NicknameAsync(Player));
+        Assert.Equal("夜航船", Assert.Single(await players.MyRenameRequestsAsync(Player)).RequestedName);
+
+        // 同一角色只能有一份待审
+        Assert.Contains("审核中", (await players.RenameAsync(Player, "别的名字")).Title);
+
+        // 管理员批准后才生效，并同步显示名
+        Assert.True((await clubs.ApproveRenameAsync(Player, 1)).Ok);
+        Assert.Equal("夜航船", (await players.GetCharactersAsync(Player)).Single().Name);
+        Assert.Equal("夜航船", await db.NicknameAsync(Player));
+        Assert.Empty(await players.MyRenameRequestsAsync(Player));
+    }
+
+    [Fact]
+    public async Task Rename_RejectsBadNamesBeforeQueueing()
     {
         using RerollDatabase db = new();
         IPlayerService players = db.Get<IPlayerService>();
         await db.CreatePlayerAsync(Player, "旧名字");
 
-        ActionResult renamed = await players.RenameAsync(Player, "夜航船");
-        Assert.True(renamed.Ok, renamed.Title);
-        Assert.Equal("夜航船", await db.NicknameAsync(Player));
-        Assert.Equal("夜航船", (await players.GetCharactersAsync(Player)).Single().Name);
+        // 自动校验在提交阶段就拦掉，不产生队列记录
+        Assert.False((await players.RenameAsync(Player, "官方客服")).Ok);
+        Assert.False((await players.RenameAsync(Player, "加群12345")).Ok);
+        Assert.False((await players.RenameAsync(Player, "a")).Ok);
+        Assert.Empty(await players.MyRenameRequestsAsync(Player));
     }
 
     private sealed class RerollDatabase : IDisposable
@@ -148,6 +177,7 @@ public sealed class CharacterRerollTests
             services.AddSingleton<ApiKeyAuthenticator>();
             services.AddGameplayRuntime();
             services.AddSingleton<IPlayerService, PlayerService>();
+            services.AddSingleton<IClubService, ClubService>();
             Provider = services.BuildServiceProvider();
             using IServiceScope scope = Provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreated();

@@ -56,7 +56,12 @@ public interface IPlayerService
     Task<ActionResult> UpgradeSkillAsync(long userId, int index, string skillName, bool preview,
         CancellationToken cancellationToken = default);
 
+    /// <summary>角色改名：提交审核队列，管理员批准后才生效。</summary>
     Task<ActionResult> RenameAsync(long userId, string newName, CancellationToken cancellationToken = default);
+
+    /// <summary>自己还没被处理的改名申请。</summary>
+    Task<IReadOnlyList<RenameRequestEntry>> MyRenameRequestsAsync(long userId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 自建角色重随：预览（扣 <see cref="GameplayRules.CustomRerollCost"/> 钻摇一组新属性）。
@@ -963,20 +968,20 @@ public sealed class PlayerService(
                 ["/角色", "/状态"]);
         }, cancellationToken);
 
+    /// <summary>
+    /// 角色改名：**提交审核**而不是立即生效（角色名会出现在群聊、排行榜、交易里）。
+    /// <para>只写 <c>RenameRequests</c>（TargetType=character，TargetId=角色 Guid），
+    /// 管理员用 /改名审核 批准后才改角色名，并同步 <c>Users.Nickname</c>（显示名）。</para>
+    /// </summary>
     public Task<ActionResult> RenameAsync(long userId, string newName,
         CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
             string name = (newName ?? "").Trim();
-            if (name.Length is < 2 or > 12)
+            (bool allowed, string reason) = NamingPolicy.Check(name, 2, 12, "角色名");
+            if (!allowed)
             {
-                return ActionResult.Fail("名字长度不对", "没有改名",
-                    "请用 2–12 个字符：/角色改名 新名字", "/角色");
-            }
-            if (name.Any(char.IsWhiteSpace))
-            {
-                return ActionResult.Fail("名字不能含空白", "没有改名",
-                    "去掉空格再试", "/角色");
+                return ActionResult.Fail("角色名不符合命名规范", "没有提交改名申请", reason, "/角色");
             }
 
             PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
@@ -984,17 +989,55 @@ public sealed class PlayerService(
             string before = main.Name;
             if (string.Equals(before, name, StringComparison.Ordinal))
             {
-                return ActionResult.Fail("新名字和原来一样", "没有改名", "换一个名字", "/角色");
+                return ActionResult.Fail("新名字和原来一样", "没有提交改名申请", "换一个名字", "/角色");
             }
 
-            main.Name = name;
-            CharacterStore.Sync(main);
-            // 存档显示名跟着走：报价、社团成员、私信都用 Users.Nickname，
-            // 不同步的话玩家改了名，别人看到的还是「旅人42」。
-            Data.Entities.User? user = await db.Users.FirstOrDefaultAsync(x => x.Id == userId, ct);
-            if (user is not null) user.Nickname = name;
-            return ActionResult.Success("✏️ 改名成功", $"{before} → {name}",
-                ["- 主战角色的名字已更新", "- 交易、社团、私信里显示的名字也会跟着变"], ["/角色", "/状态"]);
+            // 同一个角色同时只允许一个待审申请（与社团改名同一套规则）。
+            bool pending = await db.RenameRequests.AnyAsync(x =>
+                x.TargetType == RenameTargets.Character && x.TargetId == main.Guid && x.Status == 0, ct);
+            if (pending)
+            {
+                return ActionResult.Fail("已有一个改名申请在审核中", "没有重复提交",
+                    "等管理员处理，或用 /我的改名 看当前申请", "/我的改名");
+            }
+
+            // 平台规范：公开可见的名字先审后生效，不能由玩家直接改。
+            db.RenameRequests.Add(new RenameRequest
+            {
+                UserId = userId,
+                TargetType = RenameTargets.Character,
+                TargetId = main.Guid,
+                RequestedName = name,
+                Status = 0,
+                CreatedAtUtc = clock.UtcNow
+            });
+
+            return ActionResult.Success("📨 改名申请已提交",
+                $"{before} → 「{name}」",
+                [
+                    "- 角色名要通过审核才会生效（防冒充官方与站外引流）",
+                    "- 审核期间仍用现在的名字，被拒绝会保持原样",
+                    "- 改名后交易、社团、私信里显示的名字也会跟着变"
+                ], ["/我的改名", "/角色", "/状态"]);
+        }, cancellationToken);
+
+    /// <summary>查自己待审的改名（旧版没有，但没有它玩家只能干等）。</summary>
+    public Task<IReadOnlyList<RenameRequestEntry>> MyRenameRequestsAsync(long userId,
+        CancellationToken cancellationToken = default)
+        => ReadAsync<IReadOnlyList<RenameRequestEntry>>(async (db, ct) =>
+        {
+            List<RenameRequest> rows = await db.RenameRequests.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Status == 0)
+                .OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
+            if (rows.Count == 0) return [];
+
+            List<PlayerCharacter> characters = await AllCharactersAsync(db, userId, ct);
+            Dictionary<string, string> names = characters.ToDictionary(x => x.Guid, x => x.Name);
+            return [.. rows.Select((row, i) => new RenameRequestEntry(
+                i + 1, row.Id, row.TargetType, RenameTargets.Display(row.TargetType),
+                names.GetValueOrDefault(row.TargetId, "角色已不存在"),
+                row.RequestedName, "我",
+                row.CreatedAtUtc.ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture)))];
         }, cancellationToken);
 
     // ---------------- 自建角色重随（旧版 RandomCustomCharacter）----------------
@@ -1561,7 +1604,7 @@ public sealed class PlayerService(
         string nickname = user?.Nickname ?? "";
         if (string.IsNullOrWhiteSpace(nickname))
         {
-            nickname = $"旅人{userId}";
+            nickname = DefaultTravelerName();
             if (user is not null) user.Nickname = nickname;
         }
         PlayerCharacter starter = CharacterStore.CreateCustom(db, userId, nickname.Trim());
@@ -1582,6 +1625,25 @@ public sealed class PlayerService(
         });
         await db.SaveChangesAsync(ct);
         return new PlayerAccount(wallet);
+    }
+
+    /// <summary>
+    /// 起名用的字符集：去掉 0/O/1/I 这类容易看错的字符（旧版 <c>FunOsm-XXXXXXXX</c> 的思路）。
+    /// </summary>
+    private const string TravelerNameAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    /// <summary>
+    /// 新号的默认名：`旅人` + 4 位随机字母数字。旧版是 `FunOsm-` + 8 位随机码，
+    /// 这里只是短一些。<c>Random.Shared</c> 仅用于取名，不参与任何玩法判定，不影响同种子回归。
+    /// </summary>
+    private static string DefaultTravelerName()
+    {
+        Span<char> chars = stackalloc char[4];
+        for (int i = 0; i < chars.Length; i++)
+        {
+            chars[i] = TravelerNameAlphabet[Random.Shared.Next(TravelerNameAlphabet.Length)];
+        }
+        return "旅人" + new string(chars);
     }
 
     /// <summary>货币变动与 ledger 必须成对出现；Add 后由调用方的 SaveChanges 一次提交。</summary>
