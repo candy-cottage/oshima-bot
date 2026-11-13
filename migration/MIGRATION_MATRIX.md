@@ -16,8 +16,8 @@
 | **去重后唯一入口（本表行数）** | **163** | 同名命令在多个分类重复出现 |
 | 批准迁移范围 | 159 | 不含 `scope-excluded` |
 | 范围排除 | 4 | 生命之泉 / 酒馆 / 加物 / 减物 |
-| 有夹具落地的行 | 27 | Fixture 列指向真实存在的 `.json` |
-| 只有待建夹具的行 | 75 | 已声明 L0–L2 但尚无对照样本 |
+| 有夹具落地的行 | 30 | Fixture 列指向真实存在的 `.json` |
+| 只有待建夹具的行 | 65 | 已声明 L0–L2 但尚无对照样本 |
 
 状态定义：
 
@@ -127,16 +127,16 @@
 | BAT-010 | 战斗 | 赛马排行榜 | `RainBOTService.cs:3480` | /赛马排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 旧版独立的「赛马排行榜」指令，也支持 /排行榜 赛马；读个人 `HorseRacingPoints`（旧版按群存，已按用户决定改个人） | 待建 FIX-BAT-RANK |
 | BAT-011 | 战斗 | 共斗排行榜 | `RainBOTService.cs:3487` | /共斗排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 读个人 `CooperativePoints`，也支持 /排行榜 共斗 | 待建 FIX-BAT-RANK |
 | BAT-012 | 战斗 | 锻造排行榜 | `RainBOTService.cs:3494` | /锻造排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 读个人 `ForgePoints`；/锻造 按旧版三段积分发放（通用 count×0.3 + 成功 count−门槛 / 失败 count×0.2），也支持 /排行榜 锻造 | 待建 FIX-BAT-RANK |
-| PLY-001 | 玩法 | 任务列表 | `RainBOTService.cs:789` | /每日任务 · /任务列表 | PlayerService.GetQuestsAsync / QuestBoardService.ListAsync | L1 | 等价 | 两套列表：/每日任务 是每日三项进度，/任务列表 是任务板（持续 2 / 即时 1 / 渐进 1），都给状态与奖励 | 待建 FIX-PLY-QUEST |
-| PLY-002 | 玩法 | 做任务 | `RainBOTService.cs:1303` | /做任务 | QuestBoardService.AcceptAsync | L2 | 等价 | 三类任务同旧版：持续任务等 30/60 分钟、即时任务当场执行并发奖、渐进任务提交 3 件物品推进；非渐进任务同时只能进行一个；已结算不能重接 | 待建 FIX-PLY-QUEST |
-| PLY-003 | 玩法 | 任务信息 | `RainBOTService.cs:1308` | /任务信息 | QuestBoardService.WorkingAsync | L1 | 等价 | 只列进行中与已完成的任务，带剩余时间/提交进度、要求与奖励 | 待建 FIX-PLY-QUEST |
-| PLY-004 | 玩法 | 任务结算 | `RainBOTService.cs:1315` | /领奖 · /任务结算 | PlayerService.ClaimQuestAsync / QuestBoardService.SettleAsync | L2 | 等价 | /领奖 结算每日任务（逐条），/任务结算 一次结算所有已完成的任务板任务；奖励都走 ledger | 待建 FIX-PLY-QUEST |
-| PLY-005 | 玩法 | 世界地图 | `RainBOTService.cs:2240` | /世界地图 | FunGameQueryService.GetRegions | L1 | 等价 | 列出全部 13 个地区（编号/分类/难度/当前天气与温度/可采材料），分页 | 待建 FIX-PLY-WORLD |
-| PLY-006 | 玩法 | 主城 | `RainBOTService.cs:2230` | /主城 | FunGameQueryService.GetRegionInfo(0) | L1 | 等价 | 铎京城详情；旧版主城还带商店读写，v3 商店已独立，这里只给地区信息 | 待建 FIX-PLY-WORLD |
-| PLY-007 | 玩法 | 查地区 | `RainBOTService.cs:2204` | /查地区 [编号\|名称] | FunGameQueryService.GetRegionInfo | L1 | 等价 | 支持编号与地区名；不带参数等价于世界地图（同旧版）；详情含头目/生物/材料/NPC/区域与三段探索剧情 | 待建 FIX-PLY-WORLD |
-| PLY-008 | 玩法 | 探索 | `RainBOTService.cs:2263` | /探索 | ExploreService.StartAsync | L2 | 等价 | 探索许可是虚物品配额：每日 60、11–13 点与 17–19 点上线各 +30、4:00 刷新；消耗 = 人数 × 星级；角色探索期间锁定；2 分钟后可结算（旧版 ExploreTime=2）；遭遇战走真实战斗 | 待建 FIX-PLY-EXPLORE |
-| PLY-009 | 玩法 | 小队探索 | `RainBOTService.cs:2300` | /小队探索 <地区> | ExploreService.StartAsync(useSquad) | L2 | 等价 | 旧写法 `/小队探索 1` 直接取小队编成（按槽位），未编成给引导；消耗与结算同单人 | 待建 FIX-PLY-EXPLORE |
-| PLY-010 | 玩法 | 探索结算 | `RainBOTService.cs:2256` | /探索结算 | ExploreService.ClaimAsync | L2 | 等价 | 结果按难度掷骰（普通 45%/空手 20%/遭遇 25%/拾得 10%，星级越高战斗越多，同旧版概率表）；遭遇战真实开打，胜利掉地区材料、失败给三分之一金币；一次结算所有已完成的探索（差异登记 DIV-005） | 待建 FIX-PLY-EXPLORE |
+| PLY-001 | 玩法 | 任务列表 | `RainBOTService.cs:789` | /每日任务 · /任务列表 | PlayerService.GetQuestsAsync / QuestBoardService.ListAsync | L1 | 等价 | 任务板列表（持续/即时/渐进三类）：QuestBoardTests.List_ShowsAllQuestsAsAvailable；无数值可锁，不建夹具 | — |
+| PLY-002 | 玩法 | 做任务 | `RainBOTService.cs:1303` | /做任务 | QuestBoardService.AcceptAsync | L2 | 等价 | 接任务：即时类当场结算、持续类等到点、渐进类要交材料（QuestBoardTests.Immediate/Continuous/Progressive） | — |
+| PLY-003 | 玩法 | 任务信息 | `RainBOTService.cs:1308` | /任务信息 | QuestBoardService.WorkingAsync | L1 | 等价 | 任务进度与所需材料展示（QuestBoardTests.Progressive_NeedsThreeItems） | — |
+| PLY-004 | 玩法 | 任务结算 | `RainBOTService.cs:1315` | /领奖 · /任务结算 | PlayerService.ClaimQuestAsync / QuestBoardService.SettleAsync | L2 | 等价 | 任务结算：到点才能领、领过不能重复（QuestBoardTests.Continuous_WaitsThenSettles） | — |
+| PLY-005 | 玩法 | 世界地图 | `RainBOTService.cs:2240` | /世界地图 | FunGameQueryService.GetRegions | L1 | 等价 | 世界地图按地区 Id 列全部地区（RegionContentTests.Regions_AreRegisteredInIdOrder） | — |
+| PLY-006 | 玩法 | 主城 | `RainBOTService.cs:2230` | /主城 | FunGameQueryService.GetRegionInfo(0) | L1 | 等价 | 主城无战斗内容、只有功能入口（RegionContentTests.Regions_MainCityHasNoCombatContent） | — |
+| PLY-007 | 玩法 | 查地区 | `RainBOTService.cs:2204` | /查地区 [编号\|名称] | FunGameQueryService.GetRegionInfo | L1 | 等价 | 地区详情：天气、可采材料、敌人（RegionContentTests.Regions_KeepEnemiesAndMaterialsFromLegacy / AllHaveUsableWeather） | — |
+| PLY-008 | 玩法 | 探索 | `RainBOTService.cs:2263` | /探索 | ExploreService.StartAsync | L2 | 等价 | 探索规则与结算：每日 60 许可（4:00 重置）、午/晚餐各 +30、单次 2 分钟、最多 4 人，消耗 = 角色数 × 星级；五档星级的结果概率（General 45% 递减、Fight 25% 递增）与旧版逐格一致（FIX-PLY-EXPLORE / ExploreServiceTests） | FIX-PLY-EXPLORE |
+| PLY-009 | 玩法 | 小队探索 | `RainBOTService.cs:2300` | /小队探索 <地区> | ExploreService.StartAsync(useSquad) | L2 | 等价 | 探索规则与结算：每日 60 许可（4:00 重置）、午/晚餐各 +30、单次 2 分钟、最多 4 人，消耗 = 角色数 × 星级；五档星级的结果概率（General 45% 递减、Fight 25% 递增）与旧版逐格一致（FIX-PLY-EXPLORE / ExploreServiceTests） | FIX-PLY-EXPLORE |
+| PLY-010 | 玩法 | 探索结算 | `RainBOTService.cs:2256` | /探索结算 | ExploreService.ClaimAsync | L2 | 等价 | 探索规则与结算：每日 60 许可（4:00 重置）、午/晚餐各 +30、单次 2 分钟、最多 4 人，消耗 = 角色数 × 星级；五档星级的结果概率（General 45% 递减、Fight 25% 递增）与旧版逐格一致（FIX-PLY-EXPLORE / ExploreServiceTests） | FIX-PLY-EXPLORE |
 | PLY-011 | 玩法 | 挑战金币秘境 | `RainBOTService.cs:2695` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016） |  |
 | PLY-012 | 玩法 | 挑战钻石秘境 | `RainBOTService.cs:2709` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016） |  |
 | PLY-013 | 玩法 | 挑战经验秘境 | `RainBOTService.cs:2723` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016） |  |

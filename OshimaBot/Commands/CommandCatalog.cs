@@ -1792,8 +1792,8 @@ public static class CommandCatalog
         List<string> lines =
         [
             $"- 探索许可：{quota.Left}/{quota.DailyMax}（今日 {quota.Day}，每天 4:00 恢复 {ExploreRules.DailyQuota}）",
-            $"- 午餐 11–13 点：{(quota.LunchClaimed ? "已领 +30" : "未领")}"
-            + $"　晚餐 17–19 点：{(quota.DinnerClaimed ? "已领 +30" : "未领")}",
+            $"- 午餐 11:00–13:59：{(quota.LunchClaimed ? "已领 +30" : "未领")}"
+            + $"　晚餐 17:00–19:59：{(quota.DinnerClaimed ? "已领 +30" : "未领")}",
             runs.Count == 0 ? "- 当前没有进行中的探索" : $"- 进行中 {runs.Count} 场："
         ];
         lines.AddRange(runs.Select(run =>

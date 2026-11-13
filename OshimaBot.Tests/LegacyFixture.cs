@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FunGame.Core.Library.Constant;
+using OshimaBot.Content.Regions;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 
@@ -196,7 +197,7 @@ public static class LegacyFixtureProbes
     {
         "levelup", "break", "train", "register", "gacha",
         "forge", "store", "market-fee", "boss", "signin", "reroll",
-        "exchange", "salvage-quality", "magic-card"
+        "exchange", "salvage-quality", "magic-card", "explore-rules"
     };
 
     public static JsonNode Run(string probe, JsonElement input)
@@ -220,6 +221,7 @@ public static class LegacyFixtureProbes
             "exchange" => Exchange(input),
             "salvage-quality" => SalvageQuality(),
             "magic-card" => MagicCard(),
+            "explore-rules" => ExploreRulesFixture(),
             _ => throw new NotSupportedException($"未注册的探针：{probe}")
         };
     }
@@ -424,6 +426,33 @@ public static class LegacyFixtureProbes
                         (JsonNode?)JsonValue.Create(
                             GameplayRules.SalvageMaterials(GameplayRules.QualityTierOf(q), 3)))))
         };
+    }
+
+    /// <summary>
+    /// 探索规则（旧版 <c>MaxExploreTimes</c> / <c>ExploreResultProbabilities</c> /
+    /// <c>GenerateExploreModel</c>）：每日 60 许可、午晚餐各 +30、单次 2 分钟、最多 4 人；
+    /// 结果概率按星级调整（General 降、Fight 升）。
+    /// <para>概率表摊平成 <c>p{星}_{结果}</c> 这类顶层数值键，才能走数值容差比较
+    /// （嵌套对象会退化成整树深比较，浮点尾差会被当成不相等）。</para>
+    /// </summary>
+    private static JsonObject ExploreRulesFixture()
+    {
+        JsonObject result = new()
+        {
+            ["dailyQuota"] = ExploreRules.DailyQuota,
+            ["mealBonus"] = ExploreRules.MealBonus,
+            ["durationMinutes"] = ExploreRules.DurationMinutes,
+            ["maxCharacters"] = ExploreRules.MaxCharacters
+        };
+        for (int stars = 1; stars <= 5; stars++)
+        {
+            foreach ((ExploreResult outcome, double probability) in ExploreRules.Probabilities(stars))
+            {
+                // 概率是加减出来的，0.45-0.35 会得到 0.09999999999999998；保留 4 位小数让输出稳定
+                result[$"p{stars}_{outcome}"] = Math.Round(probability, 4);
+            }
+        }
+        return result;
     }
 
     /// <summary>魔法卡合成（旧版 <c>ConflateMagicCardPack</c>）：3 张未使用且未上锁的魔法卡换 1 个卡包。</summary>

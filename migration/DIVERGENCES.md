@@ -141,6 +141,16 @@
 - **回归保护**：`EconomyTests.InstanceReward_ScalesWithMembersAndDifficulty`（1 人 vs 4 人、难度叠乘）、
   `Instance_RequiresExpiryThenDeliversRewards`（必须到点才能结算、结算给掉落与经验）。
 
+### DIV-017 探索许可从「物品」变成「每日配额」
+
+- **旧版**：玩家配置里有一个 `exploreTimes` 计数，每日重置为 `MaxExploreTimes = 60`；午餐（11:00–13:59）与晚餐（17:00–19:59）
+  各 +30；另有「探索许可」物品，使用后同样给计数加值。探索按「角色数 × 地区星级」扣计数。
+- **新版**：保留同样的 60 / +30 / 按星级扣 / 每日 4:00 重置，但**没有「探索许可」物品**，计数只由每日重置与两餐补充。
+- **影响**：配额口径一致；差别是旧版能靠囤/送探索许可额外获得次数，新版不能。
+- **回归保护**：`FIX-PLY-EXPLORE`（60 / +30 / 2 分钟 / 4 人 / 五档概率表）、
+  `ExploreServiceTests.Quota_StartsAtDailyBaseAndGrantsMealsOnce`（跨日重置与两餐只发一次）、
+  `Start_ChargesCharactersTimesStars`（按人×星扣）。
+
 ## 引擎公式对拍（2026-11-14）
 
 旧版 NuGet 从 2.1.0 升到 **2.1.1**（tag `2.1.1` / commit `7ecb11f`「补齐核心属性百分比传导」），
