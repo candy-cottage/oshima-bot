@@ -431,6 +431,22 @@ public sealed class EconomyTests
         // 积分榜不混入金币榜
         IReadOnlyList<RankEntry> credits = await economy.GetRankingAsync("credits");
         Assert.NotEmpty(credits);
+
+        // 钻石榜：旧版 GetRanking(type=1) 是钻石榜，之前缺失，「/钻石排行榜」还被重写到了金币榜上。
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            CorePlayerRecord buyer = await context.CorePlayers.FirstAsync(x => x.UserId == Buyer);
+            buyer.Materials = 500;
+            await context.SaveChangesAsync();
+        }
+        IReadOnlyList<RankEntry> diamond = await economy.GetRankingAsync("钻石");
+        Assert.Equal(500, diamond[0].Value, 3);
+        Assert.Equal("钻石榜", GameplayRules.RankingBoardName("钻石"));
+
+        // 金币榜与钻石榜读的是不同字段，不能互相串
+        IReadOnlyList<RankEntry> creditsAgain = await economy.GetRankingAsync("credits");
+        Assert.NotEqual(diamond[0].Value, creditsAgain[0].Value);
     }
 
     [Fact]

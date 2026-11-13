@@ -10,8 +10,8 @@ CHR-005	角色 / 战斗	开启练级	`RainBOTService.cs:1270`	/练级	PlayerServ
 CHR-006	角色 / 战斗	练级结算	`RainBOTService.cs:1293`	/收取练级	PlayerService.TrainClaimAsync	L2	简化替代	旧版结算同时回血与复活，新版只结算经验，不改变生命状态	
 CHR-007	角色 / 战斗	练级信息	`RainBOTService.cs:1286`	/练级	PlayerService.GetSnapshotAsync	L1	简化替代	新版无剩余时间/预计收益预览	
 CHR-008	角色	我的状态	`RainBOTService.cs:804`	/状态	PlayerService.GetSnapshotAsync	L1	简化替代	新版无角色生命、能量、复活次数等状态字段	
-CHR-009	角色	装备	`RainBOTService.cs:1384`	/装备	PlayerService.EquipAsync	L1	简化替代	旧版 <角色序号> <物品序号> 且 6 个槽位，新版仅主战角色 3 槽（武器/防具/饰品）	
-CHR-010	角色	取消装备	`RainBOTService.cs:1368`	/卸下	PlayerService.UnequipAsync	L1	简化替代	旧版按槽位 1-6，新版按槽位名 weapon|armor|trinket	
+CHR-009	角色	装备	`RainBOTService.cs:1384`	/装备	PlayerService.EquipAsync	L1	简化替代	旧版按「角色序号 + 物品序号」给**任意角色**装备；新版 /装备 @编号 只装到主战角色。槽位本身已完全对齐 Core 的 6 个（Weapon / Armor / Shoes / Accessory1 / Accessory2 / MagicCardPack），由物品 ItemType 决定，饰品自动找空位——不再有「3 槽」这回事	
+CHR-010	角色	取消装备	`RainBOTService.cs:1368`	/卸下	PlayerService.UnequipAsync	L1	简化替代	旧版按槽位数字 1–6；新版按槽位名 weapon / armor / shoes / accessory1 / accessory2 / magiccardpack（同样是 6 个，旧名 trinket 兼容映射到 accessory1）	
 CHR-011	角色	加物	`RainBOTService.cs:3501`	—	—	—	scope-excluded	【范围排除】旧版「角色背包」是战斗内携带的 `Character.Items`，与玩家库存 `Inventory.Items` 不是一回事；v3 角色没有持久状态、战斗单位按存档重建，角色背包无处安放。用户 2026-11-12 决定不做	—
 CHR-012	角色	减物	`RainBOTService.cs:3526`	—	—	—	scope-excluded	【范围排除】同上：没有持久化的角色背包，取出也无从谈起	—
 CHR-013	角色	角色升级	`RainBOTService.cs:1450`	/升级	PlayerService.LevelUpAsync	L2	简化替代	新版经验公式 100×Lv^1.5、消耗旅人经验；旧版按角色经验与等级表，需逐级对齐	FIX-CHR-LEVELUP
@@ -57,13 +57,13 @@ ITM-023	物品 / 玩法	模拟锻造	`RainBOTService.cs:2978`	/锻造 模拟 @1 
 ITM-024	物品 / 玩法	确认开始锻造	`RainBOTService.cs:2994`	/锻造 @1 x40	ForgeService.StartAsync	L2	有意差异	提交材料即开始（5 分钟，上限 120）；品质门槛、地区系数、三段积分与大师锻造都按旧版（差异登记 DIV-002）	FIX-ITM-FORGE
 BAT-001	战斗	决斗	`RainBOTService.cs:1720`	/决斗	EconomyService.DuelAsync / DuelWithAsync	L2	等价	真实战斗；不给对手时打随机对手，给 UID/昵称则打对方主战；不收费用不发奖励（EconomyTests.Duel_RunsRealBattleInsteadOfDiceRoll）	—
 BAT-002	战斗	完整决斗	`RainBOTService.cs:1702`	/完整决斗	EconomyService.DuelWithAsync + CommandCatalog.Report	L2	等价	同一场 PvP，摘要 + 逐回合战报（BattleFlowTests.DuelWith_*）	—
-BAT-003	战斗	小队决斗	`RainBOTService.cs:1738`	/小队决斗	EconomyService.TeamDuelWithAsync	L2	简化替代	双方小队 RunTeam，小队上限 4 人（BattleFlowTests.TeamDuel_*）	—
+BAT-003	战斗	小队决斗	`RainBOTService.cs:1738`	/小队决斗	EconomyService.TeamDuelWithAsync	L2	等价	双方小队真打（RunTeam），未编成退回主战；不收费用、不发奖励（BattleFlowTests.TeamDuel_*）；小队上限 4 人与旧版一致	—
 BAT-004	战斗	查询boss	`RainBOTService.cs:1756`	/查询Boss	CommandCatalog.BossInfo	L1	等价	Boss 列表与详情（BossPoolTests / EconomyTests.Boss_SharedTargetAllowsRepeatAndAccumulatesLedger）	—
-BAT-005	战斗	讨伐boss	`RainBOTService.cs:1790`	/Boss	EconomyService.BossAsync	L2	有意差异	10 只池、等级/技能/魔法/普攻按 cutRate 折算、5 件红装 + 金色卡包 + 消耗品 + 随机被动/绝招、DynamicsEffect 全项、全服共享血量累计、击杀补池；入场费 0、击杀只给 Materials += 等级（无金币奖励）；强化以 OpenSkill「BOSS专属被动」+ DynamicsEffect/ExMDF 特效承载；支持 /Boss <编号> 指定目标（差异登记 DIV-001）	FIX-BAT-BOSS
-BAT-006	战斗	小队讨伐boss	`RainBOTService.cs:1775`	/小队讨伐Boss	EconomyService.BossTeamAsync	L2	简化替代	小队 vs 全服共享目标，结算与单人共用（BattleFlowTests.BossTeam_RequiresSquadAndReturnsBattleLog）	—
-BAT-007	战斗	排行榜	`RainBOTService.cs:3459`	/排行榜	EconomyService.GetRankingAsync	L2	简化替代	旧版养成榜；新版金币/等级/战绩三榜，口径不同	
-BAT-008	战斗	金币排行榜	—	/排行榜 金币	EconomyService.GetRankingAsync	L2	简化替代	排序口径需与旧版核对（是否含托管资产）	
-BAT-009	战斗	钻石排行榜	—	/排行榜	EconomyService.GetRankingAsync	L2	简化替代	新版无钻石榜	
+BAT-005	战斗	讨伐boss	`RainBOTService.cs:1790`	/Boss	EconomyService.BossAsync	L2	等价	10 只全服共享池（进程内静态，重启重置，旧版同样是静态字典）、战损写回、可反复挑战同一只、击杀补池；单人 / 小队共用同一结算；入场费 0、击杀只发钻石 = 等级、战绩 +25（FIX-BAT-BOSS）	FIX-BAT-BOSS
+BAT-006	战斗	小队讨伐boss	`RainBOTService.cs:1775`	/小队讨伐Boss	EconomyService.BossTeamAsync	L2	等价	小队打同一个全服共享目标，结算与单人完全共用（BattleFlowTests.BossTeam_RequiresSquadAndReturnsBattleLog）	—
+BAT-007	战斗	排行榜	`RainBOTService.cs:3459`	/排行榜	EconomyService.GetRankingAsync	L2	简化替代	旧版无参「排行榜」是角色养成榜（按累计经验，前 20）；新版默认 /排行榜 是金币榜，养成口径对应 /排行榜 等级（按角色等级、再按经验）——默认榜不同，榜单长度已对齐 20	
+BAT-008	战斗	金币排行榜	—	/排行榜 金币	EconomyService.GetRankingAsync	L2	等价	金币榜直接读钱包（CorePlayers.Credits），前 20 名，与旧版 UserCreditsRanking 口径一致；托管资产不进钱包，因此天然不计入	
+BAT-009	战斗	钻石排行榜	—	/排行榜	EconomyService.GetRankingAsync	L2	等价	钻石榜已补齐：/排行榜 钻石（旧名 /钻石排行榜 重写到这里），读钱包 Materials，前 20 名	
 BAT-010	战斗	赛马排行榜	`RainBOTService.cs:3480`	/赛马排行榜	EconomyService.GetRankingAsync	L1	等价	赛马积分榜（EconomyTests.Ranking_HasHorseCoopAndForgeBoards）	—
 BAT-011	战斗	共斗排行榜	`RainBOTService.cs:3487`	/共斗排行榜	EconomyService.GetRankingAsync	L1	等价	共斗积分榜（EconomyTests.Ranking_HasHorseCoopAndForgeBoards）	—
 BAT-012	战斗	锻造排行榜	`RainBOTService.cs:3494`	/锻造排行榜	EconomyService.GetRankingAsync	L1	等价	锻造积分榜；积分按三段发放（EconomyTests.Ranking_* / ForgeServiceTests.Plan_QualityThresholdsAndPointsMatchLegacy）	—

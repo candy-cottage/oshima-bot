@@ -69,8 +69,8 @@
 | CHR-006 | 角色 / 战斗 | 练级结算 | `RainBOTService.cs:1293` | /收取练级 | PlayerService.TrainClaimAsync | L2 | 简化替代 | 旧版结算同时回血与复活，新版只结算经验，不改变生命状态 |  |
 | CHR-007 | 角色 / 战斗 | 练级信息 | `RainBOTService.cs:1286` | /练级 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 新版无剩余时间/预计收益预览 |  |
 | CHR-008 | 角色 | 我的状态 | `RainBOTService.cs:804` | /状态 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 新版无角色生命、能量、复活次数等状态字段 |  |
-| CHR-009 | 角色 | 装备 | `RainBOTService.cs:1384` | /装备 | PlayerService.EquipAsync | L1 | 简化替代 | 旧版 <角色序号> <物品序号> 且 6 个槽位，新版仅主战角色 3 槽（武器/防具/饰品） |  |
-| CHR-010 | 角色 | 取消装备 | `RainBOTService.cs:1368` | /卸下 | PlayerService.UnequipAsync | L1 | 简化替代 | 旧版按槽位 1-6，新版按槽位名 weapon\|armor\|trinket |  |
+| CHR-009 | 角色 | 装备 | `RainBOTService.cs:1384` | /装备 | PlayerService.EquipAsync | L1 | 简化替代 | 旧版按「角色序号 + 物品序号」给**任意角色**装备；新版 /装备 @编号 只装到主战角色。槽位本身已完全对齐 Core 的 6 个（Weapon / Armor / Shoes / Accessory1 / Accessory2 / MagicCardPack），由物品 ItemType 决定，饰品自动找空位——不再有「3 槽」这回事 |  |
+| CHR-010 | 角色 | 取消装备 | `RainBOTService.cs:1368` | /卸下 | PlayerService.UnequipAsync | L1 | 简化替代 | 旧版按槽位数字 1–6；新版按槽位名 weapon / armor / shoes / accessory1 / accessory2 / magiccardpack（同样是 6 个，旧名 trinket 兼容映射到 accessory1） |  |
 | CHR-011 | 角色 | 加物 | `RainBOTService.cs:3501` | — | — | — | scope-excluded | 【范围排除】旧版「角色背包」是战斗内携带的 `Character.Items`，与玩家库存 `Inventory.Items` 不是一回事；v3 角色没有持久状态、战斗单位按存档重建，角色背包无处安放。用户 2026-11-12 决定不做 | — |
 | CHR-012 | 角色 | 减物 | `RainBOTService.cs:3526` | — | — | — | scope-excluded | 【范围排除】同上：没有持久化的角色背包，取出也无从谈起 | — |
 | CHR-013 | 角色 | 角色升级 | `RainBOTService.cs:1450` | /升级 | PlayerService.LevelUpAsync | L2 | 简化替代 | 新版经验公式 100×Lv^1.5、消耗旅人经验；旧版按角色经验与等级表，需逐级对齐 | FIX-CHR-LEVELUP |

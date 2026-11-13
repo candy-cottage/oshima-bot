@@ -23,10 +23,16 @@ jobs:
         run: |
           python migration/gen_matrix.py
           git diff --exit-code -- migration/MIGRATION_MATRIX.md
+      - name: Fail when the simplification list is stale
+        run: |
+          python migration/gen_simplifications.py
+          git diff --exit-code -- migration/SIMPLIFICATIONS.md
 
-  # 构建与测试。解决方案通过 ProjectReference 引用仓库外的 FunGame.Core
-  # （../../FunGame/FunGame.Core），因此需要把引擎仓库检出到同级目录。
-  # 未配置 FUNGAME_CORE_REPO 变量时本 job 跳过，避免把「缺引擎」误报成失败。
+  # 构建与测试。解决方案用 ProjectReference 引用仓库**外**的引擎源码
+  # （OshimaBot.Content.csproj 里写的是 ..\..\..\FunGame\FunGame.Core\src），
+  # 也就是说引擎不是 NuGet 包，必须把仓库克隆到「仓库目录的上一级 / FunGame」。
+  # 仓库变量 FUNGAME_CORE_REPO（如 project-redbud/FunGame-Core）未配置时本 job 跳过，
+  # 避免把「没配引擎」误报成编译失败。
   build-test:
     if: vars.FUNGAME_CORE_REPO != ''
     runs-on: ubuntu-latest
@@ -35,10 +41,17 @@ jobs:
       - name: Checkout engine (FunGame.Core)
         uses: actions/checkout@v4
         with:
+          # checkout 只允许落在工作区内，所以先放到 _engine，下一步再做软链；
+          # 私有仓库需要 FUNGAME_CORE_TOKEN，公开仓库用默认 token 即可。
           repository: ${{ vars.FUNGAME_CORE_REPO }}
           ref: ${{ vars.FUNGAME_CORE_REF || 'v3-dev' }}
-          path: ../../FunGame
+          path: _engine
           token: ${{ secrets.FUNGAME_CORE_TOKEN || github.token }}
+      - name: Link engine where the solution expects it
+        run: |
+          # 解决方案从 OshimaBot.Content 往上三层找 FunGame/FunGame.Core，即仓库的上一级。
+          ln -s "$GITHUB_WORKSPACE/_engine" "$GITHUB_WORKSPACE/../../FunGame"
+          test -f "$GITHUB_WORKSPACE/../../FunGame/FunGame.Core/src/FunGame.Core.csproj"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"

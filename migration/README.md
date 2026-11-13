@@ -10,10 +10,12 @@
 | `matrix_external.tsv` | 人工维护 | 矩阵外功能（旧版帮助没有条目：模拟、绑定、服务器状态等） |
 | `MIGRATION_MATRIX.md` | `gen_matrix.py` 生成 | 给人看的矩阵；不要手工改 |
 | `DIVERGENCES.md` | 人工维护 | 有意差异与范围排除决策表；矩阵用 `DIV-0xx` 引用 |
+| `SIMPLIFICATIONS.md` | `gen_simplifications.py` 生成 | 47 行「简化替代」的归类与逐行差异 |
 | `LEGACY_BASELINE.md` | `gen_baseline.py` 生成 | 基线指纹、关键文件、依赖版本 |
 | `legacy-baseline-files.tsv` | `gen_baseline.py` 生成 | 366 个文件的逐项哈希，用于复核指纹 |
 | `gen_matrix.py` | 脚本 | 渲染矩阵 + 校验（`--check` 只校验） |
 | `gen_baseline.py` | 脚本 | 重算基线指纹（只读旧版目录） |
+| `gen_simplifications.py` | 脚本 | 从 `matrix.tsv` 汇总简化替代清单 |
 
 ## 常用命令
 
@@ -26,6 +28,9 @@ python migration/gen_matrix.py
 
 # 重算旧版基线指纹
 python migration/gen_baseline.py
+
+# 重新汇总「简化替代」清单（matrix.tsv 改过就跑）
+python migration/gen_simplifications.py
 ```
 
 旧版目录默认是 `C:/Users/mili/milimoe/FunGame.Legacy/OshimaGameModule`，

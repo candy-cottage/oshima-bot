@@ -35,3 +35,6 @@ __pycache__/
 
 # Ubuntu 部署包产物（publish-linux.bat 生成）
 /publish/
+
+# CI 把引擎仓库检出到这里（或本地手工克隆）
+_engine/

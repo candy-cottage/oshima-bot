@@ -54,7 +54,7 @@ public static class LegacyAliases
         ["讨伐boss"] = "Boss",
         ["小队讨伐boss"] = "小队讨伐Boss",
         ["金币排行榜"] = "排行榜 金币",
-        ["钻石排行榜"] = "排行榜",
+        ["钻石排行榜"] = "排行榜 钻石",
         // 玩法
         ["挑战金币秘境"] = "秘境 金币",
         ["挑战钻石秘境"] = "秘境 钻石",
@@ -96,7 +96,7 @@ public static class LegacyAliases
         ["小队添加"] = "改用 /小队 加入 @编号。",
         ["小队移除"] = "改用 /小队 移除 @位置（位置号见 /小队）。",
         ["清空小队"] = "逐个移除：/小队 移除 1、/小队 移除 2……，或直接重新编成。",
-        ["取消装备"] = "新版按槽位卸下：/卸下 weapon | armor | trinket | ……（槽位名见 /角色）。",
+        ["取消装备"] = "新版按槽位名卸下：/卸下 weapon | armor | shoes | accessory1 | accessory2 | magiccardpack（6 个槽，与 Core 一致；trinket 作为旧名仍兼容 accessory1）。",
         ["强制分解"] = "新版不做「绕过保护」：先在 /背包 解锁，再 /分解 @编号。",
 
         // 正式不迁移（矩阵标 scope-excluded）

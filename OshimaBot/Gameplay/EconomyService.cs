@@ -1211,6 +1211,7 @@ public sealed partial class EconomyService(
             {
                 "level" or "等级" => "level",
                 "points" or "战绩" => "points",
+                "diamonds" or "钻石" => "diamonds",
                 "horse" or "赛马" or "赛马积分" => "horse",
                 "coop" or "共斗" or "共斗积分" => "coop",
                 "forge" or "锻造" or "锻造积分" => "forge",
@@ -1272,15 +1273,21 @@ public sealed partial class EconomyService(
                     row.Level)).ToArray();
             }
 
-            // 金币榜直接读钱包（CorePlayers.Credits 为 double），不再依赖进度表。
-            List<CorePlayerRecord> wallets = await db.CorePlayers.AsNoTracking()
-                .OrderByDescending(x => x.Credits).Take(GameplayRules.RankingTop).ToListAsync(ct);
+            // 金币榜 / 钻石榜都直接读钱包（CorePlayers 上的 double 字段），不再依赖进度表。
+            // 旧版 `GetRanking(uid, 0)` 是金币榜、`1` 是钻石榜，两榜并存；之前只做了金币榜，
+            // 「/钻石排行榜」被旧名重写到了金币榜上——这里补齐。
+            bool diamond = normalized == "diamonds";
+            List<CorePlayerRecord> wallets = diamond
+                ? await db.CorePlayers.AsNoTracking()
+                    .OrderByDescending(x => x.Materials).Take(GameplayRules.RankingTop).ToListAsync(ct)
+                : await db.CorePlayers.AsNoTracking()
+                    .OrderByDescending(x => x.Credits).Take(GameplayRules.RankingTop).ToListAsync(ct);
             List<long> walletIds = wallets.Select(x => x.UserId).ToList();
             Dictionary<long, string> walletHandles = await db.Users.AsNoTracking()
                 .Where(x => walletIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
             return wallets.Select((wallet, i) => new RankEntry(i + 1,
                 walletHandles.GetValueOrDefault(wallet.UserId, $"旅人{wallet.UserId}"),
-                wallet.Credits)).ToArray();
+                diamond ? wallet.Materials : wallet.Credits)).ToArray();
         }, cancellationToken);
 
     // ---------------- 内部工具 ----------------

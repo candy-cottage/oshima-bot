@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Content.Regions;
+using OshimaBot.Game.Combat;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 
@@ -373,7 +374,10 @@ public static class LegacyFixtureProbes
         ["killMaterialEqualsLevel"] = true,
         ["bossLevels"] = new JsonArray(
             JsonValue.Create(15), JsonValue.Create(30), JsonValue.Create(60)),
-        ["winPoints"] = GameplayRules.BossWinPoints
+        ["winPoints"] = GameplayRules.BossWinPoints,
+        // 旧版 Bosses 是静态字典：全服共享、战损写回、击杀补池。新版 BossPool 同构，别再写成「每日一次抽象挑战」。
+        ["sharedPool"] = true,
+        ["poolSize"] = BossPool.PoolSize
     };
 
     /// <summary>

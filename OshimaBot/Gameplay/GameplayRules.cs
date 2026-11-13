@@ -577,7 +577,8 @@ public static class GameplayRules
     public const int BossRewardCredits = 0;    // 旧版击杀只给 Materials += Level，没有金币
     public const int BossRewardDiamonds = 0;   // 实际奖励按 Boss 等级发放（15/30/60），此常量已不参与计算
     public const int BossWinPoints = 25;
-    public const int RankingTop = 10;
+    /// <summary>榜单显示条数。旧版 <c>GetRanking</c> 的 <c>showTop = 20</c>，对齐它。</summary>
+    public const int RankingTop = 20;
 
     /// <summary>托管用户 id：市场上架 / 报价单在成交前的物品归属，不会出现在任何玩家背包。</summary>
     public const long EscrowUserId = -1;
@@ -603,6 +604,7 @@ public static class GameplayRules
     {
         "level" or "等级" => "等级榜",
         "points" or "战绩" => "战绩榜",
+        "diamonds" or "钻石" => "钻石榜",
         "horse" or "赛马" or "赛马积分" => "赛马积分榜",
         "coop" or "共斗" or "共斗积分" => "共斗积分榜",
         "forge" or "锻造" or "锻造积分" => "锻造积分榜",

@@ -403,14 +403,14 @@ public static class CommandCatalog
                 await deps.Players.EquipAsync(context.UserId, RefIndex(context), context.CancellationToken))),
 
         "unequip" => new DelegateCommand(
-            key: "unequip", name: "卸下", aliases: ["unequip"], usage: "/卸下 weapon|armor|trinket",
+            key: "unequip", name: "卸下", aliases: ["unequip"], usage: "/卸下 weapon|armor|shoes|accessory1|accessory2|magiccardpack",
             description: "卸下主战角色指定槽位的装备", group: CommandGroups.Player,
             handler: async context =>
             {
                 string slot = context.FirstArgument ?? "";
                 return string.IsNullOrWhiteSpace(slot)
                     ? CommandReplies.Error("缺少槽位", "没有卸下任何装备",
-                        "用法：/卸下 weapon · /卸下 armor · /卸下 trinket", "/角色")
+                        "用法：/卸下 weapon · armor · shoes · accessory1 · accessory2 · magiccardpack（6 个槽，与 Core 一致）", "/角色")
                     : CommandReplies.FromResult(await deps.Players.UnequipAsync(
                         context.UserId, slot.Trim().ToLowerInvariant(), context.CancellationToken));
             }),
@@ -752,8 +752,8 @@ public static class CommandCatalog
             }),
 
         "rank" => new DelegateCommand(
-            key: "rank", name: "排行榜", aliases: ["rank", "ranklist"], usage: "/排行榜 [金币|等级|战绩]",
-            description: "查看排行榜：金币 / 等级 / 战绩 / 赛马 / 共斗 / 锻造", group: CommandGroups.Economy,
+            key: "rank", name: "排行榜", aliases: ["rank", "ranklist"], usage: "/排行榜 [金币|钻石|等级|战绩]",
+            description: "查看排行榜：金币 / 钻石 / 等级 / 战绩 / 赛马 / 共斗 / 锻造", group: CommandGroups.Economy,
             handler: context => RankAsync(deps, context)),
 
         // ---- 多人房间（旧版 OnlineService）：按群隔离，房号 7 位，空闲 10 分钟解散 ----
