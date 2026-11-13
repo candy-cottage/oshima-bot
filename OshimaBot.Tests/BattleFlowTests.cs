@@ -242,6 +242,49 @@ public sealed class BattleFlowTests
         Assert.Contains("9999", missing.Title);
     }
 
+    /// <summary>
+    /// 旧版击杀只发「材料（钻石）+= Boss 等级」，不发金币；战绩固定 +25。
+    /// 把目标血量压到 1 点，把「击杀」这条分支钉死。
+    /// </summary>
+    [Fact]
+    public async Task BossKill_PaysDiamondsEqualToLevelNotCredits()
+    {
+        BossPool.Reset();
+        using BattleDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        IEconomyService economy = db.Get<IEconomyService>();
+        await db.CreateSaveAsync(players, Me, "讨伐者");
+
+        // 把出战角色练到能一击破防的程度，避免「Boss 先手秒杀 1 级角色」把击杀分支测成失败分支
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            PlayerCharacter? main = await CharacterStore.MainAsync(context, Me, null, CancellationToken.None);
+            Assert.NotNull(main);
+            main.Core.Level = 60;
+            main.Core.InitialHP = 8_000;
+            main.Core.InitialATK = 900;
+            CharacterStore.Sync(main);
+            await context.SaveChangesAsync();
+        }
+
+        BossEntry target = BossPool.All.OrderBy(x => x.Level).First();
+        target.Character.HP = 1;
+
+        PlayerSnapshot before = (await players.GetSnapshotAsync(Me))!;
+        ActionResult result = await economy.BossAtAsync(Me, target.Index);
+
+        Assert.True(result.Ok, result.Title);
+        Assert.Contains("成功", result.Title);
+
+        PlayerSnapshot after = (await players.GetSnapshotAsync(Me))!;
+        Assert.Equal(before.Materials + target.Level, after.Materials, 3);
+        Assert.Equal(before.Credits, after.Credits, 3);          // 旧版不发金币
+
+        IReadOnlyList<RankEntry> points = await economy.GetRankingAsync("战绩");
+        Assert.Contains(points, x => x.Value >= GameplayRules.BossWinPoints);
+    }
+
     [Fact]
     public async Task BossTeam_RequiresSquadAndReturnsBattleLog()
     {

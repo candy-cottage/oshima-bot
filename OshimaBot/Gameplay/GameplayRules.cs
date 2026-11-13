@@ -516,22 +516,55 @@ public static class GameplayRules
         };
     }
 
+    // 旧版 FightInstance 的奖励区间（每名出战角色各掷一次，再乘难度）。
+    public const int InstanceGoldMin = 550;
+    public const int InstanceGoldMax = 1_050;
+    public const int InstanceMaterialMin = 3;
+    public const int InstanceMaterialMax = 7;
+    public const int InstanceExpMin = 570;
+    public const int InstanceExpMax = 1_260;
+
     /// <summary>
-    /// 按类型与难度产出：经验 / 金币 / 物品件数。
-    /// <para>基准取自旧版 <c>FightInstance</c>：金币约 550–1050、钻石 3–7、经验 570–1260，均随难度线性放大。</para>
+    /// 按类型与难度结算奖励（旧版 <c>FightInstance</c>）：**每名出战角色各掷一次**再乘难度，
+    /// 所以带满 4 人小队的收益是单人的约 4 倍——这是旧版「多带人多拿」的设计，不是 bug。
     /// </summary>
-    public static (long Exp, long Credits, long Diamonds, int Items) InstanceReward(InstanceKind kind, int difficulty)
+    public static (long Exp, long Credits, long Diamonds, int Items) InstanceReward(
+        InstanceKind kind, int difficulty, int members, IRandomSource random)
+    {
+        int d = ClampDifficulty(difficulty);
+        int count = Math.Max(1, members);
+        long roll(int min, int max)
+        {
+            long total = 0;
+            for (int i = 0; i < count; i++) total += random.Next(min, max);
+            return total * d;
+        }
+
+        return kind switch
+        {
+            InstanceKind.Gold => (0, roll(InstanceGoldMin, InstanceGoldMax), 0, 0),
+            InstanceKind.Material => (0, 0, roll(InstanceMaterialMin, InstanceMaterialMax), 0),
+            InstanceKind.Exp => (roll(InstanceExpMin, InstanceExpMax), 0, 0, 0),
+            InstanceKind.Region => (100L * d * count, 0, 0, d),
+            InstanceKind.Break => (0, 0, 0, d),
+            InstanceKind.Skill => (0, 0, 0, d),
+            _ => (0, 0, 0, 1)
+        };
+    }
+
+    /// <summary>结算前给玩家看的区间：单人每档的下限–上限 × 难度，实际按出战人数叠乘。</summary>
+    public static string InstanceRewardHint(InstanceKind kind, int difficulty)
     {
         int d = ClampDifficulty(difficulty);
         return kind switch
         {
-            InstanceKind.Gold => (0, 800L * d, 0, 0),
-            InstanceKind.Material => (0, 0, 5L * d, 0),
-            InstanceKind.Exp => (900L * d, 0, 0, 0),
-            InstanceKind.Region => (100L * d, 0, 0, d),
-            InstanceKind.Break => (0, 0, 0, d),
-            InstanceKind.Skill => (0, 0, 0, d),
-            _ => (0, 0, 0, 1)
+            InstanceKind.Gold => $"每人 {InstanceGoldMin}-{InstanceGoldMax - 1} 金币 × 难度",
+            InstanceKind.Material => $"每人 {InstanceMaterialMin}-{InstanceMaterialMax - 1} 钻石 × 难度",
+            InstanceKind.Exp => $"每人 {InstanceExpMin}-{InstanceExpMax - 1} 经验 × 难度",
+            InstanceKind.Region => $"{100 * d} 经验 + {d} 件地区材料",
+            InstanceKind.Break => $"{d} 件突破材料",
+            InstanceKind.Skill => $"{d} 件技能材料",
+            _ => "1 张魔法卡"
         };
     }
 

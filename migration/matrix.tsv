@@ -77,13 +77,13 @@ PLY-007	玩法	查地区	`RainBOTService.cs:2204`	/查地区 [编号|名称]	Fun
 PLY-008	玩法	探索	`RainBOTService.cs:2263`	/探索	ExploreService.StartAsync	L2	等价	探索许可是虚物品配额：每日 60、11–13 点与 17–19 点上线各 +30、4:00 刷新；消耗 = 人数 × 星级；角色探索期间锁定；2 分钟后可结算（旧版 ExploreTime=2）；遭遇战走真实战斗	待建 FIX-PLY-EXPLORE
 PLY-009	玩法	小队探索	`RainBOTService.cs:2300`	/小队探索 <地区>	ExploreService.StartAsync(useSquad)	L2	等价	旧写法 `/小队探索 1` 直接取小队编成（按槽位），未编成给引导；消耗与结算同单人	待建 FIX-PLY-EXPLORE
 PLY-010	玩法	探索结算	`RainBOTService.cs:2256`	/探索结算	ExploreService.ClaimAsync	L2	等价	结果按难度掷骰（普通 45%/空手 20%/遭遇 25%/拾得 10%，星级越高战斗越多，同旧版概率表）；遭遇战真实开打，胜利掉地区材料、失败给三分之一金币；一次结算所有已完成的探索（差异登记 DIV-005）	待建 FIX-PLY-EXPLORE
-PLY-011	玩法	挑战金币秘境	`RainBOTService.cs:2695`	/秘境	EconomyService.InstanceAsync	L2	简化替代	已接入 7 类（金币/钻石/经验/地区/突破/技能/魔法卡）× 难度 1-5（敌人数量=难度+1、等级=难度×8、奖励随难度放大）+ 真实战斗；队伍条件仍缺	
-PLY-012	玩法	挑战钻石秘境	`RainBOTService.cs:2709`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
-PLY-013	玩法	挑战经验秘境	`RainBOTService.cs:2723`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
-PLY-014	玩法	挑战地区秘境	`RainBOTService.cs:2737`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
-PLY-015	玩法	挑战突破秘境	`RainBOTService.cs:2751`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
-PLY-016	玩法	挑战技能秘境	`RainBOTService.cs:2765`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
-PLY-017	玩法	挑战魔法卡秘境	`RainBOTService.cs:2779`	/秘境	EconomyService.InstanceAsync	L2	简化替代	同上	
+PLY-011	玩法	挑战金币秘境	`RainBOTService.cs:2695`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-012	玩法	挑战钻石秘境	`RainBOTService.cs:2709`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-013	玩法	挑战经验秘境	`RainBOTService.cs:2723`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-014	玩法	挑战地区秘境	`RainBOTService.cs:2737`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-015	玩法	挑战突破秘境	`RainBOTService.cs:2751`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-016	玩法	挑战技能秘境	`RainBOTService.cs:2765`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
+PLY-017	玩法	挑战魔法卡秘境	`RainBOTService.cs:2779`	/秘境	EconomyService.InstanceAsync	L2	简化替代	7 类秘境 × 难度 1-5（敌人数=难度+1、等级=难度×8）+ 真实战斗；奖励改回旧版口径：每名出战角色各掷一次 550–1049 金币 / 3–6 钻 / 570–1259 经验再乘难度（4 人≈4 倍），胜利全额、失败半额；掉落品类与经验归属仍有差异（DIV-016）	
 PLY-018	玩法	创建房间	`RainBOTService.cs:3300`	/创建房间	RoomService.CreateAsync	L2	等价	四种房型、7 位房号（去 0/O/1/I）、可选密码、按群隔离（旧版 GameMap=groupId）、赛马每群限一个、空闲 10 分钟解散；状态只在进程内存（同旧版）（差异登记 DIV-007）	待建 FIX-PLY-ROOM
 PLY-019	玩法	加入房间	`RainBOTService.cs:3335`	/加入房间	RoomService.JoinAsync	L2	等价	房号大小写不敏感，校验密码 / 人数上限 / 是否已开局 / 是否已在别的房间	待建 FIX-PLY-ROOM
 PLY-020	玩法	退出房间	`RainBOTService.cs:3391`	/退出房间	RoomService.QuitAsync	L1	等价	最后一人离开自动解散；房主离开自动转让给下一位	待建 FIX-PLY-ROOM

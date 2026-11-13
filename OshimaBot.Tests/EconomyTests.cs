@@ -306,6 +306,35 @@ public sealed class EconomyTests
         Assert.True(await dbContext.LedgerEntries.CountAsync(x => x.Reason == "instance_start") >= 1);
     }
 
+    /// <summary>
+    /// 秘境奖励按旧版口径：**每名出战角色各掷一次**（550–1049 金币 / 3–6 钻 / 570–1259 经验）再乘难度。
+    /// 这里用「永远取区间下限」的随机源把数值钉死。
+    /// </summary>
+    [Fact]
+    public void InstanceReward_ScalesWithMembersAndDifficulty()
+    {
+        AlwaysHitRandomSource random = new();
+
+        (long exp1, long credits1, long diamonds1, _) =
+            GameplayRules.InstanceReward(GameplayRules.InstanceKind.Gold, 2, 1, random);
+        (_, long credits4, _, _) =
+            GameplayRules.InstanceReward(GameplayRules.InstanceKind.Gold, 2, 4, random);
+        Assert.Equal(0, exp1);
+        Assert.Equal(550 * 2, credits1);
+        Assert.Equal(550 * 2 * 4, credits4);        // 4 人 = 单人的 4 倍
+
+        (_, _, diamonds1, _) =
+            GameplayRules.InstanceReward(GameplayRules.InstanceKind.Material, 3, 1, random);
+        (_, _, long diamonds4, _) =
+            GameplayRules.InstanceReward(GameplayRules.InstanceKind.Material, 3, 4, random);
+        Assert.Equal(3 * 3, diamonds1);
+        Assert.Equal(3 * 3 * 4, diamonds4);
+
+        (long expGain, _, _, _) =
+            GameplayRules.InstanceReward(GameplayRules.InstanceKind.Exp, 5, 4, random);
+        Assert.Equal(570 * 5 * 4, expGain);
+    }
+
     [Fact]
     public async Task Ranking_HasHorseCoopAndForgeBoards()
     {

@@ -807,12 +807,12 @@ public sealed partial class EconomyService(
                 StateJson = JsonSerializer.Serialize(new { kind = kind.ToString(), difficulty = level }),
                 StartedAtUtc = now, EndsAtUtc = now.AddMinutes(GameplayRules.InstanceDefaultMinutes)
             });
-            (long exp, long credits, long diamonds, int items) = GameplayRules.InstanceReward(kind, level);
+            string rewardHint = GameplayRules.InstanceRewardHint(kind, level);
             return ActionResult.Success("🗺️ 进入秘境",
                 $"{kindName}秘境 · 难度 {level} · {GameplayRules.InstanceDefaultMinutes} 分钟后结算",
                 [$"- 消耗金币 {GameplayRules.InstanceCostCredits}",
                     $"- 敌人：{GameplayRules.InstanceEnemyCount(level)} 名 Lv.{GameplayRules.InstanceEnemyLevel(level)}",
-                    $"- 预计收获：{exp} 经验 / {credits} 金币 / {diamonds} 钻石 / {items} 件掉落",
+                    $"- 预计收获：{rewardHint}（按出战人数叠乘）",
                     "- 胜利全额，失败半额；用 /收取秘境 结算"],
                 ["/收取秘境", "/状态"]);
         }, cancellationToken);
@@ -876,7 +876,7 @@ public sealed partial class EconomyService(
             double rate = win ? 1.0 : 0.5;
 
             (long fullExp, long fullCredits, long fullDiamonds, int fullItems) =
-                GameplayRules.InstanceReward(kind, level);
+                GameplayRules.InstanceReward(kind, level, party.Count, random);
             long exp = (long)(fullExp * rate);
             long credits = (long)(fullCredits * rate);
             long diamonds = (long)(fullDiamonds * rate);
