@@ -33,6 +33,7 @@ public sealed record CommandDependencies(
     IExploreService Explore,
     IQuestBoardService Quests,
     IForgeService Forge,
+    ISnapshotService Snapshots,
     ILogger Logger);
 
 public interface ICommand

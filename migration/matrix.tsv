@@ -1,6 +1,6 @@
 id	groups	command	legacy_src	entry	impl	level	status	diff	fixture
 ARC-001	存档	创建存档	`RainBOTService.cs:773`	/注册	PlayerService.RegisterAsync	L1	简化替代	初始金币 5000 与「注册即送自建角色」都已对齐（CustomCharacter 属性当场随机，默认名 `旅人XXXX` 同旧版随机昵称思路）；差异只剩懒建档：首次任意操作即自动建档，不必先 /注册（差异登记 DIV-008）	FIX-CHR-REGISTER
-ARC-002	存档	还原存档	`RainBOTService.cs:834`	—	—	—	缺失	旧版可回滚到上一份存档，新版无任何回滚入口。**已排期**：先设计快照策略（单表原地更新 → 按日快照 + 手动还原点），用户 2026-11-12 同意后续做	TODO-ARC-SNAPSHOT
+ARC-002	存档	还原存档	`RainBOTService.cs:834`	/还原存档	SnapshotService.RestoreLatestAsync	L1	增强	旧版「还原存档」是空壳：RestoreSaved 整个方法体被注释掉，只返回「此功能维护中」——没有可对照的行为，所以这条从「缺失」改为「增强」。新版是真快照：/备份存档 拍一份（钱包/角色/背包/小队/每日任务/签到/活动进度），/还原存档 先预览、/还原存档 确认 才执行；每人留 10 份、每天还原 1 次，快照之后有玩家间成交会被拒绝（防复制物品），还原前自动留底一份可反悔。市场/报价/私信/社团/在途探索与锻造不回滚（DIV-020）	—
 ARC-003	存档	我的存档	`RainBOTService.cs:781`	/状态	PlayerService.GetSnapshotAsync	L1	简化替代	字段集合不同：旧版含账号/绑定信息，新版为旅人等级/货币/角色/背包概览	
 CHR-001	角色	我角色	`RainBOTService.cs:1190`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	旧版简略/详细两档并支持角色序号，新版合并为一页列表 + 分页	
 CHR-002	角色	我的角色	`RainBOTService.cs:1206`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	同上；旧版可查看任意序号角色的技能/装备明细，新版仅列表摘要	

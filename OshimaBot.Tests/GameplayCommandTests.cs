@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(155, registry.All.Count);
+        Assert.Equal(158, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -78,6 +78,30 @@ public sealed class GameplayCommandTests
         Assert.Contains("锁定或绑定", await RouteAsync(router, "/分解 @1"));
         Assert.Contains("物品已解锁", await RouteAsync(router, "/解锁 @1"));
         Assert.Contains("分解完成", await RouteAsync(router, "/分解 @1"));
+    }
+
+    /// <summary>
+    /// 存档三件套的指令层：备份 → 预览（必须先看到「确认」）→ 确认执行。
+    /// 预览这一步很重要，旧版是「还原存档」后再「确认还原存档」两步，新版把确认做成参数而不是另开一条指令。
+    /// </summary>
+    [Fact]
+    public async Task Router_SnapshotBackupPreviewAndRestore()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/注册");
+        await TestItems.SeedAsync(db.Provider, UserId, 2);
+
+        Assert.Contains("已备份", await RouteAsync(router, "/备份存档 打 Boss 前"));
+        Assert.Contains("存档快照", await RouteAsync(router, "/存档列表"));
+
+        string preview = await RouteAsync(router, "/还原存档");
+        Assert.Contains("确认后执行", preview);
+        Assert.Contains("打 Boss 前", preview);
+
+        Assert.Contains("已还原", await RouteAsync(router, "/还原存档 确认"));
+        // 每天只给一次：第二次被拦下
+        Assert.Contains("今天已经还原过", await RouteAsync(router, "/还原存档 确认"));
     }
 
     [Fact]
@@ -393,7 +417,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(155, registry.All.Count);
+        Assert.Equal(158, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -479,6 +503,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<IQuestBoardService, QuestBoardService>();
             services.AddSingleton<IForgeService, ForgeService>();
+            services.AddSingleton<ISnapshotService, SnapshotService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -497,6 +522,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IExploreService>(),
                 Provider.GetRequiredService<IQuestBoardService>(),
                 Provider.GetRequiredService<IForgeService>(),
+                Provider.GetRequiredService<ISnapshotService>(),
                 NullLogger.Instance);
         }
 

@@ -48,6 +48,9 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<CoreCharacterRecord> CoreCharacters => Set<CoreCharacterRecord>();
     public DbSet<CoreItemRecord> CoreItems => Set<CoreItemRecord>();
 
+    // ---- 人物存档快照（旧版的「还原存档」是空壳，这里做成真的）----
+    public DbSet<SaveSnapshot> SaveSnapshots => Set<SaveSnapshot>();
+
     // ---- 社团（M6.2）----
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
@@ -225,6 +228,12 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
             entity.HasIndex(x => new { x.UserId, x.Level });
             entity.HasIndex(x => new { x.UserId, x.Promotion });
             entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<SaveSnapshot>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            // 「取最近一份」「每天还原过几次」都按 (用户, 时间) 走。
+            entity.HasIndex(x => new { x.UserId, x.CreatedAtUtc });
         });
         modelBuilder.Entity<CoreItemRecord>(entity =>
         {

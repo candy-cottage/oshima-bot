@@ -36,7 +36,7 @@ public class LegacyCommandEntryTests
     {
         CommandDependencies dependencies = new(
             null!, null!, new NullBindCodes(), new NullSessions(),
-            null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             NullLogger.Instance);
         return CommandCatalog.Build(dependencies);
     }

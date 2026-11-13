@@ -28,7 +28,7 @@ public static class CommandCatalog
         "log", "log-full",
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
-        "register", "status", "look", "notice", "fortune", "signin",
+        "register", "status", "backup", "snapshots", "restore", "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
         "lock", "unlock", "equip", "unequip",
@@ -151,6 +151,33 @@ public static class CommandCatalog
             key: "status", name: "状态", aliases: ["存档", "me"], usage: "/状态",
             description: "旅人档案：等级、货币、角色与背包概览", group: CommandGroups.Player,
             handler: context => StatusAsync(deps, context)),
+
+        "backup" => new DelegateCommand(
+            key: "backup", name: "备份存档", aliases: ["存档备份", "backup"], usage: "/备份存档 [备注]",
+            description: "存一份人物快照（钱包/角色/背包/小队/日常进度），每人最多留 10 份",
+            group: CommandGroups.Player, audit: true,
+            handler: async context => CommandReplies.FromResult(await deps.Snapshots.SaveAsync(
+                context.UserId, context.ArgumentText.Trim(), context.CancellationToken))),
+
+        "snapshots" => new DelegateCommand(
+            key: "snapshots", name: "存档列表", aliases: ["备份列表", "snapshots"], usage: "/存档列表",
+            description: "列出最近的存档快照（手动备份与还原前留底）", group: CommandGroups.Player,
+            handler: context => SnapshotsAsync(deps, context)),
+
+        "restore" => new DelegateCommand(
+            key: "restore", name: "还原存档", aliases: ["restore"], usage: "/还原存档　/还原存档 确认",
+            description: "回到最近一份手动备份（每天 1 次；旧版这个指令是「维护中」的空壳）",
+            group: CommandGroups.Player, audit: true,
+            handler: async context =>
+            {
+                string action = context.ArgumentText.Trim();
+                if (action is not ("确认" or "confirm"))
+                {
+                    return await RestorePreviewAsync(deps, context);
+                }
+                return CommandReplies.FromResult(
+                    await deps.Snapshots.RestoreLatestAsync(context.UserId, context.CancellationToken));
+            }),
 
         "look" => new DelegateCommand(
             key: "look", name: "观察", aliases: ["场景", "look"], usage: "/观察",
@@ -1501,6 +1528,52 @@ public static class CommandCatalog
     private static BotReply NoIdentity()
         => CommandReplies.Error("身份尚未就绪", "没有读写任何存档",
             "请通过 QQ 消息触发注册，或稍后重试", "/帮助");
+
+    private static async Task<BotReply> SnapshotsAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<SnapshotSummary> items = await deps.Snapshots.ListAsync(
+            context.UserId, context.CancellationToken);
+        if (items.Count == 0)
+        {
+            return CommandReplies.Compose("💾 存档快照", "还没有任何快照",
+                ["- /备份存档 存一份：钱包、角色、背包、小队与日常进度整体拍快照",
+                    "- 还原只认「手动备份」，还原前还会自动留底一份"],
+                ["/备份存档", "/状态"]);
+        }
+
+        List<string> lines = [.. items.Select((x, i) =>
+            $"- {i + 1}. {x.CreatedOn}　{(x.IsManual ? "手动" : "还原前留底")}"
+            + $"　金币 {GameplayRules.Money(x.Credits)}　角色 {x.CharacterCount}　物品 {x.ItemCount}"
+            + (x.Note.Length == 0 ? "" : $"　「{x.Note}」"))];
+        lines.Add("- 还原：/还原存档（先看一遍，再 /还原存档 确认）");
+        return CommandReplies.ListPage("💾 存档快照", $"共 {items.Count} 份", lines, 1, "/存档列表",
+            ["/备份存档", "/还原存档", "/状态"]);
+    }
+
+    private static async Task<BotReply> RestorePreviewAsync(CommandDependencies deps, CommandContext context)
+    {
+        SnapshotSummary? latest = await deps.Snapshots.LatestAsync(context.UserId, context.CancellationToken);
+        SnapshotSummary? manual = (await deps.Snapshots.ListAsync(context.UserId, context.CancellationToken))
+            .FirstOrDefault(x => x.IsManual);
+        if (manual is null)
+        {
+            return CommandReplies.Error("没有可还原的备份", "没有改动任何数据",
+                "还原只认手动备份：先用 /备份存档 存一份", "/备份存档");
+        }
+
+        List<string> lines =
+        [
+            $"- 目标：{manual.CreatedOn}（{(latest is not null && latest.Id == manual.Id ? "最新一份" : "最近一份手动备份")}）",
+            $"- 那时的金币 {GameplayRules.Money(manual.Credits)}　钻石 {GameplayRules.Money(manual.Materials)}",
+            $"- 那时的角色 {manual.CharacterCount} 名　物品 {manual.ItemCount} 格",
+            manual.Note.Length == 0 ? "- 没有备注" : $"- 备注：{manual.Note}",
+            "- 会回滚：角色、背包、钱包、小队、每日任务/签到/活动进度",
+            "- 不回滚：市场挂单、报价、私信、社团、在途探索与锻造（这些是跨玩家的）",
+            $"- 限制：每天最多 {SnapshotRules.MaxRestoresPerDay} 次；快照之后若有玩家间成交会被拒绝"
+        ];
+        return CommandReplies.Compose("♻️ 还原存档", "确认后执行，无法撤销（但会先自动留底）", lines,
+            ["/还原存档 确认", "/存档列表", "/状态"]);
+    }
 
     private static async Task<BotReply> StatusAsync(CommandDependencies deps, CommandContext context)
     {

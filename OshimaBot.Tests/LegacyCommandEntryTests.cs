@@ -19,7 +19,7 @@ public class LegacyCommandEntryTests
     private static readonly (string Legacy, string Entry)[] LegacyCommands =
     [
         ("创建存档", "/注册"),
-        ("还原存档", ""),
+        ("还原存档", "/还原存档"),
         ("我的存档", "/状态"),
         ("我角色", "/我的角色"),
         ("我的角色", "/我的角色"),
@@ -187,7 +187,7 @@ public class LegacyCommandEntryTests
     {
         CommandDependencies dependencies = new(
             null!, null!, new NullBindCodes(), new NullSessions(),
-            null!, null!, null!, null!, null!, null!, null!, null!, null!,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!,
             NullLogger.Instance);
         return CommandCatalog.Build(dependencies);
     }

@@ -96,6 +96,8 @@ builder.Services.AddSingleton<IExploreService, ExploreService>();
 builder.Services.AddSingleton<IQuestBoardService, QuestBoardService>();
 // 锻造：材料按所属地区折算系数与品质门槛，支持大师锻造/取消/模拟。
 builder.Services.AddSingleton<IForgeService, ForgeService>();
+// 人物存档：旧版 RestoreSaved 是注释掉的空壳，这里做成真快照（钱包/角色/背包/小队/日常进度）。
+builder.Services.AddSingleton<ISnapshotService, SnapshotService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -112,6 +114,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IExploreService>(),
     sp.GetRequiredService<IQuestBoardService>(),
     sp.GetRequiredService<IForgeService>(),
+    sp.GetRequiredService<ISnapshotService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();
