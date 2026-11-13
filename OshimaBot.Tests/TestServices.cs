@@ -59,3 +59,42 @@ internal sealed class AlwaysHitRandomSource : IRandomSource
 
     public double NextDouble() => 0.9;
 }
+
+/// <summary>
+/// 脚本化随机源：按预置序列依次返回，用于精确命中某个分支
+/// （例如「先命中、再掷到 Red、再掷到角色类」的抽卡路径）。
+/// 序列用完后抛异常，避免测试在意外多取一次随机数时静默通过。
+/// </summary>
+internal sealed class ScriptedSequenceRandom : IRandomSource
+{
+    private readonly Queue<double> _doubles;
+    private readonly Queue<int> _ints;
+
+    public ScriptedSequenceRandom(IEnumerable<double> doubles, IEnumerable<int> ints)
+    {
+        _doubles = new Queue<double>(doubles);
+        _ints = new Queue<int>(ints);
+    }
+
+    public int Next(int maxExclusive) => Next(0, maxExclusive);
+
+    public int Next(int minInclusive, int maxExclusive)
+    {
+        if (_ints.Count == 0) throw new InvalidOperationException("脚本化随机源的整数序列已用尽");
+        int value = _ints.Dequeue();
+        if (value < minInclusive || value >= maxExclusive)
+        {
+            throw new InvalidOperationException($"脚本值 {value} 超出 [{minInclusive}, {maxExclusive})");
+        }
+        return value;
+    }
+
+    public double NextDouble()
+    {
+        if (_doubles.Count == 0) throw new InvalidOperationException("脚本化随机源的小数序列已用尽");
+        return _doubles.Dequeue();
+    }
+
+    public bool DoublesExhausted => _doubles.Count == 0;
+    public bool IntsExhausted => _ints.Count == 0;
+}

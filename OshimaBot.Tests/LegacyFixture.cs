@@ -292,6 +292,11 @@ public static class LegacyFixtureProbes
             ["hitChancePercent"] = 20,
             // 旧版无保底：十连可以全空
             ["pityQuality"] = null,
+            // 旧版 Next(8) 均匀落到 8 类产出；重复角色折算 50 材料；橙品以上抽到即锁
+            ["kindCount"] = 8,
+            ["duplicateCharacterRefund"] = GameplayRules.GachaDuplicateCharacterMaterials,
+            ["autoLockFrom"] = GameplayRules.QualityName(
+                GameplayRules.QualityTierOf(FunGame.Core.Library.Constant.QualityType.Orange)),
             ["qualityThresholds"] = new JsonArray(GameplayRules.GachaQualityWeights
                 .Select(w => (JsonNode?)JsonValue.Create(w.Percent)).ToArray())
         };

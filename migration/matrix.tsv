@@ -38,10 +38,10 @@ ITM-004	物品	角色库存	`RainBOTService.cs:1123`	/背包	PlayerService.GetCh
 ITM-005	物品	我的物品	`RainBOTService.cs:1341`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版可查看单个物品详情（属性/技能/次数），新版仅列表行	
 ITM-006	物品	库存搜索2	`RainBOTService.cs:1160`	/库存搜索	PlayerService.SearchBagAsync	L1	简化替代	旧版「只搜名称」是「连描述一起搜」的子集，已合并为同一入口；无装备/出售/交易序号分组	待建 FIX-ITM-SEARCH
 ITM-007	物品	库存搜索	`RainBOTService.cs:1175`	/库存搜索	PlayerService.SearchBagAsync	L1	简化替代	同时匹配名称与描述，命中行保留 /背包 的 @编号；每行附描述摘要，支持 p2 分页	待建 FIX-ITM-SEARCH
-ITM-008	物品	抽卡	`RainBOTService.cs:1006`	/抽卡	PlayerService.GachaAsync	L2	等价	金币 1000/次（/抽卡）、钻石 5/次（/钻石抽卡）；每次独立判定 dice>0.8 才中（20%）；命中后 Next(8) 分 8 类产出（魔法卡包/武器/防具/鞋子/饰品/角色/魔法卡/随机物品），品质按 DrawCardProbabilities 阈值判定；魔法卡与卡包无内容包模板，按掷出的品质当场生成（3 张卡合包）	FIX-ITM-GACHA
+ITM-008	物品	抽卡	`RainBOTService.cs:1006`	/抽卡	PlayerService.GachaAsync	L2	等价	金币 1000/次（/抽卡）、钻石 5/次（/钻石抽卡）；每次独立判定 dice>0.8 才中（20%）、十连可能全空；命中后 Next(8) 均匀分 8 类产出；品质按 DrawCardProbabilities 累计阈值；重复角色折算 50 材料；橙品以上抽到即锁定。分布、重复折算与锁定均有测试与夹具（FIX-ITM-GACHA / GachaLegacyTests）	FIX-ITM-GACHA
 ITM-009	物品	十连抽卡	`RainBOTService.cs:1014`	/十连抽卡	PlayerService.GachaAsync	L2	等价	金币 10000、钻石 50，都是单价 ×10 无折扣；每抽独立 20% 命中、无保底，可能全空	FIX-ITM-GACHA
-ITM-010	物品	钻石抽卡	`RainBOTService.cs:1016`	/钻石抽卡	PlayerService.GachaAsync	L2	简化替代	旧版材料 5/次（20% 中奖、无保底、6 档概率 White 49.53→Red 3.06）；新版 100% 得物 + 保底	FIX-ITM-GACHA
-ITM-011	物品	钻石十连抽卡	`RainBOTService.cs:1017`	/钻石十连抽卡	PlayerService.GachaAsync	L2	简化替代	旧版十连 = 10×材料单抽价 50，可能全空；新版 45 钻 + 保底	FIX-ITM-GACHA
+ITM-010	物品	钻石抽卡	`RainBOTService.cs:1016`	/钻石抽卡	PlayerService.GachaAsync	L2	等价	钻石 5/次、20% 命中、无保底、6 档累计阈值（White 80.6% / Green 5.9% / Blue 5.2% / Purple 1.9% / Orange 3.3% / Red 3.1%），与旧版一致	FIX-ITM-GACHA
+ITM-011	物品	钻石十连抽卡	`RainBOTService.cs:1017`	/钻石十连抽卡	PlayerService.GachaAsync	L2	等价	十连 = 5×10 = 50 钻，无折扣、每抽独立 20%、可能全空；与旧版一致	FIX-ITM-GACHA
 ITM-012	物品	兑换金币	`RainBOTService.cs:1356`	/兑换金币	PlayerService.ExchangeCreditsAsync	L1	等价	同旧版：先抬到最低 10、再向下取整到 10 的倍数，10 钻 = 2000 金币，零头保留	待建 FIX-ITM-EXCHANGE
 ITM-013	物品	使用	`RainBOTService.cs:1530`	/使用	PlayerService.UseItemAsync	L1	简化替代	旧版支持 <名称|序号> [次数] [角色] [角色序号]；新版仅 @编号 [x数量] 且只换旅人经验	
 ITM-014	物品	使用魔法卡	`RainBOTService.cs:1550`	/使用魔法卡	PlayerService.UseMagicCardAsync	L1	简化替代	同品质校验、同名魔法叠等级、满级折算 10 钻/级补偿；目标可以是背包卡包或主战已装备卡包（后者需重新装备才生效），不做交易中校验	待建 FIX-ITM-MAGICCARD

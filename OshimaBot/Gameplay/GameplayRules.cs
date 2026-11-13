@@ -339,6 +339,12 @@ public static class GameplayRules
     /// <summary>旧版抽到已拥有的角色时，折算成 50 材料。</summary>
     public const int GachaDuplicateCharacterMaterials = 50;
 
+    /// <summary>
+    /// 旧版抽卡/签到掉落「橙品以上自动锁定」（<c>if (quality &gt;= QualityType.Orange) item.IsLock = true</c>），
+    /// 防止误分解。抽卡与签到共用这一条规则。
+    /// </summary>
+    public static bool AutoLockOnDraw(QualityType quality) => quality >= QualityType.Orange;
+
     /// <summary>旧版 <c>ItemCanNotDrawCard</c>：这些类型不进抽卡池。</summary>
     public static bool IsDrawable(Item item) => item.ItemType is not (
         ItemType.Collectible or ItemType.QuestItem or ItemType.GiftBox or ItemType.Others);

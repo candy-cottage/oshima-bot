@@ -454,13 +454,15 @@ public sealed class PlayerService(
             if (kind == GameplayRules.GachaKind.MagicCard)
             {
                 Item card = FunGameService.GenerateMagicCard(local, rolled);
+                card.IsLock = GameplayRules.AutoLockOnDraw(card.QualityType);   // 旧版橙品以上抽到即锁
                 ItemStore.AddSnapshot(db, state.UserId, card, "magic-card");
-                return $"{qualityName} · 魔法卡【{card.Name}】";
+                return $"{qualityName} · 魔法卡【{card.Name}】{Locked(card)}";
             }
             Item? pack = FunGameService.GenerateMagicCardPack(local, GameplayRules.MagicCardPackMaxMagics, rolled);
             if (pack is null) return $"{qualityName} · 魔法卡包（生成失败）";
+            pack.IsLock = GameplayRules.AutoLockOnDraw(pack.QualityType);
             ItemStore.AddSnapshot(db, state.UserId, pack, "magic-card-pack");
-            return $"{qualityName} · 魔法卡包【{pack.Name}】";
+            return $"{qualityName} · 魔法卡包【{pack.Name}】{Locked(pack)}";
         }
 
         ItemType? wanted = kind switch
@@ -484,11 +486,21 @@ public sealed class PlayerService(
         Item pick = candidates[random.Next(candidates.Count)];
 
         // 物品品质由模板决定（旧版就是按品质筛出模板再挑），不要用掷出的档位覆盖。
+        // 旧版抽到橙品以上会直接把这一件锁上（防止误分解）；锁定件不能并进已有堆叠，按快照单独入包。
+        if (GameplayRules.AutoLockOnDraw(pick.QualityType))
+        {
+            Item locked = pick.Copy();
+            locked.IsLock = true;
+            ItemStore.AddSnapshot(db, state.UserId, locked, pick.Id.ToString(CultureInfo.InvariantCulture));
+            return $"{GameplayRules.QualityName(GameplayRules.QualityTierOf(pick.QualityType))} · {pick.Name}{Locked(locked)}";
+        }
         await AddItemAsync(db, state.UserId, pick.Name,
             GameplayRules.QualityTierOf(pick.QualityType), 1, ct,
             pick.Id.ToString(CultureInfo.InvariantCulture));
         return $"{GameplayRules.QualityName(GameplayRules.QualityTierOf(pick.QualityType))} · {pick.Name}";
     }
+
+    private static string Locked(Item item) => item.IsLock ? "（已锁定）" : "";
 
     public Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
