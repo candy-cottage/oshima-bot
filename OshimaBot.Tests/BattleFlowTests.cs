@@ -187,6 +187,39 @@ public sealed class BattleFlowTests
     }
 
     [Fact]
+    public async Task TeamDuel_WithFourMemberSquads()
+    {
+        using BattleDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        IEconomyService economy = db.Get<IEconomyService>();
+        await db.CreateSaveAsync(players, Me, "我方");
+        await db.CreateSaveAsync(players, Rival, "对方");
+
+        // 每边补到 4 人：建档只送 1 个自建角色，其余用自建角色补齐
+        foreach ((long userId, int count) in new[] { (Me, GameplayRules.SquadSize), (Rival, GameplayRules.SquadSize) })
+        {
+            using IServiceScope scope = db.Provider.CreateScope();
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            for (int i = 1; i < count; i++)
+            {
+                CharacterStore.CreateCustom(context, userId, $"{userId}号备{i}");
+            }
+            await context.SaveChangesAsync();
+
+            for (int index = 1; index <= count; index++)
+            {
+                Assert.True((await players.SquadAsync(userId, "add", index)).Ok, $"{userId} 的第 {index} 人应能加入");
+            }
+        }
+
+        BattleReport report = await economy.TeamDuelWithAsync(Me, Rival.ToString());
+
+        Assert.True(report.Result.Ok, report.Result.Title);
+        Assert.NotEmpty(report.Log);
+        Assert.Equal(GameplayRules.SquadSize, (await players.GetSnapshotAsync(Me))!.SquadCount);
+    }
+
+    [Fact]
     public async Task BossAt_FightsTheRequestedTargetAndSharesHp()
     {
         BossPool.Reset();
