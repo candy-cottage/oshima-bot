@@ -168,6 +168,16 @@
 - **回归保护**：`FIX-CLB-TASK` / `FIX-CLB-STORE` / `FIX-CLB-MARKET`（三者均为 `current-locked`，
   因为旧版无对照值）、`ClubServiceTests`（成员、审批、捐献、设置、解散、任务、商店、市场、改名审核）。
 
+### DIV-019 共斗未全灭时的奖励口径
+
+- **旧版**：全灭 → `award = cLevel`；未全灭时分两种——单 Boss 模式（`isUnit = Random.Next(2) != 0`）
+  按 `cLevel / 敌人数 × 击杀数` 折算，多敌模式直接给 0。奖励同时进钻石与共斗积分。
+- **新版**：未全灭一律按 `cLevel / 敌人数 × 击杀数` 折算（整数除法），不再掷「单 Boss / 多敌」这个模式；
+  另外给技术评分最高的参战角色一份 MVP 奖励（`cLevel / 5` 钻石），旧版没有这一份。
+- **影响**：新版对「打到一半」的队伍更宽松（多敌模式旧版是 0），并多一个 MVP 激励。
+- **回归保护**：`FIX-PLY-COOP`（`current-locked`，因为旧版同一输入会因随机模式给出两个不同答案）、
+  `RoomServiceTests.CoopReward_FollowsLegacyFormula` / `Start_CoopRunsAndReportsRewards`。
+
 ## 引擎公式对拍（2026-11-14）
 
 旧版 NuGet 从 2.1.0 升到 **2.1.1**（tag `2.1.1` / commit `7ecb11f`「补齐核心属性百分比传导」），

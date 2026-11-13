@@ -51,5 +51,10 @@ python migration/gen_baseline.py
 状态契约（`current-locked` / `legacy-verified` / `intentional-divergence`）见
 `OshimaBot.Tests/Fixtures/Legacy/README.md`。
 
-矩阵里标 `待建 FIX-…` 的行表示**声明了等价等级但没有对照样本** —— 这是当前最大的欠账，
-`gen_matrix.py` 会把这类行数打进输出，夹具建成后必须去掉 `待建` 前缀。
+矩阵的 `Fixture` 列有三种取值：
+
+- 指向真实 `.json`：有对照样本，`LegacyFixtureTests` 会跑它；
+- `待建 FIX-…`：声明了等价等级但还没有样本（**当前为 0**，`gen_matrix.py` 会把条数打进输出）；
+- `—`：这一行没有数值可锁，行为由单元测试覆盖，具体的测试类与方法写在「差异 / 备注」列。
+
+`—` 不是「没验证」，而是「验证方式不是数值夹具」。改动这些行时请顺手把备注里的测试名保持有效。

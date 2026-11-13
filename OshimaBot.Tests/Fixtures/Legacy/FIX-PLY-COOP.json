@@ -1,0 +1,53 @@
+{
+  "id": "FIX-PLY-COOP",
+  "behaviorId": "PLY-026",
+  "command": "创建共斗",
+  "probe": "coop-reward",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "cases": [
+        [
+          10,
+          4,
+          4,
+          10
+        ],
+        [
+          10,
+          4,
+          3,
+          6
+        ],
+        [
+          10,
+          4,
+          0,
+          0
+        ],
+        [
+          25,
+          3,
+          1,
+          8
+        ],
+        [
+          0,
+          4,
+          4,
+          0
+        ]
+      ]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaServers/Model/Cooperative.cs:137",
+    "method": "Cooperative 结算奖励",
+    "note": "旧版：全灭所有敌人 → award = cLevel（钻石与共斗积分各一份）；未全灭时看 isUnit——单 Boss 模式（Random.Next(2)!=0）按 cLevel / 敌人数 × 击杀数折算，多敌模式直接 0。新版一律按比例折算，所以这里只能标 current-locked（见 DIV-019）。"
+  },
+  "legacyBaseline": "5ab118ad55dc1483903b27d61d1b3e105ac3d58ff73aa3a2448db171387ad605",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T02:25:00+08:00"
+}

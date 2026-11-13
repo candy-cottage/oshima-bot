@@ -198,7 +198,7 @@ public static class LegacyFixtureProbes
         "levelup", "break", "train", "register", "gacha",
         "forge", "store", "market-fee", "boss", "signin", "reroll",
         "exchange", "salvage-quality", "magic-card", "explore-rules",
-        "club-task", "club-store", "club-market"
+        "club-task", "club-store", "club-market", "horse-points", "coop-reward"
     };
 
     public static JsonNode Run(string probe, JsonElement input)
@@ -226,6 +226,8 @@ public static class LegacyFixtureProbes
             "club-task" => ClubTask(),
             "club-store" => ClubStore(),
             "club-market" => ClubMarket(),
+            "horse-points" => HorsePoints(),
+            "coop-reward" => CoopRewardFixture(),
             _ => throw new NotSupportedException($"未注册的探针：{probe}")
         };
     }
@@ -515,6 +517,30 @@ public static class LegacyFixtureProbes
             JsonValue.Create(ClubRules.MarketFee(1000)),
             JsonValue.Create(ClubRules.MarketFee(25_000)))
     };
+
+    /// <summary>赛马名次积分（旧版 <c>CalculatePoints</c>：第 1 名 10 分，之后 ×0.8 向下取整，最低 1）。</summary>
+    private static JsonObject HorsePoints()
+    {
+        JsonArray points = [];
+        for (int rank = 0; rank <= 10; rank++) points.Add(JsonValue.Create(HorseRace.CalculatePoints(rank)));
+        return new JsonObject { ["pointsByRank"] = points };
+    }
+
+    /// <summary>共斗奖励（旧版：全灭给「等级」钻石，未全灭按击杀比例折算）。</summary>
+    private static JsonObject CoopRewardFixture()
+    {
+        JsonArray rows = [];
+        foreach ((int level, int enemies, int killed) in new[]
+                 {
+                     (10, 4, 4), (10, 4, 3), (10, 4, 0), (25, 3, 1), (0, 4, 4)
+                 })
+        {
+            rows.Add(new JsonArray(
+                JsonValue.Create(level), JsonValue.Create(enemies), JsonValue.Create(killed),
+                JsonValue.Create(RoomRules.CoopReward(level, enemies, killed))));
+        }
+        return new JsonObject { ["cases"] = rows };
+    }
 
     /// <summary>魔法卡合成（旧版 <c>ConflateMagicCardPack</c>）：3 张未使用且未上锁的魔法卡换 1 个卡包。</summary>
     private static JsonObject MagicCard() => new()
