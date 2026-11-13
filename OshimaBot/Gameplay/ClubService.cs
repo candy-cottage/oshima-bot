@@ -51,6 +51,9 @@ public sealed record ClubMarketEntry(
 /// </summary>
 public interface IClubService
 {
+    /// <summary>当前社团任务周期（周三 4:00 起算），命令层用它显示「本周」，不再自己取时钟。</summary>
+    string CurrentWeek { get; }
+
     Task<ActionResult> CreateAsync(long userId, string prefix, bool isPublic, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ClubSummary>> ListAsync(CancellationToken cancellationToken = default);
     Task<ClubDetail?> InfoAsync(long clubId, long viewerId, CancellationToken cancellationToken = default);
@@ -98,6 +101,9 @@ public sealed partial class ClubService(
     IGameClock clock,
     IRandomSource random) : IClubService
 {
+    /// <summary>当前社团任务周期，来自注入的 <see cref="IGameClock"/>。</summary>
+    public string CurrentWeek => GameplayRules.ClubWeek(clock.UtcNow);
+
     /// <summary>旧版没有明确上限，这里给一个防爆的数字（社团市场/任务都按成员数分摊，太大没意义）。</summary>
     public const int MaxMembers = 50;
 

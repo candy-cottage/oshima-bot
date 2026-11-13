@@ -168,7 +168,7 @@ public static class CommandCatalog
             key: "fortune", name: "运势", aliases: ["今日运势", "fortune"], usage: "/运势",
             description: "今日占卜（同一天结果固定）", group: CommandGroups.Player,
             handler: async context => CommandReplies.Compose("🔮 今日运势",
-                GameplayRules.Today(),
+                deps.Players.TodayLabel,
                 [QQMarkdown.Escape(await deps.Players.GetFortuneAsync(context.UserId, context.CancellationToken))],
                 ["/签到", "/每日任务"])),
 
@@ -426,7 +426,7 @@ public static class CommandCatalog
 
         "party" => new DelegateCommand(
             key: "party", name: "小队", aliases: ["编队", "party"], usage: "/小队 [加入|移除 @编号]",
-            description: "查看或调整 3 人主力小队", group: CommandGroups.Player,
+            description: "查看或调整主力小队（最多 4 人）", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.SquadAsync(
                 context.UserId, context.FirstArgument ?? "", RefIndex(context, 1), context.CancellationToken))),
 
@@ -685,7 +685,7 @@ public static class CommandCatalog
                 if (target is null)
                 {
                     return CommandReplies.Error("没有指定对手", "没有开始战斗",
-                        "用法：/小队决斗 123456　先 /小队 编成 1–3 人", "/小队");
+                        "用法：/小队决斗 123456　先 /小队 编成 1–4 人", "/小队");
                 }
                 BattleReport report = await deps.Economy.TeamDuelWithAsync(
                     context.UserId, target, context.CancellationToken);
@@ -1512,7 +1512,7 @@ public static class CommandCatalog
                 "潮湿的石板路延伸到雾里，铁匠铺的锤声隔着两条街传来。",
                 "",
                 $"- 主战角色：{snapshot.MainCharacter ?? "（无）"}　角色 {snapshot.CharacterCount} 名",
-                $"- 背包 {snapshot.ItemCount} 格　小队 {snapshot.SquadCount}/3 人　练级中 {snapshot.PendingTrainings} 场",
+                $"- 背包 {snapshot.ItemCount} 格　小队 {snapshot.SquadCount}/{GameplayRules.SquadSize} 人　练级中 {snapshot.PendingTrainings} 场",
                 $"- 连续签到 {snapshot.SignInStreak} 天　最近签到：{(string.IsNullOrEmpty(snapshot.SignedOn) ? "尚未" : snapshot.SignedOn)}"
             ],
             ["/签到", "/每日任务", "/背包", "/我的角色", "/抽卡"]);
@@ -1547,7 +1547,7 @@ public static class CommandCatalog
         List<string> lines = quests.Select(quest =>
             $"- @{quest.Index} {quest.Name}　{quest.Progress}/{quest.Target}　{QuestStatus(quest.Status)}").ToList();
         lines.Add($"- 完成后 /领奖 @编号（金币 +{GameplayRules.QuestRewardCredits} / 钻石 +{GameplayRules.QuestRewardDiamonds}）");
-        return CommandReplies.ListPage("📋 每日任务", GameplayRules.Today(), lines, context.Page,
+        return CommandReplies.ListPage("📋 每日任务", deps.Players.TodayLabel, lines, context.Page,
             "/每日任务", ["/签到", "/抽卡", "/FunGame模拟", "/状态"]);
     }
 
@@ -1978,7 +1978,7 @@ public static class CommandCatalog
         lines.Add("- 提交物资：/社团任务 提交 @物品编号 [x数量]（按分解价一半折算基金）");
         lines.Add("- 结算：/社团任务 领取 编号（社长或管理）");
         lines.Add("- 奖励进社团基金，可在 /社团商店 兑换物资");
-        return CommandReplies.Compose("🏁 社团任务", $"本周 · {GameplayRules.ClubWeek(DateTime.UtcNow)}",
+        return CommandReplies.Compose("🏁 社团任务", $"本周 · {deps.Clubs.CurrentWeek}",
             lines, ["/社团任务 领取 1", "/社团商店", "/我的社团"]);
     }
 
@@ -2338,7 +2338,7 @@ public static class CommandCatalog
         string stock = detail.Stock < 0 ? "无限" : detail.Stock.ToString(CultureInfo.InvariantCulture);
         string quota = detail.Quota > 0 ? $"每人限购 {detail.Quota}，你已买 {detail.Bought}" : "不限购";
         string price = detail.Currency == "免费" ? "免费" : $"{detail.Price} {detail.Currency}";
-        int seconds = Math.Max(0, (int)(detail.WindowEndsAtUtc - DateTime.UtcNow).TotalSeconds);
+        int seconds = detail.WindowRemainingSeconds;
 
         List<string> lines =
         [

@@ -202,6 +202,44 @@ public sealed class GameplayTests
     }
 
     [Fact]
+    public async Task Squad_AcceptsFourMembersAndRejectsTheFifth()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+
+        // 建档即送 1 个自建角色；再造 4 个备用，凑够 5 个角色用来验证上限
+        Assert.True((await players.SquadAsync(UserId, "", 0)).Ok);
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            for (int i = 0; i < GameplayRules.SquadSize; i++)
+            {
+                CharacterStore.CreateCustom(context, UserId, $"备用{i + 1}");
+            }
+            await context.SaveChangesAsync();
+        }
+
+        for (int index = 1; index <= GameplayRules.SquadSize; index++)
+        {
+            ActionResult joined = await players.SquadAsync(UserId, "add", index);
+            Assert.True(joined.Ok, $"第 {index} 名角色应能加入小队：{joined.Title}");
+        }
+        Assert.Equal(GameplayRules.SquadSize, (await players.GetSnapshotAsync(UserId))!.SquadCount);
+
+        // 旧版「请先设置 1-4 名角色」：第 5 人必须被拒绝，且不写入成员表
+        ActionResult overflow = await players.SquadAsync(UserId, "add", GameplayRules.SquadSize + 1);
+        Assert.False(overflow.Ok);
+        Assert.Contains("已满", overflow.Title);
+        Assert.Equal(GameplayRules.SquadSize, (await players.GetSnapshotAsync(UserId))!.SquadCount);
+
+        // 编成页要列出全部 4 个位置（含空位），不能只画 3 个
+        ActionResult view = await players.SquadAsync(UserId, "", 0);
+        Assert.True(view.Ok);
+        Assert.Contains($"{GameplayRules.SquadSize} 人", view.Status);
+        Assert.Equal(GameplayRules.SquadSize, view.Lines.Count(x => x.StartsWith("- @", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Squad_MainAndQuestRewardsArePersistent()
     {
         using GameplayDatabase db = new();

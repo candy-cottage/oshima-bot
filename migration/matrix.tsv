@@ -23,12 +23,12 @@ CHR-018	角色	技能升级	`RainBOTService.cs:1417`	/技能升级	PlayerService
 CHR-019	角色	查看技能升级	`RainBOTService.cs:1400`	/查看技能升级	PlayerService.UpgradeSkillAsync	L1	等价	同预览模式	
 CHR-020	角色	角色重随	`RainBOTService.cs:980`	/角色重随 · /确认重随 · /取消重随	PlayerService.RerollPreviewAsync	L2	等价	自建角色（注册即送的 CustomCharacter）重摇初始生命/魔法/攻击/三围/成长/速度/回复，消耗 3 钻；先出「旧值 => 新值」预览，确认才生效、取消不退钻（同旧版）；预览存 ActivityProgress	待建 FIX-CHR-REROLL
 CHR-021	角色	角色改名	`RainBOTService.cs:855`	/角色改名 · /我的改名	PlayerService.RenameAsync / ClubService.ApproveRenameAsync	L2	增强	旧版只能**随机改名**（`GenerateRandomChineseUserName`，200 金币）；v3 允许玩家自定义 2–12 字并**先过审核**（`RenameRequests` → /改名审核、/批准改名、/拒绝改名），批准后同步角色名与 `Users.Nickname`；`/我的改名` 查自己的待审。差异：没收 200 金币（审核取代了经济闸门）、不做防重名的全局唯一校验（差异登记 DIV-010）	待建 FIX-CHR-RENAME-REVIEW
-CHR-022	角色	我的小队	`RainBOTService.cs:820`	/小队	PlayerService.SquadAsync	L1	简化替代	新版上限 3 人，旧版 1-4 人	
-CHR-023	角色	设置小队	`RainBOTService.cs:1828`	/小队	PlayerService.SquadAsync	L1	简化替代	旧版一次传 1-4 个角色序号，新版逐个加入/移除	
-CHR-024	角色	小队添加	`RainBOTService.cs:1808`	/小队 加入	PlayerService.SquadAsync	L1	简化替代	参数形式不同	
-CHR-025	角色	小队移除	`RainBOTService.cs:1818`	/小队 移除	PlayerService.SquadAsync	L1	简化替代	参数形式不同	
-CHR-026	角色	小队状态	`RainBOTService.cs:812`	/小队	PlayerService.SquadAsync	L1	简化替代	新版无生命/能量/复活状态	
-CHR-027	角色	清空小队	`RainBOTService.cs:827`	/小队	PlayerService.SquadAsync	L1	简化替代	无独立清空子命令	
+CHR-022	角色	我的小队	`RainBOTService.cs:820`	/小队	PlayerService.SquadAsync	L1	简化替代	上限 4 人与旧版一致（2026-11-13 恢复）；差异只剩「主战标记 + 4 个位置」的一页展示，旧版按角色序号查询	
+CHR-023	角色	设置小队	`RainBOTService.cs:1828`	/小队	PlayerService.SquadAsync	L1	简化替代	旧版一次传 1-4 个角色序号，新版逐个 /小队 加入；容量同为 4。旧写法已给说明（LegacyAliases）	
+CHR-024	角色	小队添加	`RainBOTService.cs:1808`	/小队 加入	PlayerService.SquadAsync	L1	简化替代	旧版「小队添加」也是逐个加，参数仍是角色序号；新版用 @编号，旧写法已给说明	
+CHR-025	角色	小队移除	`RainBOTService.cs:1818`	/小队 移除	PlayerService.SquadAsync	L1	简化替代	旧版按角色序号移除，新版按位置号移除；旧写法已给说明	
+CHR-026	角色	小队状态	`RainBOTService.cs:812`	/小队	PlayerService.SquadAsync	L1	简化替代	新版无生命/能量/复活状态（角色无持久 HP），小队页只显示编成	
+CHR-027	角色	清空小队	`RainBOTService.cs:827`	/小队	PlayerService.SquadAsync	L1	简化替代	无独立清空子命令；逐个移除即可，旧写法已给说明	
 CHR-028	角色 / 战斗	生命之泉	`RainBOTService.cs:2333`	—	—	—	scope-excluded	【范围排除】旧版花金币给角色回血，依赖持久 HP；v3 角色无持久 HP（每场战斗 Recovery 满血进场），没有作用对象。用户 2026-11-12 决定不做	—
 CHR-029	角色 / 战斗	酒馆	`RainBOTService.cs:2340`	—	—	—	scope-excluded	【范围排除】同上：旧版用钻石补满能量（EP），v3 的 EP 只在战斗内存在	—
 ITM-001	物品	我的库存	`RainBOTService.cs:788`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版支持 [页码] 与 <类型> [页码] 两种用法；新版仅分页，无类型过滤	
@@ -40,8 +40,8 @@ ITM-006	物品	库存搜索2	`RainBOTService.cs:1160`	/库存搜索	PlayerServic
 ITM-007	物品	库存搜索	`RainBOTService.cs:1175`	/库存搜索	PlayerService.SearchBagAsync	L1	简化替代	同时匹配名称与描述，命中行保留 /背包 的 @编号；每行附描述摘要，支持 p2 分页	待建 FIX-ITM-SEARCH
 ITM-008	物品	抽卡	`RainBOTService.cs:1006`	/抽卡	PlayerService.GachaAsync	L2	等价	金币 1000/次（/抽卡）、钻石 5/次（/钻石抽卡）；每次独立判定 dice>0.8 才中（20%）；命中后 Next(8) 分 8 类产出（魔法卡包/武器/防具/鞋子/饰品/角色/魔法卡/随机物品），品质按 DrawCardProbabilities 阈值判定；魔法卡与卡包无内容包模板，按掷出的品质当场生成（3 张卡合包）	FIX-ITM-GACHA
 ITM-009	物品	十连抽卡	`RainBOTService.cs:1014`	/十连抽卡	PlayerService.GachaAsync	L2	等价	金币 10000、钻石 50，都是单价 ×10 无折扣；每抽独立 20% 命中、无保底，可能全空	FIX-ITM-GACHA
-ITM-010	物品	钻石抽卡	`RainBOTService.cs:1016`	/抽卡	PlayerService.GachaAsync	L2	简化替代	旧版材料 5/次（20% 中奖、无保底、6 档概率 White 49.53→Red 3.06）；新版 100% 得物 + 保底	FIX-ITM-GACHA
-ITM-011	物品	钻石十连抽卡	`RainBOTService.cs:1017`	/十连抽卡	PlayerService.GachaAsync	L2	简化替代	旧版十连 = 10×材料单抽价 50，可能全空；新版 45 钻 + 保底	FIX-ITM-GACHA
+ITM-010	物品	钻石抽卡	`RainBOTService.cs:1016`	/钻石抽卡	PlayerService.GachaAsync	L2	简化替代	旧版材料 5/次（20% 中奖、无保底、6 档概率 White 49.53→Red 3.06）；新版 100% 得物 + 保底	FIX-ITM-GACHA
+ITM-011	物品	钻石十连抽卡	`RainBOTService.cs:1017`	/钻石十连抽卡	PlayerService.GachaAsync	L2	简化替代	旧版十连 = 10×材料单抽价 50，可能全空；新版 45 钻 + 保底	FIX-ITM-GACHA
 ITM-012	物品	兑换金币	`RainBOTService.cs:1356`	/兑换金币	PlayerService.ExchangeCreditsAsync	L1	等价	同旧版：先抬到最低 10、再向下取整到 10 的倍数，10 钻 = 2000 金币，零头保留	待建 FIX-ITM-EXCHANGE
 ITM-013	物品	使用	`RainBOTService.cs:1530`	/使用	PlayerService.UseItemAsync	L1	简化替代	旧版支持 <名称|序号> [次数] [角色] [角色序号]；新版仅 @编号 [x数量] 且只换旅人经验	
 ITM-014	物品	使用魔法卡	`RainBOTService.cs:1550`	/使用魔法卡	PlayerService.UseMagicCardAsync	L1	简化替代	同品质校验、同名魔法叠等级、满级折算 10 钻/级补偿；目标可以是背包卡包或主战已装备卡包（后者需重新装备才生效），不做交易中校验	待建 FIX-ITM-MAGICCARD
@@ -147,7 +147,7 @@ SHO-011	商店	商店7	—	/商店7	EconomyService.GetStoreAsync	L2	等价	同�
 SHO-012	商店	商店查看	`RainBOTService.cs:2122`	/商店详情	EconomyService.GetStoreDetailAsync	L1	等价	单件商品的价格/库存/限购/已购与店铺介绍；打开商店后 2 分钟内才能下单（旧版 UserLastVisitStore 窗口），过期要求重新打开	待建 FIX-SHO-WINDOW
 SHO-013	商店	商店购买	`RainBOTService.cs:2092`	/购买	EconomyService.BuyAsync	L2	等价	新版无 2 分钟访问窗口、无限购；价格来自种子商品	FIX-SHO-STORE-BUY
 SHO-014	商店	商店出售	`RainBOTService.cs:2678`	/商店出售	EconomyService.SellToStoreAsync	L2	等价	按物品回收价卖给商店（入包时按 PriceRanges[品质] 定价），可批量；跳过锁定/绑定/无回收价的物品，金币合计走一条 ledger	待建 FIX-SHO-SELL
-SHO-015	商店	创建报价	`RainBOTService.cs:2490`	/报价	EconomyService.CreateOfferAsync	L1	简化替代	旧版双边物物交易状态机；新版单向出售报价	
+SHO-015	商店	创建报价	`RainBOTService.cs:2490`	/创建报价	EconomyService.CreateOfferAsync	L1	简化替代	旧版双边物物交易状态机；新版单向出售报价	
 SHO-016	商店	我的报价	`RainBOTService.cs:2502`	/报价列表	EconomyService.GetOffersAsync	L1	简化替代	旧版按报价序号查详情，新版为公开列表	
 SHO-017	商店	发送报价	`RainBOTService.cs:2530`	/发送报价	EconomyService.SendOfferAsync	L2	等价	草稿 → 待接受；发送前至少要有我方物品。草稿只对发起人可见	待建 FIX-SHO-OFFER
 SHO-018	商店	取消报价	`RainBOTService.cs:2542`	/撤回报价	EconomyService.CancelOfferAsync	L1	简化替代	仅发起方可撤回	

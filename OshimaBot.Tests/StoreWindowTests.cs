@@ -67,6 +67,9 @@ public sealed class StoreWindowTests
         Assert.False(string.IsNullOrWhiteSpace(detail.Name));
         Assert.Equal("免费", detail.Currency);
         Assert.True(detail.WindowEndsAtUtc > db.Clock.UtcNow);
+        // 剩余秒数由服务端按时钟算好（命令层不再自己取当前时间），应当逼近整窗口
+        Assert.InRange(detail.WindowRemainingSeconds,
+            GameplayRules.StoreWindowMinutes * 60 - 5, GameplayRules.StoreWindowMinutes * 60);
 
         // 编号越界返回 null，命令层据此给「商品不存在」
         Assert.Null(await economy.GetStoreDetailAsync(Player, 99));

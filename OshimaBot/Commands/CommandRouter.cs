@@ -25,6 +25,13 @@ public sealed class CommandRouter(
         CommandMatch? match = registry.Resolve(raw);
         if (match is null)
         {
+            // 旧版命令：参数形态已变或功能不迁移时给出明确说明，而不是「未识别的指令」。
+            string? explanation = LegacyAliases.Explain(raw);
+            if (explanation is not null)
+            {
+                logger.LogDebug("旧命令已改版：{Command}", raw);
+                return CommandReplies.Error("旧命令已改版", "没有执行任何操作", explanation, "/帮助");
+            }
             logger.LogDebug("未识别的指令：{Command}", raw);
             return null;
         }

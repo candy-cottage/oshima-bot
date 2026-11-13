@@ -98,7 +98,7 @@ public sealed class ExploreService(
                 if (party.Count == 0)
                 {
                     return ActionResult.Fail("没有小队编成", "没有开始探索",
-                        "先用 /小队 加入 @编号 编成 1–3 人，或直接 /探索 地区 角色序号", "/小队");
+                        "先用 /小队 加入 @编号 编成 1–4 人，或直接 /探索 地区 角色序号", "/小队");
                 }
             }
             else

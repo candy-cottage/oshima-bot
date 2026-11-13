@@ -58,3 +58,19 @@ public sealed class SeededRandomSource(int seed) : IRandomSource
 
     public double NextDouble() => _random.NextDouble();
 }
+
+/// <summary>
+/// 把 <see cref="IRandomSource"/> 包成 <see cref="Random"/>，用于只能接收 <c>Random</c> 的
+/// Core 接口（例如魔法卡预览 <c>GenerateMagicCard(Random)</c>）。
+/// <para>包一层以后预览也受种子控制，同种子回归才能覆盖到它。</para>
+/// </summary>
+public sealed class RandomSourceAdapter(IRandomSource source) : Random
+{
+    public override int Next() => source.Next(int.MaxValue);
+
+    public override int Next(int maxValue) => source.Next(maxValue);
+
+    public override int Next(int minValue, int maxValue) => source.Next(minValue, maxValue);
+
+    public override double NextDouble() => source.NextDouble();
+}

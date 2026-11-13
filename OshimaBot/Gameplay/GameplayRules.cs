@@ -63,8 +63,12 @@ public static class GameplayRules
     public const int QuestRewardCredits = 80;
     public const int QuestRewardDiamonds = 2;
 
-    /// <summary>装备槽位，装备时按序占用第一个空槽。</summary>
-    public static readonly IReadOnlyList<string> EquipmentSlots = ["weapon", "armor", "trinket"];
+    /// <summary>
+    /// 主力小队上限。旧版「设置小队」接受 1–4 个参数（FunGameOrderList 帮助文本与
+    /// FunGameController「请先设置1-4名角色」），v3 早期实现硬编码 3，2026-11-13 恢复为 4。
+    /// 装备槽位不在这里：装备走 Core 的 6 槽（EquipSlot），旧的三槽字符串常量已删除。
+    /// </summary>
+    public const int SquadSize = 4;
 
     public static readonly IReadOnlyList<string> FortuneTexts =
     [
@@ -94,8 +98,8 @@ public static class GameplayRules
             ? iana
             : TimeZoneInfo.FindSystemTimeZoneById("China Standard Time");
 
-    /// <summary>游戏日（Asia/Shanghai），签到/任务/运势全部以它为准，避免 UTC 跨日。</summary>
-    public static string Today() => GameDay(DateTime.UtcNow);
+    // 不再提供无参 Today()：业务日期必须走 IGameClock.Today()，
+    // 否则假时钟（测试、回放）会和系统时间对不上。这里只保留纯函数 GameDay(DateTime)。
 
     /// <summary>
     /// 商店日 key：旧版每日商店按本地 <c>Today.AddHours(4)</c> 刷新，

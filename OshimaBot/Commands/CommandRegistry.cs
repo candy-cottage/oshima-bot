@@ -47,6 +47,12 @@ public sealed class CommandRegistry
             command = exact;
             arguments = tokens[1..];
         }
+        else if (LegacyAliases.TryRewrite(text, out string rewritten))
+        {
+            // 旧版命令名兼容要先于前缀匹配：否则「模拟锻造」会被「模拟」前缀抢走，
+            // 变成「FunGame模拟 锻造 …」。表里不含自指项，重写后不会回头再命中自己。
+            return Resolve(rewritten);
+        }
         else
         {
             foreach ((string alias, ICommand candidate) in _prefixes)

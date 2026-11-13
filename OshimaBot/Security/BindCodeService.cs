@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
 using OshimaBot.Data.Entities;
+using OshimaBot.Gameplay;
 using OshimaBot.Models;
 
 namespace OshimaBot.Security;
@@ -35,6 +36,7 @@ public sealed class BindCodeService(
     IServiceScopeFactory scopeFactory,
     IUserDirectory userDirectory,
     IOptions<ServerOptions> options,
+    IGameClock clock,
     ILogger<BindCodeService> logger) : IBindCodeService
 {
     private readonly int _ttlSeconds = Math.Max(30, options.Value.BindCodeTtlSeconds);
@@ -55,8 +57,8 @@ public sealed class BindCodeService(
                 Code = code,
                 UserId = userId,
                 Purpose = purpose,
-                ExpiresAtUtc = DateTime.UtcNow.AddSeconds(_ttlSeconds),
-                CreatedAtUtc = DateTime.UtcNow
+                ExpiresAtUtc = clock.UtcNow.AddSeconds(_ttlSeconds),
+                CreatedAtUtc = clock.UtcNow
             };
             db.BindCodes.Add(entity);
             try
@@ -83,7 +85,7 @@ public sealed class BindCodeService(
         BindCode? bind = await db.BindCodes.FirstOrDefaultAsync(x => x.Code == code, cancellationToken);
         if (bind is null) return BindRedeemResult.Fail(BindRedeemStatus.NotFound, "绑定码不存在。");
         if (bind.UsedAtUtc is not null) return BindRedeemResult.Fail(BindRedeemStatus.Used, "绑定码已被使用。");
-        if (bind.ExpiresAtUtc <= DateTime.UtcNow) return BindRedeemResult.Fail(BindRedeemStatus.Expired, "绑定码已过期。");
+        if (bind.ExpiresAtUtc <= clock.UtcNow) return BindRedeemResult.Fail(BindRedeemStatus.Expired, "绑定码已过期。");
 
         IdentityLinkStatus link = await userDirectory.LinkAsync(bind.UserId, identity, cancellationToken);
         switch (link)
@@ -94,7 +96,7 @@ public sealed class BindCodeService(
                 return BindRedeemResult.Fail(BindRedeemStatus.Conflict, "该 QQ 身份已绑定其它账号。");
         }
 
-        bind.UsedAtUtc = DateTime.UtcNow;
+        bind.UsedAtUtc = clock.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("绑定码已兑换：UserId={UserId}, Provider={Provider}, Subject={Subject}",
             bind.UserId, identity.Provider, identity.Subject);

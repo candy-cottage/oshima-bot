@@ -392,7 +392,10 @@ public sealed partial class EconomyService(
                 good.Price,
                 good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount),
                 good.Quota, ReadBoughtCount(good, userId),
-                account.Wallet.LastStoreAtUtc!.Value.AddMinutes(GameplayRules.StoreWindowMinutes));
+                account.Wallet.LastStoreAtUtc!.Value.AddMinutes(GameplayRules.StoreWindowMinutes),
+                (int)Math.Max(0, Math.Ceiling(
+                    (account.Wallet.LastStoreAtUtc!.Value.AddMinutes(GameplayRules.StoreWindowMinutes) - clock.UtcNow)
+                    .TotalSeconds)));
         }, cancellationToken);
 
     public Task<ActionResult> SellToStoreAsync(long userId, IReadOnlyList<int> indexes,
@@ -831,7 +834,7 @@ public sealed partial class EconomyService(
                     "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态");
             }
 
-            // 出战队伍：优先使用小队编成（最多 3 人），未编成则主战单刷。
+            // 出战队伍：优先使用小队编成（最多 GameplayRules.SquadSize 人），未编成则主战单刷。
             List<PlayerCharacter> roster = await LoadSquadAsync(db, userId, ct);
             if (roster.Count == 0) roster = [mine];
 
@@ -1022,7 +1025,7 @@ public sealed partial class EconomyService(
             {
                 return BattleReport.Empty(team
                     ? ActionResult.Fail("你还没有编成小队", "没有开始战斗",
-                        "用 /小队 加入 @编号 编成 1–3 人后再来", "/小队")
+                        "用 /小队 加入 @编号 编成 1–4 人后再来", "/小队")
                     : ActionResult.Fail("没有可出战的角色", "没有开始战斗",
                         "先 /注册 建立存档，或用 /抽卡 获取角色", "/状态"));
             }
@@ -1120,7 +1123,7 @@ public sealed partial class EconomyService(
                 if (roster.Count == 0)
                 {
                     return BattleReport.Empty(ActionResult.Fail("没有小队编成", "没有开始讨伐",
-                        "先用 /小队 加入 @编号 编成 1–3 人", "/小队"));
+                        "先用 /小队 加入 @编号 编成 1–4 人", "/小队"));
                 }
             }
             else

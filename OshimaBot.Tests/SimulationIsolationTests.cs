@@ -2,6 +2,7 @@ using FunGame.Core.Entity;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OshimaBot.Game.Services;
+using OshimaBot.Gameplay;
 using OshimaBot.Models;
 using OshimaBot.Services;
 using Xunit;
@@ -121,7 +122,7 @@ public sealed class SimulationIsolationTests
         InMemorySimulationStatisticsStore store = new();
         Character character = FunGameService.Characters[0];
         store.CharacterStatistics[character] = new CharacterStatistics();
-        FunGameQueryService queries = new(store);
+        FunGameQueryService queries = new(store, new SystemRandomSource());
 
         string stats = await queries.GetStatsAsync(1, false);
         Assert.Contains("参赛", stats);

@@ -12,6 +12,9 @@ namespace OshimaBot.Gameplay;
 
 public interface IPlayerService
 {
+    /// <summary>服务端认定的今天（Asia/Shanghai 游戏日），命令层显示日期时用它而不是系统时间。</summary>
+    string TodayLabel { get; }
+
     Task<PlayerSnapshot?> GetSnapshotAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> RegisterAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> SignInAsync(long userId, CancellationToken cancellationToken = default);
@@ -98,6 +101,8 @@ public sealed class PlayerService(
     IGameClock clock,
     IRandomSource random) : IPlayerService
 {
+    public string TodayLabel => clock.Today();
+
     internal static ActionResult NoIdentity => ActionResult.Fail(
         "身份尚未就绪", "没有读写任何存档", "请通过 QQ 消息触发注册，或稍后重试", "/状态");
 
@@ -1500,15 +1505,15 @@ public sealed class PlayerService(
                 {
                     return ActionResult.Fail("该角色已在小队中", "没有重复加入", "用 /小队 查看编成", "/小队");
                 }
-                if (members.Count >= 3)
+                if (members.Count >= GameplayRules.SquadSize)
                 {
-                    return ActionResult.Fail("小队已满（3 人）", "没有加入新成员",
+                    return ActionResult.Fail($"小队已满（{GameplayRules.SquadSize} 人）", "没有加入新成员",
                         "先用 /小队 移除 @编号 腾出位置", "/小队");
                 }
-                int slot = Enumerable.Range(1, 3).First(s => members.All(x => x.Slot != s));
+                int slot = Enumerable.Range(1, GameplayRules.SquadSize).First(s => members.All(x => x.Slot != s));
                 db.SquadMembers.Add(new SquadMember { SquadId = squad.Id, CharacterId = characters[index - 1].Id, Slot = slot });
                 return ActionResult.Success("👥 小队编成", $"{characters[index - 1].Name} 加入 {slot} 号位",
-                    ["- 小队上限 3 人"], ["/小队", "/角色"]);
+                    [$"- 小队上限 {GameplayRules.SquadSize} 人"], ["/小队", "/角色"]);
             }
             if (op is "remove" or "移除" or "rm")
             {
@@ -1524,14 +1529,14 @@ public sealed class PlayerService(
             }
 
             List<string> lines = [];
-            foreach (int slot in Enumerable.Range(1, 3))
+            foreach (int slot in Enumerable.Range(1, GameplayRules.SquadSize))
             {
                 SquadMember? member = members.FirstOrDefault(x => x.Slot == slot);
                 PlayerCharacter? character = member is null ? null : characters.FirstOrDefault(x => x.Id == member.CharacterId);
                 lines.Add($"- @{slot} {(character is null ? "（空）" : character.Name)}");
             }
             lines.Add("- /小队 加入 @编号　·　/小队 移除 @位置");
-            return ActionResult.Success("👥 主力小队", $"{members.Count}/3 人",
+            return ActionResult.Success("👥 主力小队", $"{members.Count}/{GameplayRules.SquadSize} 人",
                 lines, ["/角色", "/状态"]);
         }, cancellationToken);
 

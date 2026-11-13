@@ -1,6 +1,7 @@
 using System.Text;
 using OshimaBot.Content.Regions;
 using OshimaBot.Game.Services;
+using OshimaBot.Gameplay;
 using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
 
@@ -12,7 +13,7 @@ namespace OshimaBot.Services
     public sealed record RegionSummary(
         long Id, string Name, string Category, string Difficulty, string Weather, IReadOnlyList<string> Materials);
 
-    public sealed class FunGameQueryService(ISimulationStatisticsStore statistics)
+    public sealed class FunGameQueryService(ISimulationStatisticsStore statistics, IRandomSource random)
     {
         public IReadOnlyList<CatalogEntry> GetCharacters()
             => [.. FunGameService.Characters.Select(character => new CatalogEntry(character.Id, character.GetName(), "角色"))];
@@ -112,11 +113,15 @@ namespace OshimaBot.Services
             return $"物品展示的属性基于演示角色：[ {character.ToStringWithLevel()} ]\r\n\r\n{item.ToString(false, true)}";
         }
 
+        // Core 的 GenerateMagicCard / GenerateMagicCardPack 只接收 System.Random，
+        // 用适配器把注入的随机源喂进去，预览也能被固定种子复现。
+        private readonly Random _previewRandom = new RandomSourceAdapter(random);
+
         public string GenerateMagicCard()
-            => FunGameService.GenerateMagicCard(Random.Shared).ToString(false, true);
+            => FunGameService.GenerateMagicCard(_previewRandom).ToString(false, true);
 
         public string GenerateMagicCardPack()
-            => FunGameService.GenerateMagicCardPack(Random.Shared, 3)?.ToString(false, true) ?? "";
+            => FunGameService.GenerateMagicCardPack(_previewRandom, 3)?.ToString(false, true) ?? "";
 
         public Task<string> GetStatsAsync(int id, bool team, CancellationToken cancellationToken = default)
             => Task.FromResult(statistics.Read(store =>

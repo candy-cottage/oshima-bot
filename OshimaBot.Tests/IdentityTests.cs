@@ -211,6 +211,7 @@ public sealed class IdentityTests
             services.AddSingleton(Options.Create(serverOptions ?? new ServerOptions()));
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
+            services.AddGameplayRuntime();
             services.AddSingleton<IBindCodeService, BindCodeService>();
             services.AddSingleton<ApiKeyAuthenticator>();
             Provider = services.BuildServiceProvider();
