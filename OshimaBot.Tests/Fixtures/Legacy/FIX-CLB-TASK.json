@@ -1,0 +1,41 @@
+{
+  "id": "FIX-CLB-TASK",
+  "behaviorId": "CLB-020",
+  "command": "社团任务列表",
+  "probe": "club-task",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "tasks": [
+        {
+          "key": "donate",
+          "kind": "Donate",
+          "target": 5000,
+          "rewardFunds": 300
+        },
+        {
+          "key": "recruit",
+          "kind": "Recruit",
+          "target": 3,
+          "rewardFunds": 400
+        },
+        {
+          "key": "collect",
+          "kind": "Collect",
+          "target": 20,
+          "rewardFunds": 500
+        }
+      ]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaServers/Service/FunGameOrderList.cs:148",
+    "method": "仅帮助条目（社团任务列表 / 做社团任务 / 社团任务结算）",
+    "note": "旧版帮助里列了这三个命令，但 OshimaWebAPI / OshimaServers / OshimaModules 中没有任何对应实现（grep 只命中帮助字典），属于「写了帮助没做功能」。新版是全新实现：3 个周常任务（捐献 5000 金币 / 招募 3 人 / 征集 20 件），完成发 300 / 400 / 500 基金，按周结算。故标 current-locked，不声称旧版等价。"
+  },
+  "legacyBaseline": "5ab118ad55dc1483903b27d61d1b3e105ac3d58ff73aa3a2448db171387ad605",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T02:10:00+08:00"
+}

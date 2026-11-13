@@ -1,0 +1,54 @@
+{
+  "id": "FIX-CLB-STORE",
+  "behaviorId": "CLB-023",
+  "command": "社团商店",
+  "probe": "club-store",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "goods": [
+        {
+          "name": "钻石",
+          "catalogId": "currency:diamonds",
+          "price": 260
+        },
+        {
+          "name": "升华之印",
+          "catalogId": "18001",
+          "price": 800
+        },
+        {
+          "name": "流光之印",
+          "catalogId": "18002",
+          "price": 1600
+        },
+        {
+          "name": "永恒之印",
+          "catalogId": "18003",
+          "price": 2400
+        },
+        {
+          "name": "原初之印",
+          "catalogId": "18011",
+          "price": 3200
+        },
+        {
+          "name": "时霜药剂",
+          "catalogId": "",
+          "price": 600
+        }
+      ],
+      "buybackCreditsPerMaterial": 100
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaServers/Service/FunGameOrderList.cs:151",
+    "method": "仅帮助条目（社团商店 / 查看 / 购买 / 出售）",
+    "note": "旧版同样只有帮助文本、没有实现。新版用社团基金兑换：钻石 260 / 四种印记 800–3200 / 时霜药剂 600；成员把物品卖给商店按「分解价的一半」折算（每份材料 100 金币），由社团基金支付。故标 current-locked。"
+  },
+  "legacyBaseline": "5ab118ad55dc1483903b27d61d1b3e105ac3d58ff73aa3a2448db171387ad605",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T02:10:00+08:00"
+}

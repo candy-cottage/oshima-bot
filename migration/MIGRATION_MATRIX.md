@@ -16,8 +16,8 @@
 | **去重后唯一入口（本表行数）** | **163** | 同名命令在多个分类重复出现 |
 | 批准迁移范围 | 159 | 不含 `scope-excluded` |
 | 范围排除 | 4 | 生命之泉 / 酒馆 / 加物 / 减物 |
-| 有夹具落地的行 | 30 | Fixture 列指向真实存在的 `.json` |
-| 只有待建夹具的行 | 65 | 已声明 L0–L2 但尚无对照样本 |
+| 有夹具落地的行 | 43 | Fixture 列指向真实存在的 `.json` |
+| 只有待建夹具的行 | 33 | 已声明 L0–L2 但尚无对照样本 |
 
 状态定义：
 
@@ -37,8 +37,8 @@
 
 | 状态 | 条目数 | 占全量 | 占批准范围 |
 |---|---:|---:|---:|
-| 等价 | 100 | 61.3% | 62.9% |
-| 增强 | 3 | 1.8% | 1.9% |
+| 等价 | 87 | 53.4% | 54.7% |
+| 增强 | 16 | 9.8% | 10.1% |
 | 简化替代 | 51 | 31.3% | 32.1% |
 | 缺失 | 1 | 0.6% | 0.6% |
 | 有意差异 | 4 | 2.5% | 2.5% |
@@ -155,38 +155,38 @@
 | PLY-026 | 玩法 | 创建共斗 | `RainBOTService.cs:3201` | /创建共斗 | RoomService.RunCoopRoomAsync | L2 | 等价 | 成员各出主战角色组队讨伐：敌人数 = 参战人数、等级 = 队伍平均 +5、技能/魔法/普攻按 7/9 折算并挂红装与增益特效；全灭给「等级」的钻石 + 共斗积分，未打完按击杀比例折算，MVP 多一份钻石（差异登记 DIV-004） | 待建 FIX-PLY-COOP |
 | PLY-027 | 玩法 | 创建混战 | `RainBOTService.cs:3224` | /创建混战 | RoomService.CreateAsync | L2 | 增强 | 旧版 `/开始游戏` 的 default 分支只打印「游戏已开始/结束」（空壳）；这里用 `FunGameActionQueue.RunMix` 真打，战报含存活 HP | 待建 FIX-PLY-ROOM |
 | PLY-028 | 玩法 | 创建团战 | `RainBOTService.cs:3247` | /创建团战 | RoomService.CreateAsync | L2 | 增强 | 同上，用 `RunTeam` 红蓝交替分队真打（旧版同样没有实现分队规则） | 待建 FIX-PLY-ROOM |
-| CLB-001 | 社团 | 社团列表 | `RainBOTService.cs:1905` | /社团列表 | ClubService.ListAsync | L1 | 等价 | 列出编号/名称/人数/社长/公开与审批状态/基金，分页 | 待建 FIX-CLB-CORE |
-| CLB-002 | 社团 | 查看社团 | — | /查看社团 | ClubService.InfoAsync | L1 | 等价 | 公告、成员数、基金、加入规则、对你的身份标记 | 待建 FIX-CLB-CORE |
-| CLB-003 | 社团 | 我的社团 | `RainBOTService.cs:1898` | /我的社团 | ClubService.MineAsync | L1 | 等价 | 同上，按自己所在社团查 | 待建 FIX-CLB-CORE |
-| CLB-004 | 社团 | 私信 | `RainBOTService.cs:3140` | /私信 · /收件箱 · /读信 | MailService | L2 | 等价 | 内容过 NamingPolicy 校验（链接/引流/联系方式拒绝），每人每天 20 封，收件箱取最近 50 封、支持只看未读；读后标记已读 | 待建 FIX-CLB-MAIL |
-| CLB-005 | 社团 | 加入社团 | `RainBOTService.cs:1844` | /加入社团 | ClubService.JoinAsync | L2 | 等价 | 未公开且未被邀请拒绝；需批准时进申请队列；被邀请可绕过两者 | 待建 FIX-CLB-CORE |
-| CLB-006 | 社团 | 邀请加入 | `RainBOTService.cs:1855` | /邀请加入 | ClubService.InviteAsync | L2 | 等价 | UID / Handle / 昵称都能指定；被邀请人可直接加入 | 待建 FIX-CLB-CORE |
-| CLB-007 | 社团 | 退出社团 | `RainBOTService.cs:1891` | /退出社团 | ClubService.QuitAsync | L1 | 等价 | 社长不能退（旧版同），需转让或解散 | 待建 FIX-CLB-CORE |
-| CLB-008 | 社团 | 创建社团 | `RainBOTService.cs:1877` | /创建社团 | ClubService.CreateAsync | L2 | 等价 | 前缀 3–4 位（旧版正则 + 放开数字）、名字自动生成、公开/私密、创建者即社长；一人一团由唯一索引兜底 | 待建 FIX-CLB-CORE |
-| CLB-009 | 社团 | 查看社团成员 | `RainBOTService.cs:1928` | /查看社团成员 | ClubService.MembersAsync | L1 | 等价 | 身份、入团日期、个人累计捐献；@编号 供踢出/转让 | 待建 FIX-CLB-CORE |
-| CLB-010 | 社团 | 查看社团管理 | `RainBOTService.cs:1944` | /查看社团管理 | ClubService.MembersAsync | L1 | 等价 | 只列社长与管理员 | 待建 FIX-CLB-CORE |
-| CLB-011 | 社团 | 查看申请人列表 | `RainBOTService.cs:1960` | /查看申请人列表 | ClubService.ApplicationsAsync | L1 | 等价 | 社长/管理可见，按申请时间排序 | 待建 FIX-CLB-CORE |
-| CLB-012 | 社团 | 查看受邀人列表 | `RainBOTService.cs:1976` | /查看受邀人列表 | ClubService.InvitesAsync | L1 | 等价 | 已发出未接受的邀请 | 待建 FIX-CLB-CORE |
-| CLB-013 | 社团 | 解散社团 | `RainBOTService.cs:1921` | /解散社团 | ClubService.DisbandAsync | L2 | 等价 | 仅社长；成员/申请/邀请一并清空，基金不退 | 待建 FIX-CLB-CORE |
-| CLB-014 | 社团 | 社团批准 | `RainBOTService.cs:1992` | /社团批准 | ClubService.ApproveAsync | L2 | 等价 | @编号取自申请人列表；满员拒绝 | 待建 FIX-CLB-CORE |
-| CLB-015 | 社团 | 社团拒绝 | `RainBOTService.cs:2003` | /社团拒绝 | ClubService.RejectAsync | L1 | 等价 | 删除申请，不通知对方 | 待建 FIX-CLB-CORE |
-| CLB-016 | 社团 | 社团踢出 | `RainBOTService.cs:2014` | /社团踢出 | ClubService.KickAsync | L2 | 等价 | 不能踢社长；管理不能踢管理（旧版由管理权限隐式保证） | 待建 FIX-CLB-CORE |
-| CLB-017 | 社团 | 社团转让 | `RainBOTService.cs:2054` | /社团转让 | ClubService.TransferAsync | L2 | 等价 | 仅社长；原社长降为普通成员 | 待建 FIX-CLB-CORE |
-| CLB-018 | 社团 | 社团设置 | `RainBOTService.cs:2025` | /社团设置 | ClubService.UpdateSettingsAsync | L2 | 等价 | 公开/私密、需批准/免批准、公告、改名、任命/卸任管理。改名**走审核队列**（`RenameRequests` → /改名审核、/批准改名、/拒绝改名），提交后不立即生效；名称与公告先过 NamingPolicy 预检（长度、不可见字符、冒充官方、站外引流、刷屏重复） | 待建 FIX-CLB-REVIEW |
-| CLB-019 | 社团 | 社团捐献 | `RainBOTService.cs:2063` | /社团捐献 | ClubService.DonateAsync | L2 | 等价 | 金币入社团基金（旧版 ClubPoins），同时记个人累计捐献；走 ledger | 待建 FIX-CLB-CORE |
-| CLB-020 | 社团 | 社团任务列表 | — | /社团任务 | ClubService.TasksAsync | L2 | 等价 | 旧版 P3 未实现。v3 每周三个任务（捐献/招募/物资征集），进度按社团行为累计，换周（ISO 周、4:00 界）归零 | 待建 FIX-CLB-TASK |
-| CLB-021 | 社团 | 做社团任务 | — | /社团任务 提交 @编号 [x数量] | ClubService.ContributeTaskAsync | L2 | 等价 | 旧版 P3 未实现。提交背包物品推进「物资征集」，每件按分解价一半折算社团基金并记个人贡献；锁定/绑定物品拒绝 | 待建 FIX-CLB-TASK |
-| CLB-022 | 社团 | 社团任务结算 | — | /社团任务 领取 编号 | ClubService.ClaimTaskAsync | L2 | 等价 | 旧版 P3 未实现。满目标后由社长/管理结算：奖励进社团基金，按人头平分记个人贡献；一个周期只能领一次 | 待建 FIX-CLB-TASK |
-| CLB-023 | 社团 | 社团商店 | — | /社团商店 | ClubService.StoreAsync | L2 | 等价 | 旧版 P3 未实现。6 件商品（钻石 + 五种突破/锻造材料），货币是社团基金 | 待建 FIX-CLB-STORE |
-| CLB-024 | 社团 | 社团商店查看 | — | /社团商店 | ClubService.StoreAsync | L1 | 等价 | 列表带价格、说明与当前基金余额 | 待建 FIX-CLB-STORE |
-| CLB-025 | 社团 | 社团商店购买 | — | /社团商店 买 编号 [x数量] | ClubService.StoreBuyAsync | L2 | 等价 | 花公款，只有社长/管理能操作；货币型商品直接进钱包，其余进背包；走 ledger | 待建 FIX-CLB-STORE |
-| CLB-026 | 社团 | 社团商店出售 | — | /社团商店 卖 @编号 [x数量] | ClubService.StoreSellAsync | L2 | 等价 | 方向是「社团用基金收购成员物资」：按分解价一半折金币（1 材料 = 100 金币），基金不足整笔拒绝 | 待建 FIX-CLB-STORE |
-| CLB-027 | 社团 / 商店 | 社团市场 | — | /社团市场 | ClubService.MarketAsync | L2 | 等价 | 旧版 P3 未实现。社团内部二手交易，只对本团成员可见 | 待建 FIX-CLB-MARKET |
-| CLB-028 | 社团 / 商店 | 社团市场出售 | — | /社团市场 上架 @编号 价格 | ClubService.MarketListAsync | L2 | 等价 | 上架费 5%（低于全局市场 15%）进社团基金；物品托管给 EscrowUserId；每人 3 件、每团 60 件上限 | 待建 FIX-CLB-MARKET |
-| CLB-029 | 社团 / 商店 | 社团市场下架 | — | /社团市场 下架 编号 | ClubService.MarketDelistAsync | L1 | 等价 | 只能撤自己的挂单，物品回背包，上架费不退 | 待建 FIX-CLB-MARKET |
-| CLB-030 | 社团 / 商店 | 社团市场查看 | — | /社团市场 | ClubService.MarketAsync | L1 | 等价 | 列表带品质、价格、卖家与「（你）」标记 | 待建 FIX-CLB-MARKET |
-| CLB-031 | 社团 / 商店 | 社团市场购买 | — | /社团市场 买 编号 | ClubService.MarketBuyAsync | L2 | 等价 | 金币结算，买卖双方各写一条 ledger；不能买自己的挂单 | 待建 FIX-CLB-MARKET |
-| CLB-032 | 社团 / 商店 | 社团市场清空 | — | /社团市场 清空 | ClubService.MarketClearAsync | L2 | 等价 | 仅社长；全部在售挂单按状态 3 关闭并退回各自卖家背包 | 待建 FIX-CLB-MARKET |
+| CLB-001 | 社团 | 社团列表 | `RainBOTService.cs:1905` | /社团列表 | ClubService.ListAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-002 | 社团 | 查看社团 | — | /查看社团 | ClubService.InfoAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-003 | 社团 | 我的社团 | `RainBOTService.cs:1898` | /我的社团 | ClubService.MineAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-004 | 社团 | 私信 | `RainBOTService.cs:3140` | /私信 · /收件箱 · /读信 | MailService | L2 | 等价 | 私信：发信/收件箱/已读（MailServiceTests）；无数值可锁 | — |
+| CLB-005 | 社团 | 加入社团 | `RainBOTService.cs:1844` | /加入社团 | ClubService.JoinAsync | L2 | 等价 | 加入社团：公开直接进、非公开进审批（ClubServiceTests.Join_RespectsPrivacyAndApproval） | — |
+| CLB-006 | 社团 | 邀请加入 | `RainBOTService.cs:1855` | /邀请加入 | ClubService.InviteAsync | L2 | 等价 | 邀请加入：走同一套审批（ClubServiceTests.Join_RespectsPrivacyAndApproval） | — |
+| CLB-007 | 社团 | 退出社团 | `RainBOTService.cs:1891` | /退出社团 | ClubService.QuitAsync | L1 | 等价 | 退出社团：社长不能退、退出释放成员位（ClubServiceTests.Quit_BlocksMasterAndFreesMembership） | — |
+| CLB-008 | 社团 | 创建社团 | `RainBOTService.cs:1877` | /创建社团 | ClubService.CreateAsync | L2 | 等价 | 创建社团：前缀 3–4 位校验、一人一团（ClubServiceTests.Create_ValidatesPrefixAndMembership） | — |
+| CLB-009 | 社团 | 查看社团成员 | `RainBOTService.cs:1928` | /查看社团成员 | ClubService.MembersAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-010 | 社团 | 查看社团管理 | `RainBOTService.cs:1944` | /查看社团管理 | ClubService.MembersAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-011 | 社团 | 查看申请人列表 | `RainBOTService.cs:1960` | /查看申请人列表 | ClubService.ApplicationsAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-012 | 社团 | 查看受邀人列表 | `RainBOTService.cs:1976` | /查看受邀人列表 | ClubService.InvitesAsync | L1 | 等价 | 成员/社团信息查询：ClubServiceTests 的成员与审批用例覆盖；无数值可锁，不建夹具 | — |
+| CLB-013 | 社团 | 解散社团 | `RainBOTService.cs:1921` | /解散社团 | ClubService.DisbandAsync | L2 | 等价 | 解散社团：清空成员与挂单（ClubServiceTests.Disband_ClearsMembership） | — |
+| CLB-014 | 社团 | 社团批准 | `RainBOTService.cs:1992` | /社团批准 | ClubService.ApproveAsync | L2 | 等价 | 社团批准：申请人转成员（ClubServiceTests.Join_RespectsPrivacyAndApproval） | — |
+| CLB-015 | 社团 | 社团拒绝 | `RainBOTService.cs:2003` | /社团拒绝 | ClubService.RejectAsync | L1 | 等价 | 社团拒绝：申请作废（ClubServiceTests.Join_RespectsPrivacyAndApproval） | — |
+| CLB-016 | 社团 | 社团踢出 | `RainBOTService.cs:2014` | /社团踢出 | ClubService.KickAsync | L2 | 等价 | 社团踢出：社长/管理可踢，社长不可被踢（ClubServiceTests.KickAndTransfer_FollowRoles） | — |
+| CLB-017 | 社团 | 社团转让 | `RainBOTService.cs:2054` | /社团转让 | ClubService.TransferAsync | L2 | 等价 | 社团转让：转给成员后身份互换（ClubServiceTests.KickAndTransfer_FollowRoles） | — |
+| CLB-018 | 社团 | 社团设置 | `RainBOTService.cs:2025` | /社团设置 | ClubService.UpdateSettingsAsync | L2 | 等价 | 社团设置：公开/审批开关与改名（ClubServiceTests.Settings_ToggleRulesAndRename / Rename_RequiresReviewAndRejectsBadNames） | — |
+| CLB-019 | 社团 | 社团捐献 | `RainBOTService.cs:2063` | /社团捐献 | ClubService.DonateAsync | L2 | 等价 | 社团捐献：金币 1:1 进社团基金（ClubServiceTests.Donate_MovesCreditsIntoClubFunds） | — |
+| CLB-020 | 社团 | 社团任务列表 | — | /社团任务 | ClubService.TasksAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：3 个周常任务，捐献 5000 金币 / 招募 3 人 / 征集 20 件，完成各发 300 / 400 / 500 基金，按周重置（DIV-018） | FIX-CLB-TASK |
+| CLB-021 | 社团 | 做社团任务 | — | /社团任务 提交 @编号 [x数量] | ClubService.ContributeTaskAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：3 个周常任务，捐献 5000 金币 / 招募 3 人 / 征集 20 件，完成各发 300 / 400 / 500 基金，按周重置（DIV-018） | FIX-CLB-TASK |
+| CLB-022 | 社团 | 社团任务结算 | — | /社团任务 领取 编号 | ClubService.ClaimTaskAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：3 个周常任务，捐献 5000 金币 / 招募 3 人 / 征集 20 件，完成各发 300 / 400 / 500 基金，按周重置（DIV-018） | FIX-CLB-TASK |
+| CLB-023 | 社团 | 社团商店 | — | /社团商店 | ClubService.StoreAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：社团基金兑换钻石 260、四种印记 800–3200、时霜药剂 600；成员卖店按分解价一半（每份材料 100 金币）由基金支付（DIV-018） | FIX-CLB-STORE |
+| CLB-024 | 社团 | 社团商店查看 | — | /社团商店 | ClubService.StoreAsync | L1 | 增强 | 新版实现（旧版只有帮助文本、无代码）：社团基金兑换钻石 260、四种印记 800–3200、时霜药剂 600；成员卖店按分解价一半（每份材料 100 金币）由基金支付（DIV-018） | FIX-CLB-STORE |
+| CLB-025 | 社团 | 社团商店购买 | — | /社团商店 买 编号 [x数量] | ClubService.StoreBuyAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：社团基金兑换钻石 260、四种印记 800–3200、时霜药剂 600；成员卖店按分解价一半（每份材料 100 金币）由基金支付（DIV-018） | FIX-CLB-STORE |
+| CLB-026 | 社团 | 社团商店出售 | — | /社团商店 卖 @编号 [x数量] | ClubService.StoreSellAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码）：社团基金兑换钻石 260、四种印记 800–3200、时霜药剂 600；成员卖店按分解价一半（每份材料 100 金币）由基金支付（DIV-018） | FIX-CLB-STORE |
+| CLB-027 | 社团 / 商店 | 社团市场 | — | /社团市场 | ClubService.MarketAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
+| CLB-028 | 社团 / 商店 | 社团市场出售 | — | /社团市场 上架 @编号 价格 | ClubService.MarketListAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
+| CLB-029 | 社团 / 商店 | 社团市场下架 | — | /社团市场 下架 编号 | ClubService.MarketDelistAsync | L1 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
+| CLB-030 | 社团 / 商店 | 社团市场查看 | — | /社团市场 | ClubService.MarketAsync | L1 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
+| CLB-031 | 社团 / 商店 | 社团市场购买 | — | /社团市场 买 编号 | ClubService.MarketBuyAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
+| CLB-032 | 社团 / 商店 | 社团市场清空 | — | /社团市场 清空 | ClubService.MarketClearAsync | L2 | 增强 | 新版实现（旧版只有帮助文本、无代码，帮助里写「系统 4% + 社团 8%」）：新版为社团基金 5%、系统不抽成，每人 3 单、每社团 60 单（DIV-018） | FIX-CLB-MARKET |
 | ACT-001 | 活动 | 签到 | `RainBOTService.cs:785` | /签到 | PlayerService.SignInAsync | L2 | 等价 | 金币 Random(1000,2999)+10×天数、材料 Random(5,14)+天数/7；额外掉落按 `Next(6)` 分武器/防具/鞋子/饰品/魔法卡/魔法卡包，品质由 `RollSignInQuality` 按连续天数 +3%/天（封顶 +30%）上浮，橙品以上自动锁定；双旦活动期间再送一张十连奖券 | FIX-ACT-SIGNIN |
 | ACT-002 | 活动 | 公告 | `RainBOTService.cs:281` | /公告 · /设置公告 | ActivityService.SetNoticeAsync | L2 | 等价 | 公告落 `AppConfigs`（key=notice），管理员用 /设置公告 改、全服 /公告 立即生效；内容过 NamingPolicy（长度/引流/联系方式）。旧版走 EntityModuleConfig，v3 没有 Web 后台，改由命令编辑 | 待建 FIX-ACT-NOTICE |
 | ACT-003 | 活动 | 活动 | `RainBOTService.cs:2361` | /活动 | ActivityService.ListAsync | L2 | 等价 | 3 个活动（长期「旅人试炼」/每周「周末疾行」/「双旦活动」），列出状态与任务进度；窗口规则在 ActivityCatalog 里（v3 内容包暂无活动数据）：长期 / 周六 04:00–周一 04:00 / 12-20 04:00–次年 01-05 04:00 | 待建 FIX-ACT-EVENT |

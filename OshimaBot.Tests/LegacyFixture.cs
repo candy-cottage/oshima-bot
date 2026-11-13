@@ -197,7 +197,8 @@ public static class LegacyFixtureProbes
     {
         "levelup", "break", "train", "register", "gacha",
         "forge", "store", "market-fee", "boss", "signin", "reroll",
-        "exchange", "salvage-quality", "magic-card", "explore-rules"
+        "exchange", "salvage-quality", "magic-card", "explore-rules",
+        "club-task", "club-store", "club-market"
     };
 
     public static JsonNode Run(string probe, JsonElement input)
@@ -222,6 +223,9 @@ public static class LegacyFixtureProbes
             "salvage-quality" => SalvageQuality(),
             "magic-card" => MagicCard(),
             "explore-rules" => ExploreRulesFixture(),
+            "club-task" => ClubTask(),
+            "club-store" => ClubStore(),
+            "club-market" => ClubMarket(),
             _ => throw new NotSupportedException($"未注册的探针：{probe}")
         };
     }
@@ -454,6 +458,63 @@ public static class LegacyFixtureProbes
         }
         return result;
     }
+
+    /// <summary>
+    /// 社团周常任务（新版实现；旧版帮助里列了「社团任务列表/做社团任务/社团任务结算」但没有任何实现代码）。
+    /// 因此这三行只锁当前值，状态是 <c>current-locked</c>。
+    /// </summary>
+    private static JsonObject ClubTask()
+    {
+        JsonArray tasks = [];
+        foreach (ClubTaskSpec task in ClubRules.Tasks)
+        {
+            tasks.Add(new JsonObject
+            {
+                ["key"] = task.Key,
+                ["kind"] = task.Kind.ToString(),
+                ["target"] = task.Target,
+                ["rewardFunds"] = task.RewardFunds
+            });
+        }
+        return new JsonObject { ["tasks"] = tasks };
+    }
+
+    /// <summary>社团商店：基金兑换清单（新版实现，旧版无实现）。</summary>
+    private static JsonObject ClubStore()
+    {
+        JsonArray goods = [];
+        foreach (ClubStoreGoodSpec good in ClubRules.Goods)
+        {
+            goods.Add(new JsonObject
+            {
+                ["name"] = good.Name,
+                ["catalogId"] = good.CatalogId,
+                ["price"] = good.Price
+            });
+        }
+        return new JsonObject
+        {
+            ["goods"] = goods,
+            ["buybackCreditsPerMaterial"] = ClubRules.BuybackCreditsPerMaterial
+        };
+    }
+
+    /// <summary>
+    /// 社团市场（新版实现，旧版无实现）。旧版帮助文本写的是「系统手续费 4%，社团 8%」，
+    /// 新版简化为「社团基金 5%、系统不抽成」——这一条记在 DIV-018。
+    /// </summary>
+    private static JsonObject ClubMarket() => new()
+    {
+        ["feeRatePercent"] = ClubRules.MarketFeeRatePercent,
+        ["minPrice"] = ClubRules.MinPrice,
+        ["maxPrice"] = ClubRules.MaxPrice,
+        ["maxListingsPerUser"] = ClubRules.MaxListingsPerUser,
+        ["maxListingsPerClub"] = ClubRules.MaxListingsPerClub,
+        ["fee"] = new JsonArray(
+            JsonValue.Create(ClubRules.MarketFee(100)),
+            JsonValue.Create(ClubRules.MarketFee(1000)),
+            JsonValue.Create(ClubRules.MarketFee(25_000)))
+    };
 
     /// <summary>魔法卡合成（旧版 <c>ConflateMagicCardPack</c>）：3 张未使用且未上锁的魔法卡换 1 个卡包。</summary>
     private static JsonObject MagicCard() => new()

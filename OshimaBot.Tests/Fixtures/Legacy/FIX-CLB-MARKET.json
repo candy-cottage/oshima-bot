@@ -1,0 +1,31 @@
+{
+  "id": "FIX-CLB-MARKET",
+  "behaviorId": "CLB-027",
+  "command": "社团市场",
+  "probe": "club-market",
+  "status": "current-locked",
+  "input": {},
+  "expected": {
+    "current": {
+      "feeRatePercent": 5,
+      "minPrice": 1,
+      "maxPrice": 1000000,
+      "maxListingsPerUser": 3,
+      "maxListingsPerClub": 60,
+      "fee": [
+        5,
+        50,
+        1250
+      ]
+    },
+    "legacy": null
+  },
+  "source": {
+    "file": "OshimaServers/Service/FunGameOrderList.cs:156",
+    "method": "仅帮助条目（社团市场 / 出售 / 下架 / 查看 / 购买 / 清空）",
+    "note": "旧版没有实现，只有帮助文本写着「系统手续费 4%，社团收取 8% 作为社团基金」。新版简化为「社团基金 5%，系统不抽成」，每人 3 单、每社团 60 单上限；若将来要对齐旧帮助文本，需改成 4% + 8% 两笔（见 DIV-018）。故标 current-locked。"
+  },
+  "legacyBaseline": "5ab118ad55dc1483903b27d61d1b3e105ac3d58ff73aa3a2448db171387ad605",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T02:10:00+08:00"
+}
