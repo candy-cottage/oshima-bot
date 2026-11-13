@@ -215,6 +215,8 @@ def render(rows: list[dict[str, str]], external: list[dict[str, str]]) -> str:
         "> 旧版基线：`migration/LEGACY_BASELINE.md`（`FunGame.Core 2.1` / `OshimaGameModule`）。",
         "> 计划与差距分析：本地 `docs/2026-11-13/MIGRATION_PLAN.md`、`docs/2026-11-13/MIGRATION_GAP_ANALYSIS.md`（不入库）。",
         "> 本文件由脚本生成，**不要手工编辑**；改数据请改 `matrix.tsv`。",
+        "> L0 入口等价由 `OshimaBot.Tests/LegacyCommandEntryTests` 守：163 条旧命令必须解析到本表声明的入口，"
+        "或经 `LegacyAliases` 给出明确说明（清单由 `python migration/gen_legacy_entry_test.py` 从本表生成）。",
         "",
         "## 0. 口径说明",
         "",
