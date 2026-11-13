@@ -20,19 +20,30 @@
       "minPrice": 1,
       "maxPrice": 1000000,
       "maxListings": 5,
+      "minFee": 0,
+      "rounding": "不取整，仅显示两位",
       "fee": [
-        1,
-        2,
-        3,
-        15,
-        29,
-        150
+        0.15,
+        2.85,
+        3.0,
+        15.0,
+        29.85,
+        150.0
       ]
     },
     "legacy": {
       "feeRatePercent": 15,
-      "rounding": "整数除法后下限 1",
-      "note": "旧版 MarketSellItem：fee = amount * 0.15，净收入 = amount - fee"
+      "minFee": 0,
+      "rounding": "不取整，仅显示两位",
+      "fee": [
+        0.15,
+        2.85,
+        3.0,
+        15.0,
+        29.85,
+        150.0
+      ],
+      "note": "旧版 MarketSellItem：fee = amount * 0.15（double，不取整、无下限），净收入 = amount - fee；旧版不限制每人挂单数，也没有价格上下限。2026-11-14 起新版手续费与旧版逐值相同，剩两处管理阈值差异（每人 5 单、价格 1~1000000）继续保留。"
     }
   },
   "source": {
@@ -43,15 +54,17 @@
   "legacyMatchPolicy": {
     "mode": "exact",
     "fields": [
-      "feeRatePercent"
+      "feeRatePercent",
+      "minFee",
+      "rounding",
+      "fee"
     ]
   },
   "divergence": {
-    "reason": "手续费率 15% 一致，但三处实现差异：①旧版 fee = amount * 0.15 全程 double 不取整，新版整数除法后下限 1，低价物品手续费偏高；②旧版不限每人挂单数，新版每人 5 单；③旧版无价格上下限，新版限制 1~1000000。",
+    "reason": "手续费率与计算口径已与旧版一致（15%、不取整、无下限，0.15/2.85/29.85 这些零头都对上）；仍存在的差异只有两处管理阈值：①旧版不限每人挂单数，新版每人 5 单；②旧版无价格上下限，新版限制 1~1000000。",
     "decidedBy": "用户",
-    "decidedOn": "2026-11-13",
+    "decidedOn": "2026-11-14",
     "fields": [
-      "fee",
       "maxListings",
       "minPrice",
       "maxPrice"

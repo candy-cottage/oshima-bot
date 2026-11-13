@@ -69,7 +69,9 @@ public sealed class MarketListing
     public long SellerUserId { get; set; }
     public long ItemInstanceId { get; set; }
     public long Price { get; set; }
-    public long Fee { get; set; }
+
+    /// <summary>上架时预扣的手续费，带小数（标价 × 15%，不取整）。</summary>
+    public double Fee { get; set; }
     public int Status { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ClosedAtUtc { get; set; }

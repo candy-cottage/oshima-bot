@@ -275,7 +275,7 @@ public sealed class PlayerService(
                 existed ? "存档已存在，未重复发放初始资源" : "初始资源已发放",
                 [
                     "- 等级与经验记在角色身上（Core 模型）",
-                    $"- 金币：{state.Credits}　钻石：{state.Materials}",
+                    $"- 金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}",
                     $"- 角色：{await db.CoreCharacters.CountAsync(x => x.UserId == userId, ct)} 名",
                     $"- 物品：{await db.CoreItems.CountAsync(x => x.UserId == userId, ct)} 格",
                     "- 旧版 JSON 存档未迁移，所有旅人从今天重新开始"
@@ -316,7 +316,7 @@ public sealed class PlayerService(
             string extra = await GrantSignInExtraAsync(db, userId, state.SignInStreak - 1, ct);
             List<string> lines =
             [
-                $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
+                $"- 当前金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}",
                 "- 金币 1000–2999、钻石 5–14，连续天数越高加成越多",
                 extra.Length == 0 ? "- 本次没有额外掉落" : $"- 额外获得：{extra}",
                 "- 今日任务「今日签到」进度已更新"
@@ -390,7 +390,7 @@ public sealed class PlayerService(
             if (balance < cost)
             {
                 return ActionResult.Fail($"{currencyName}不足", $"没有扣除{currencyName}，也没有生成物品",
-                    $"需要 {cost} {currencyName}，当前 {balance:0.##}；可先 /签到 或 /领奖",
+                    $"需要 {GameplayRules.Money(cost)} {currencyName}，当前 {GameplayRules.Money(balance)}；可先 /签到 或 /领奖",
                     useMaterial ? "/签到" : "/签到");
             }
             ApplyCurrency(db, state, -cost, useMaterial ? "diamonds" : "credits",
@@ -409,7 +409,7 @@ public sealed class PlayerService(
             await AdvanceQuestAsync(db, userId, "gacha", ct);
 
             if (hits == 0) lines.Add($"- {pulls} 次都没抽中，什么也没得到");
-            lines.Add($"- 消耗{currencyName} {cost}，剩余 {(useMaterial ? state.Materials : state.Credits):0.##}（命中 {hits}/{pulls}）");
+            lines.Add($"- 消耗{currencyName} {GameplayRules.Money(cost)}，剩余 {GameplayRules.Money(useMaterial ? state.Materials : state.Credits)}（命中 {hits}/{pulls}）");
             lines.Add("- 用 /背包 查看物品编号后再 @编号 使用或分解");
             return ActionResult.Success(pulls == 10 ? "🎰 十连抽卡" : "🎲 抽卡",
                 hits == 0 ? "什么也没抽中" : $"抽中 {hits} 件 · 已放入背包",
@@ -577,8 +577,8 @@ public sealed class PlayerService(
             ApplyCurrency(db, state, materials, "diamonds", "salvage", "item", item.Id.ToString(CultureInfo.InvariantCulture));
             Consume(db, item, amount);
             return ActionResult.Success("♻️ 分解完成",
-                $"{name} ×{amount} · 钻石 +{materials}",
-                [$"- 品质：{qualityName}　当前钻石：{state.Materials}", "- 已写入账本 ledger，可对账"],
+                $"{name} ×{amount} · 钻石 +{GameplayRules.Money(materials)}",
+                [$"- 品质：{qualityName}　当前钻石：{GameplayRules.Money(state.Materials)}", "- 已写入账本 ledger，可对账"],
                 ["/背包", "/状态"]);
         }, cancellationToken);
 
@@ -613,7 +613,7 @@ public sealed class PlayerService(
             List<string> lines =
             [
                 $"- 分解 {targets.Count} 种共 {units} 件{qualityName}物品",
-                $"- 钻石 +{materials}　当前钻石：{state.Materials:0.##}",
+                $"- 钻石 +{GameplayRules.Money(materials)}　当前钻石：{GameplayRules.Money(state.Materials)}",
                 "- 已写入账本 ledger，可对账"
             ];
             if (targets.Count <= 8)
@@ -632,17 +632,17 @@ public sealed class PlayerService(
             if (state.Materials < reduce)
             {
                 return ActionResult.Fail("钻石不足", "没有兑换任何金币",
-                    $"本次需要 {reduce} 钻（最低 {GameplayRules.ExchangeMaterialUnit} 钻一档），"
-                    + $"当前 {state.Materials:0.##} 钻", "/签到");
+                    $"本次需要 {GameplayRules.Money(reduce)} 钻（最低 {GameplayRules.Money(GameplayRules.ExchangeMaterialUnit)} 钻一档），"
+                    + $"当前 {GameplayRules.Money(state.Materials)} 钻", "/签到");
             }
             string refId = clock.Today();
             ApplyCurrency(db, state, -reduce, "diamonds", "exchange", "exchange", refId);
             ApplyCurrency(db, state, reward, "credits", "exchange", "exchange", refId);
             return ActionResult.Success("💱 兑换完成",
-                $"{reduce} 钻 → {reward} 金币",
+                $"{GameplayRules.Money(reduce)} 钻 → {GameplayRules.Money(reward)} 金币",
                 [
-                    $"- 汇率：{GameplayRules.ExchangeMaterialUnit} 钻 = {GameplayRules.ExchangeCreditsPerUnit} 金币",
-                    $"- 当前金币：{state.Credits:0.##}　钻石：{state.Materials:0.##}",
+                    $"- 汇率：{GameplayRules.Money(GameplayRules.ExchangeMaterialUnit)} 钻 = {GameplayRules.Money(GameplayRules.ExchangeCreditsPerUnit)} 金币",
+                    $"- 当前金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}",
                     "- 不足一档的零头会保留，不会被扣掉"
                 ], ["/状态", "/商店"]);
         }, cancellationToken);
@@ -1241,8 +1241,8 @@ public sealed class PlayerService(
             lacks.Add($"突破进度 {GameplayRules.BreakProgress(character.BreakLevel)}"
                 + $"/{Math.Clamp(need.RequiredBreak + 1, 0, General.GameplayEquilibriumConstant.LevelBreakList.Count)}");
         }
-        if (state.Credits < need.Credits) lacks.Add($"金币 {state.Credits:0.##}/{need.Credits}");
-        if (state.Materials < need.Materials) lacks.Add($"钻石 {state.Materials:0.##}/{need.Materials}");
+        if (state.Credits < need.Credits) lacks.Add($"金币 {GameplayRules.Money(state.Credits)}/{GameplayRules.Money(need.Credits)}");
+        if (state.Materials < need.Materials) lacks.Add($"钻石 {GameplayRules.Money(state.Materials)}/{GameplayRules.Money(need.Materials)}");
         foreach ((string name, int count) in need.Items)
         {
             int have = held.GetValueOrDefault(name);
@@ -1581,7 +1581,7 @@ public sealed class PlayerService(
             return ActionResult.Success("✅ 任务奖励已领取", name,
                 [
                     $"- 金币 +{GameplayRules.QuestRewardCredits}　钻石 +{GameplayRules.QuestRewardDiamonds}",
-                    $"- 当前金币：{state.Credits}　钻石：{state.Materials}",
+                    $"- 当前金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}",
                     "- 已写入账本 ledger"
                 ], ["/每日任务", "/状态"]);
         }, cancellationToken);

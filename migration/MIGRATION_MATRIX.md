@@ -218,7 +218,7 @@
 | SHO-023 | 商店 | 报价移除物品 | `RainBOTService.cs:2628` | /报价移除物品 | EconomyService.RemoveOfferItemsAsync | L1 | 等价 | 按编号移除我方物品并退托管（OfferFlowTests.RemoveAndWithdraw_RestoreItems） | — |
 | SHO-024 | 商店 | 报价移除对方物品 | `RainBOTService.cs:2653` | /报价移除对方物品 | EconomyService.RemoveOfferItemsAsync | L1 | 等价 | 按编号移除对方物品，仅草稿可改（OfferFlowTests.Guard_RulesForDraftAndTarget） | — |
 | SHO-025 | 商店 | 市场 | `RainBOTService.cs:3124` | /市场 | EconomyService.GetMarketAsync | L2 | 简化替代 | 手续费已对齐 15%；仍缺旧版的挂单刷新规则，且每人 5 单上限是新版自加 |  |
-| SHO-026 | 商店 | 市场出售 | `RainBOTService.cs:3027` | /上架 | EconomyService.ListOnMarketAsync | L2 | 有意差异 | 上 | FIX-SHO-MARKET-SELL |
+| SHO-026 | 商店 | 市场出售 | `RainBOTService.cs:3027` | /上架 | EconomyService.ListOnMarketAsync | L2 | 有意差异 | 上架时预扣 15% 手续费（标价 × 15%，不取整、无下限，显示两位小数）；成交时卖家收全额标价、撤回不退费；旧版是成交时才扣 15%（DIV-003 / DIV-015）。账本记 market_fee + market_sale 两笔，买卖双方净额已对拍 | FIX-SHO-MARKET-SELL |
 | SHO-027 | 商店 | 市场下架 | `RainBOTService.cs:3080` | /下架 | EconomyService.DelistAsync | L1 | 等价 | 托管物品归还背包，无额外费用 |  |
 | SHO-028 | 商店 | 市场查看 | `RainBOTService.cs:3068` | /市场 | EconomyService.GetMarketAsync | L1 | 简化替代 | 无单品详情页 |  |
 | SHO-029 | 商店 | 市场购买 | `RainBOTService.cs:3050` | /购买市场 | EconomyService.BuyMarketAsync | L2 | 简化替代 | 新版买卖双方各记一条 ledger；旧版无 ledger，需按余额变化对拍 |  |

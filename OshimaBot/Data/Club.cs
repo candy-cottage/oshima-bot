@@ -100,7 +100,9 @@ public sealed class ClubMarketListing
     public long SellerUserId { get; set; }
     public long ItemInstanceId { get; set; }
     public long Price { get; set; }
-    public long Fee { get; set; }
+
+    /// <summary>上架时预扣的手续费，带小数（标价 × 5%，不取整）。</summary>
+    public double Fee { get; set; }
 
     /// <summary>0 在售 / 1 已成交 / 2 已下架 / 3 被社长清空 / 4 卖家离团退回。</summary>
     public int Status { get; set; }

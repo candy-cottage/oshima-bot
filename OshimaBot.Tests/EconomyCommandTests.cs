@@ -56,7 +56,7 @@ public sealed class EconomyCommandTests
 
         Assert.Contains("购买成功", await RouteAsync(router, "/购买 @1"));
         Assert.Contains("上架成功", await RouteAsync(router, "/上架 @1 200"));
-        Assert.Contains("200 金币", await RouteAsync(router, "/市场"));
+        Assert.Contains("200.00 金币", await RouteAsync(router, "/市场"));
         Assert.Contains("不能购买自己的挂单", await RouteAsync(router, "/购买市场 @1"));
         Assert.Contains("已下架", await RouteAsync(router, "/下架 @1"));
         Assert.Contains("市场暂时空着", await RouteAsync(router, "/市场"));
@@ -97,7 +97,7 @@ public sealed class EconomyCommandTests
         await TestItems.SeedAsync(db.Provider, UserId, 3);   // 旧版注册不带物品
 
         Assert.Contains("报价单已发布", await RouteAsync(router, "/报价 @1 300"));
-        Assert.Contains("300 金币", await RouteAsync(router, "/报价列表"));
+        Assert.Contains("300.00 金币", await RouteAsync(router, "/报价列表"));
         Assert.Contains("不能接受自己的报价单", await RouteAsync(router, "/接受报价 @1"));
         Assert.Contains("报价已撤回", await RouteAsync(router, "/撤回报价 @1"));
 

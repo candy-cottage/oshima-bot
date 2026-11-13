@@ -96,11 +96,11 @@ public sealed partial class ClubService
             }
 
             PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
-            long fee = ClubRules.MarketFee(price);
+            double fee = ClubRules.MarketFee(price);
             if (account.Credits < fee)
             {
                 return ActionResult.Fail("金币不足以支付上架费", "没有上架任何物品",
-                    $"需要 {fee} 金币，当前 {account.Credits:0.##}", "/状态");
+                    $"需要 {GameplayRules.Money(fee)} 金币，当前 {GameplayRules.Money(account.Credits)}", "/状态");
             }
 
             PlayerService.ApplyCurrency(db, account, -fee, "credits", "club_market_fee", "club",
@@ -117,10 +117,10 @@ public sealed partial class ClubService
             });
 
             return ActionResult.Success("🏷️ 已上架到社团市场",
-                $"{name} · 标价 {price} 金币",
+                $"{name} · 标价 {GameplayRules.Money(price)} 金币",
                 [
-                    $"- 上架费 {fee} 金币（{ClubRules.MarketFeeRatePercent}%）进入社团基金",
-                    $"- 社团基金：{club.Funds:0.##}",
+                    $"- 上架费 {GameplayRules.Money(fee)} 金币（{ClubRules.MarketFeeRatePercent}%）进入社团基金",
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}",
                     "- 物品已托管，成交前不在背包里；用 /社团市场 查看编号"
                 ], ["/社团市场", "/背包", "/我的社团"]);
         }, cancellationToken);
@@ -177,7 +177,7 @@ public sealed partial class ClubService
             if (buyer.Credits < listing.Price)
             {
                 return ActionResult.Fail("金币不足", "没有发生任何交易",
-                    $"需要 {listing.Price} 金币，当前 {buyer.Credits:0.##}", "/状态");
+                    $"需要 {GameplayRules.Money(listing.Price)} 金币，当前 {GameplayRules.Money(buyer.Credits)}", "/状态");
             }
             PlayerItem? item = await ItemStore.ByIdAsync(db, listing.ItemInstanceId, ct);
             if (item is null)
@@ -197,9 +197,9 @@ public sealed partial class ClubService
             listing.ClosedAtUtc = clock.UtcNow;
 
             return ActionResult.Success("🤝 交易达成",
-                $"{PlayerService.ReadName(item)} · {listing.Price} 金币",
+                $"{PlayerService.ReadName(item)} · {GameplayRules.Money(listing.Price)} 金币",
                 [
-                    $"- 你支出 {listing.Price} 金币，对方收入 {listing.Price}",
+                    $"- 你支出 {GameplayRules.Money(listing.Price)} 金币，对方收入 {GameplayRules.Money(listing.Price)}",
                     "- 双方各写一条 ledger，金额可对账",
                     "- 物品已放入你的背包"
                 ], ["/社团市场", "/背包", "/状态"]);

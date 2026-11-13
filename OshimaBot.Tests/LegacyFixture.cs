@@ -358,6 +358,9 @@ public static class LegacyFixtureProbes
             ["minPrice"] = GameplayRules.MarketMinPrice,
             ["maxPrice"] = GameplayRules.MarketMaxPrice,
             ["maxListings"] = GameplayRules.MarketMaxListingsPerUser,
+            // 旧版 fee = amount * 0.15（double，不取整、无下限）；新版同口径，只在显示时保留两位。
+            ["minFee"] = 0,
+            ["rounding"] = "不取整，仅显示两位",
             ["fee"] = new JsonArray(prices.Select(p => (JsonNode?)JsonValue.Create(GameplayRules.MarketFee(p))).ToArray())
         };
     }

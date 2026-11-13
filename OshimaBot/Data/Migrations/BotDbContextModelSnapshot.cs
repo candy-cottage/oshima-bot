@@ -439,8 +439,8 @@ namespace OshimaBot.Data.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("Fee")
-                        .HasColumnType("INTEGER");
+                    b.Property<double>("Fee")
+                        .HasColumnType("REAL");
 
                     b.Property<long>("ItemInstanceId")
                         .HasColumnType("INTEGER");
@@ -728,8 +728,8 @@ namespace OshimaBot.Data.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<long>("Fee")
-                        .HasColumnType("INTEGER");
+                    b.Property<double>("Fee")
+                        .HasColumnType("REAL");
 
                     b.Property<long>("ItemInstanceId")
                         .HasColumnType("INTEGER");

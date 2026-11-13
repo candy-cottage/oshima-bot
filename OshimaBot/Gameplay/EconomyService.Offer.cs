@@ -322,7 +322,7 @@ public sealed partial class EconomyService
             if (state.Credits < line.Price)
             {
                 return ActionResult.Fail("金币不足", "没有发生任何交易",
-                    $"需要 {line.Price} 金币，当前 {state.Credits}", "/状态");
+                    $"需要 {GameplayRules.Money(line.Price)} 金币，当前 {GameplayRules.Money(state.Credits)}", "/状态");
             }
             PlayerItem? item = await ItemStore.ByIdAsync(db, line.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("报价物品已丢失", "没有发生任何交易", "联系管理员核查", "/报价列表");
@@ -336,7 +336,7 @@ public sealed partial class EconomyService
             trade.BuyerUserId = userId;
             trade.ClosedAtUtc = clock.UtcNow;
             return ActionResult.Success("🤝 报价成交",
-                $"{PlayerService.ReadName(item)} · {line.Price} 金币",
+                $"{PlayerService.ReadName(item)} · {GameplayRules.Money(line.Price)} 金币",
                 ["- 双方各写一条 ledger", "- 物品已放入买家背包"], ["/报价列表", "/背包", "/状态"]);
         }, cancellationToken);
 

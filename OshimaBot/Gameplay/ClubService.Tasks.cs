@@ -71,9 +71,9 @@ public sealed partial class ClubService
             return ActionResult.Success("📦 已提交物资",
                 $"{name} ×{amount} → [ {club.Name} ]",
                 [
-                    $"- 折算社团基金 +{funds}（按{GameplayRules.QualityName(quality)}分解价的一半）",
+                    $"- 折算社团基金 +{GameplayRules.Money(funds)}（按{GameplayRules.QualityName(quality)}分解价的一半）",
                     $"- 物资征集进度：{Math.Min(progress, spec.Target)}/{spec.Target} {spec.Unit}",
-                    $"- 社团基金：{club.Funds:0.##}"
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}"
                 ], ["/社团任务", "/我的社团", "/背包"]);
         }, cancellationToken);
 
@@ -115,10 +115,10 @@ public sealed partial class ClubService
             row.UpdatedAtUtc = clock.UtcNow;
 
             return ActionResult.Success("🏁 任务已结算",
-                $"{spec.Name} · 社团基金 +{spec.RewardFunds}",
+                $"{spec.Name} · 社团基金 +{GameplayRules.Money(spec.RewardFunds)}",
                 [
-                    $"- 全员各记 {share:0.##} 点社团贡献（共 {members} 人）",
-                    $"- 社团基金：{club.Funds:0.##}",
+                    $"- 全员各记 {GameplayRules.Money(share)} 点社团贡献（共 {members} 人）",
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}",
                     "- 基金可以在 /社团商店 换成钻石与突破材料"
                 ], ["/社团任务", "/社团商店", "/我的社团"]);
         }, cancellationToken);

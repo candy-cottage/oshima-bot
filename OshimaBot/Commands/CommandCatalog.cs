@@ -1507,7 +1507,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 旅人档案",
-            $"主战 Lv.{snapshot.MainLevel}　金币 {snapshot.Credits}　钻石 {snapshot.Materials}　经验 {snapshot.MainExp:0.##}",
+            $"主战 Lv.{snapshot.MainLevel}　金币 {GameplayRules.Money(snapshot.Credits)}　钻石 {GameplayRules.Money(snapshot.Materials)}　经验 {snapshot.MainExp:0.##}",
             [
                 "潮湿的石板路延伸到雾里，铁匠铺的锤声隔着两条街传来。",
                 "",
@@ -1523,7 +1523,7 @@ public static class CommandCatalog
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
         return CommandReplies.Compose("📍 铎京 · 中央广场",
-            $"主战 Lv.{snapshot.MainLevel} · 金币 {snapshot.Credits} · 钻石 {snapshot.Materials}",
+            $"主战 Lv.{snapshot.MainLevel} · 金币 {GameplayRules.Money(snapshot.Credits)} · 钻石 {GameplayRules.Money(snapshot.Materials)}",
             [
                 "雾气贴着石板路，北面的铁匠铺还亮着炉火。",
                 "",
@@ -1972,7 +1972,7 @@ public static class CommandCatalog
             string state = task.Claimed ? "已结算"
                 : task.Done ? "✅ 可结算"
                 : $"{task.Progress}/{task.Target} {task.Unit}";
-            return $"- @{task.Index} {task.Name}　{state}　奖励 {task.RewardFunds} 基金\n"
+            return $"- @{task.Index} {task.Name}　{state}　奖励 {GameplayRules.Money(task.RewardFunds)} 基金\n"
                 + $"  {task.Hint}";
         })];
         lines.Add("- 提交物资：/社团任务 提交 @物品编号 [x数量]（按分解价一半折算基金）");
@@ -1991,11 +1991,11 @@ public static class CommandCatalog
                 "用 /社团列表 看看，或 /创建社团 自己开一个", "/社团列表");
         }
         List<string> lines = [.. view.Goods.Select(good =>
-            $"- @{good.Index} {good.Name}　{good.Price} 基金　{good.Description}")];
-        lines.Add($"- 可用基金：{view.Funds:0.##}（成员 /社团捐献 与社团市场手续费都会进来）");
+            $"- @{good.Index} {good.Name}　{GameplayRules.Money(good.Price)} 基金　{good.Description}")];
+        lines.Add($"- 可用基金：{GameplayRules.Money(view.Funds)}（成员 /社团捐献 与社团市场手续费都会进来）");
         lines.Add("- 兑换：/社团商店 买 编号 [x数量]（社长或管理操作）");
         lines.Add("- 收购：/社团商店 卖 @物品编号 [x数量]（管理用基金按分解价一半收成员物资）");
-        return CommandReplies.Compose("🛍️ 社团商店", $"社团基金 {view.Funds:0.##}", lines,
+        return CommandReplies.Compose("🛍️ 社团商店", $"社团基金 {GameplayRules.Money(view.Funds)}", lines,
             ["/社团商店 买 1", "/社团捐献", "/我的社团"]);
     }
 
@@ -2014,7 +2014,7 @@ public static class CommandCatalog
         }
         List<string> lines = [.. listings.Select(listing =>
             $"- @{listing.Index} {listing.Name}（{GameplayRules.QualityName(listing.Quality)}）"
-            + $"　{listing.Price} 金币　卖家 {listing.Seller}{(listing.Mine ? "（你）" : "")}")];
+            + $"　{GameplayRules.Money(listing.Price)} 金币　卖家 {listing.Seller}{(listing.Mine ? "（你）" : "")}")];
         lines.Add("- /社团市场 买 编号　·　/社团市场 下架 编号　·　/社团市场 上架 @物品编号 价格");
         lines.Add("- 社长可用 /社团市场 清空 把全部挂单退回卖家");
         return CommandReplies.Compose("🏪 社团市场", $"{listings.Count} 件在售", lines,
@@ -2033,7 +2033,7 @@ public static class CommandCatalog
             $"- #{club.Id} {club.Prefix}·{club.Name}　{club.Members}/{club.MaxMembers} 人"
             + $"　社长 {club.MasterName}"
             + $"　{(club.IsPublic ? "公开" : "🔒仅邀请")}{(club.NeedApproval ? " · 需批准" : "")}"
-            + $"　基金 {club.Funds:0.##}")];
+            + $"　基金 {GameplayRules.Money(club.Funds)}")];
         lines.Add("- /查看社团 编号　·　/加入社团 编号");
         return CommandReplies.ListPage("🏛️ 社团列表", $"共 {clubs.Count} 个", lines, context.Page,
             "/社团列表", ["/创建社团 ABC"]);
@@ -2077,7 +2077,7 @@ public static class CommandCatalog
         }
         List<string> lines = [.. members.Select((member, i) =>
             $"- @{i + 1} {member.Display}　{RoleName(member.Role)}"
-            + $"　入团 {member.JoinedOn}　捐献 {member.Contribution:0.##}")];
+            + $"　入团 {member.JoinedOn}　捐献 {GameplayRules.Money(member.Contribution)}")];
         lines.Add("- 社长/管理：/社团踢出 @编号 · /社团转让 @编号 · /社团设置 任命 @编号");
         return CommandReplies.ListPage("👥 社团成员", $"{members.Count}/{ClubService.MaxMembers} 人",
             lines, context.Page, "/查看社团成员", ["/我的社团", "/查看社团管理"]);
@@ -2129,6 +2129,16 @@ public static class CommandCatalog
         return CommandReplies.Compose("✉️ 受邀人列表", $"共 {rows.Count} 人", lines, ["/社团成员", "/我的社团"]);
     }
 
+    /// <summary>
+    /// 商店价格按货币决定格式：金币与钻石两位小数（它们会出现零头），
+    /// 锻造/赛马/共斗积分是整数计数，保持原样。
+    /// </summary>
+    private static string FormatByCurrency(long amount, string currency) => currency switch
+    {
+        "金币" or "钻石" => GameplayRules.Money(amount),
+        _ => amount.ToString(CultureInfo.InvariantCulture)
+    };
+
     private static BotReply RenderClub(ClubDetail detail)
     {
         List<string> lines =
@@ -2136,7 +2146,7 @@ public static class CommandCatalog
             $"- 编号：{detail.Id}　名称：{detail.Prefix}·{detail.Name}",
             $"- 社长：{detail.MasterName}" + (detail.IsMaster ? "（你）" : "") + $"　成员 {detail.Members}/{detail.MaxMembers}",
             $"- 加入规则：{(detail.IsPublic ? "公开" : "🔒 仅邀请")}{(detail.NeedApproval ? " · 需批准" : " · 免批准")}",
-            $"- 社团基金：{detail.Funds:0.##}",
+            $"- 社团基金：{GameplayRules.Money(detail.Funds)}",
             detail.Notice.Length == 0 ? "- 公告：（空）" : $"- 公告：{detail.Notice}",
             $"- 成立于 {detail.CreatedOn}"
         ];
@@ -2337,7 +2347,8 @@ public static class CommandCatalog
 
         string stock = detail.Stock < 0 ? "无限" : detail.Stock.ToString(CultureInfo.InvariantCulture);
         string quota = detail.Quota > 0 ? $"每人限购 {detail.Quota}，你已买 {detail.Bought}" : "不限购";
-        string price = detail.Currency == "免费" ? "免费" : $"{detail.Price} {detail.Currency}";
+        string price = detail.Currency == "免费" ? "免费"
+            : $"{FormatByCurrency(detail.Price, detail.Currency)} {detail.Currency}";
         int seconds = detail.WindowRemainingSeconds;
 
         List<string> lines =
@@ -2369,7 +2380,8 @@ public static class CommandCatalog
         {
             string stock = good.Stock < 0 ? "无限" : good.Stock.ToString(CultureInfo.InvariantCulture);
             string quota = good.Quota > 0 ? $"　限购 {good.Bought}/{good.Quota}" : "";
-            string price = good.Currency == "免费" ? "免费" : $"{good.Price} {good.Currency}";
+            string price = good.Currency == "免费" ? "免费"
+                : $"{FormatByCurrency(good.Price, good.Currency)} {good.Currency}";
             return $"- @{good.Index} {good.Name}　{price}　库存 {stock}{quota}";
         })];
         lines.Add($"- /购买 @编号 [x数量]　·　{GameplayRules.StoreWindowMinutes} 分钟内有效，超时要重新打开");
@@ -2386,7 +2398,7 @@ public static class CommandCatalog
             context.UserId, context.CancellationToken);
         List<string> lines = listings.Select(listing =>
             $"- @{listing.Index} {GameplayRules.QualityName(listing.Quality)} · {listing.ItemName}"
-            + $"　{listing.Price} 金币　卖家 {listing.SellerHandle}{(listing.IsMine ? "（我的）" : "")}").ToList();
+            + $"　{GameplayRules.Money(listing.Price)} 金币　卖家 {listing.SellerHandle}{(listing.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 市场暂时空着，用 /上架 @编号 <价格> 挂出第一件物品");
         lines.Add("- /上架 @编号 <价格> · /购买市场 @编号 · /下架 @编号");
         return CommandReplies.ListPage("🏷️ 旅人市场", $"{listings.Count} 件在售", lines,
@@ -2398,7 +2410,7 @@ public static class CommandCatalog
         IReadOnlyList<OfferEntry> offers = await deps.Economy.GetOffersAsync(
             context.UserId, context.CancellationToken);
         List<string> lines = offers.Select(offer =>
-            $"- @{offer.Index} {offer.ItemName}　{offer.Price} 金币"
+            $"- @{offer.Index} {offer.ItemName}　{GameplayRules.Money(offer.Price)} 金币"
             + $"　发起 {offer.SellerHandle}{(offer.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 暂无报价单，用 /报价 @编号 <价格> 发布");
         lines.Add("- /报价 @编号 <价格> · /接受报价 @编号 · /撤回报价 @编号");

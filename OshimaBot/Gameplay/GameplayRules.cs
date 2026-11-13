@@ -582,8 +582,22 @@ public static class GameplayRules
     /// <summary>托管用户 id：市场上架 / 报价单在成交前的物品归属，不会出现在任何玩家背包。</summary>
     public const long EscrowUserId = -1;
 
-    public static long MarketFee(long price)
-        => Math.Max(1, price * MarketFeeRatePercent / 100);
+    /// <summary>
+    /// 上架费：<c>标价 × 15%</c>，**不取整、不设下限**（2026-11-14 决定）。
+    /// <para>标价 1 金币时费用是 0.15，和旧版 <c>fee = amount * 0.15</c> 一样保留小数；
+    /// 只在显示时四舍五入到两位。之所以不再 <c>Math.Max(1, ...)</c>：那会让 1 金币的白装
+    /// 收 100% 的手续费，低于 7 金币的挂单实际是亏本卖。</para>
+    /// </summary>
+    public static double MarketFee(long price) => price * MarketFeeRatePercent / 100.0;
+
+    /// <summary>
+    /// 金币 / 钻石的展示格式：固定两位小数、四舍五入，**只影响显示**。
+    /// <para>内部一律保留 <see cref="double"/> 原值（手续费 19 × 15% = 2.85、
+    /// 累加后可能出现 30.000000000000004 这种尾差），不在这里落库取整。</para>
+    /// </summary>
+    public const string MoneyFormat = "0.00";
+
+    public static string Money(double amount) => amount.ToString(MoneyFormat, CultureInfo.InvariantCulture);
 
     public static string RankingBoardName(string board) => board.ToLowerInvariant() switch
     {

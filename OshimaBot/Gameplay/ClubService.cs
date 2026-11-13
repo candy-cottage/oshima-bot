@@ -624,7 +624,7 @@ public sealed partial class ClubService(
             if (account.Credits < credits)
             {
                 return ActionResult.Fail("金币不足", "没有捐献任何金币",
-                    $"需要 {credits} 金币，当前 {account.Credits:0.##}", "/状态");
+                    $"需要 {GameplayRules.Money(credits)} 金币，当前 {GameplayRules.Money(account.Credits)}", "/状态");
             }
 
             PlayerService.ApplyCurrency(db, account, -credits, "credits", "club_donate", "club",
@@ -635,11 +635,11 @@ public sealed partial class ClubService(
             await AdvanceTaskAsync(db, club.Id, ClubTaskKind.Donate, (int)credits, ct);
 
             return ActionResult.Success("💰 捐献成功",
-                $"{credits} 金币 → [ {club.Name} ]",
+                $"{GameplayRules.Money(credits)} 金币 → [ {club.Name} ]",
                 [
-                    $"- 社团基金：{club.Funds:0.##}",
-                    $"- 个人累计捐献：{member.Contribution:0.##}",
-                    $"- 当前金币：{account.Credits:0.##}"
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}",
+                    $"- 个人累计捐献：{GameplayRules.Money(member.Contribution)}",
+                    $"- 当前金币：{GameplayRules.Money(account.Credits)}"
                 ], ["/我的社团", "/状态"]);
         }, cancellationToken);
 

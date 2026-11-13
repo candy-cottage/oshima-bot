@@ -78,7 +78,8 @@ public static class ClubRules
     /// <summary>单个社团在售挂单上限，防止列表刷爆。</summary>
     public const int MaxListingsPerClub = 60;
 
-    public static long MarketFee(long price) => Math.Max(1, price * MarketFeeRatePercent / 100);
+    /// <summary>上架费：<c>标价 × 5%</c>，与全局市场同口径——不取整、不设下限，只在显示时保留两位。</summary>
+    public static double MarketFee(long price) => price * MarketFeeRatePercent / 100.0;
 
     public static string KindName(ClubTaskKind kind) => kind switch
     {

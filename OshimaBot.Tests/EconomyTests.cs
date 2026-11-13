@@ -178,6 +178,62 @@ public sealed class EconomyTests
     /// 上架费在**上架时**预扣，下架不退；成交时卖家收全额，因此「成交净收入 = 标价 − 上架费」。
     /// 旧版是成交时按 15% 现扣（见 DIV-003 / DIV-015），两种口径对成交单的净额相同，对撤回单不同。
     /// </summary>
+    /// <summary>
+    /// 上架费 = 标价 × 15%，**不取整、不设下限**（2026-11-14 决定，见 DIV-003）。
+    /// 曾经是 `Math.Max(1, price * 15 / 100)`：1 金币的白装要收 1 金币（等于 100% 手续费），
+    /// 19 金币收 2 而不是 2.85。现在逐值和旧版 `price * 0.15` 相同。
+    /// </summary>
+    [Theory]
+    [InlineData(1, 0.15)]
+    [InlineData(19, 2.85)]
+    [InlineData(20, 3.00)]
+    [InlineData(199, 29.85)]
+    [InlineData(1000, 150.00)]
+    public void MarketFee_ChargesTheExactRateWithoutFloor(long price, double expected)
+    {
+        Assert.Equal(expected, GameplayRules.MarketFee(price), 6);
+        Assert.Equal(expected, ClubRules.MarketFee(price) * 3, 6);   // 社团市场 5%：1000 → 50，×3 = 150
+    }
+
+    /// <summary>
+    /// 金币 / 钻石只**显示**两位小数，内部值不取整：`0.15 × 200` 在 double 下可能算出
+    /// 30.000000000000004，落库取整会让账本和实际扣款对不上。
+    /// </summary>
+    [Theory]
+    [InlineData(30.000000000000004, "30.00")]
+    [InlineData(2.85, "2.85")]
+    [InlineData(0.155, "0.16")]        // 显示时四舍五入
+    [InlineData(-1.50, "-1.50")]       // 账本里的负数（扣款）同样两位
+    [InlineData(0, "0.00")]
+    public void Money_ShowsTwoDecimalsWithoutChangingTheValue(double value, string expected)
+    {
+        Assert.Equal(expected, GameplayRules.Money(value));
+    }
+
+    /// <summary>1 金币的挂单只扣 0.15，余额与账本都必须记这个数。</summary>
+    [Fact]
+    public async Task Market_OneCreditListingCostsFifteenCents()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 1);
+
+        double before = (await players.GetSnapshotAsync(Seller))!.Credits;
+        ActionResult result = await economy.ListOnMarketAsync(Seller, 1, 1);
+
+        Assert.True(result.Ok, result.Title);
+        Assert.Equal(before - 0.15, (await players.GetSnapshotAsync(Seller))!.Credits, 10);
+        Assert.Contains(result.Lines, line => line.Contains("0.15 金币"));
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        LedgerEntry fee = await context.LedgerEntries.SingleAsync(x => x.Reason == "market_fee");
+        Assert.Equal(-0.15, fee.Delta, 10);
+        Assert.Equal(before - 0.15, fee.BalanceAfter, 10);
+    }
+
     [Fact]
     public async Task Market_FeeIsChargedUpfrontAndNotRefundedOnDelist()
     {
@@ -188,7 +244,7 @@ public sealed class EconomyTests
         await TestItems.SeedAsync(db.Provider, Seller, 3);
 
         double before = (await players.GetSnapshotAsync(Seller))!.Credits;
-        long fee = GameplayRules.MarketFee(200);
+        double fee = GameplayRules.MarketFee(200);
         Assert.True(fee > 0);
 
         Assert.True((await economy.ListOnMarketAsync(Seller, 1, 200)).Ok);
@@ -211,7 +267,7 @@ public sealed class EconomyTests
 
         double sellerBefore = (await players.GetSnapshotAsync(Seller))!.Credits;
         double buyerBefore = (await players.GetSnapshotAsync(Buyer))!.Credits;
-        long fee = GameplayRules.MarketFee(200);
+        double fee = GameplayRules.MarketFee(200);
 
         Assert.True((await economy.ListOnMarketAsync(Seller, 1, 200)).Ok);
         Assert.True((await economy.BuyMarketAsync(Buyer, 1)).Ok);

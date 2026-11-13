@@ -136,7 +136,7 @@ public sealed class ActivityService(
                     if (account.Credits < quest.CostAmount)
                     {
                         return ActionResult.Fail("金币不足", "没有扣除任何资源",
-                            $"需要 {quest.CostAmount}，当前 {account.Credits:0.##}", "/状态");
+                            $"需要 {GameplayRules.Money(quest.CostAmount)}，当前 {GameplayRules.Money(account.Credits)}", "/状态");
                     }
                     PlayerService.ApplyCurrency(db, account, -quest.CostAmount, "credits", "activity_cost", "activity", reference);
                     break;
@@ -144,7 +144,7 @@ public sealed class ActivityService(
                     if (account.Materials < quest.CostAmount)
                     {
                         return ActionResult.Fail("钻石不足", "没有扣除任何资源",
-                            $"需要 {quest.CostAmount}，当前 {account.Materials:0.##}", "/状态");
+                            $"需要 {GameplayRules.Money(quest.CostAmount)}，当前 {GameplayRules.Money(account.Materials)}", "/状态");
                     }
                     PlayerService.ApplyCurrency(db, account, -quest.CostAmount, "diamonds", "activity_cost", "activity", reference);
                     break;

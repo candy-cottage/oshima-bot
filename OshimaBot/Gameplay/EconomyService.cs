@@ -434,7 +434,7 @@ public sealed partial class EconomyService(
                 double gained = item.Item.Price;
                 PlayerService.Consume(db, item, 1);
                 total += gained;
-                sold.Add($"{name} +{gained:0.##}");
+                sold.Add($"{name} +{GameplayRules.Money(gained)}");
             }
 
             if (sold.Count == 0)
@@ -447,12 +447,12 @@ public sealed partial class EconomyService(
                 userId.ToString(CultureInfo.InvariantCulture));
             List<string> lines =
             [
-                $"- 卖出 {sold.Count} 件，共得 {total:0.##} 金币",
+                $"- 卖出 {sold.Count} 件，共得 {GameplayRules.Money(total)} 金币",
                 $"- {string.Join("、", sold)}",
-                $"- 当前金币：{state.Credits:0.##}"
+                $"- 当前金币：{GameplayRules.Money(state.Credits)}"
             ];
             if (skipped.Count > 0) lines.Add($"- 跳过：{string.Join("、", skipped)}");
-            return ActionResult.Success("💰 出售成功", $"+{total:0.##} 金币", lines, ["/背包", "/商店", "/状态"]);
+            return ActionResult.Success("💰 出售成功", $"+{GameplayRules.Money(total)} 金币", lines, ["/背包", "/商店", "/状态"]);
         }, cancellationToken);
 
     public Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity,
@@ -494,7 +494,7 @@ public sealed partial class EconomyService(
                 if (balance < cost)
                 {
                     return ActionResult.Fail($"{StoreCatalog.CurrencyName(currency)}不足", "没有扣款，也没有发放物品",
-                        $"需要 {cost}，当前 {balance:0.##}", "/签到");
+                        $"需要 {GameplayRules.Money(cost)}，当前 {GameplayRules.Money(balance)}", "/签到");
                 }
                 PlayerService.ApplyCurrency(db, state, -cost, StoreCatalog.LedgerCurrency(currency),
                     "store_buy", "store_good", good.Id.ToString(CultureInfo.InvariantCulture));
@@ -523,9 +523,9 @@ public sealed partial class EconomyService(
             int left = good.Stock < 0 ? -1 : Math.Max(0, good.Stock - good.SoldCount);
             return ActionResult.Success("🛒 购买成功",
                 $"{good.Name} ×{amount}"
-                    + (currency == StoreCurrency.Free ? " · 免费" : $" · 花费 {cost} {StoreCatalog.CurrencyName(currency)}"),
+                    + (currency == StoreCurrency.Free ? " · 免费" : $" · 花费 {GameplayRules.Money(cost)} {StoreCatalog.CurrencyName(currency)}"),
                 [
-                    $"- 余额：金币 {state.Credits:0.##}　钻石 {state.Materials:0.##}　锻 {state.ForgePoints:0.##}"
+                    $"- 余额：金币 {GameplayRules.Money(state.Credits)}　钻石 {GameplayRules.Money(state.Materials)}　锻 {state.ForgePoints:0.##}"
                         + $"　赛马 {state.HorseRacingPoints:0.##}　共斗 {state.CooperativePoints:0.##}",
                     $"- 库存：{(left < 0 ? "无限" : left.ToString(CultureInfo.InvariantCulture))}"
                         + (good.Quota > 0 ? $"　已购 {bought + amount}/{good.Quota}" : ""),
@@ -631,11 +631,11 @@ public sealed partial class EconomyService(
                 return ActionResult.Fail("该物品已锁定或绑定", "没有上架任何物品",
                     "先 /解锁 @编号，已装备物品需先 /卸下", "/背包");
             }
-            long fee = GameplayRules.MarketFee(price);
+            double fee = GameplayRules.MarketFee(price);
             if (state.Credits < fee)
             {
                 return ActionResult.Fail("金币不足以支付上架费", "没有上架任何物品",
-                    $"需要 {fee} 金币，当前 {state.Credits}", "/状态");
+                    $"需要 {GameplayRules.Money(fee)} 金币，当前 {GameplayRules.Money(state.Credits)}", "/状态");
             }
             PlayerService.ApplyCurrency(db, state, -fee, "credits", "market_fee", "listing", price.ToString(CultureInfo.InvariantCulture));
             item.UserId = GameplayRules.EscrowUserId;
@@ -645,8 +645,8 @@ public sealed partial class EconomyService(
                 Price = price, Fee = fee, Status = 0, CreatedAtUtc = DateTime.UtcNow
             });
             return ActionResult.Success("🏷️ 上架成功",
-                $"{PlayerService.ReadName(item)} · 标价 {price} 金币",
-                [$"- 上架费 {fee} 金币（{GameplayRules.MarketFeeRatePercent}%）已记入账本",
+                $"{PlayerService.ReadName(item)} · 标价 {GameplayRules.Money(price)} 金币",
+                [$"- 上架费 {GameplayRules.Money(fee)} 金币（{GameplayRules.MarketFeeRatePercent}%）已记入账本",
                     "- 物品已移入托管，成交前不会出现在背包",
                     "- 用 /市场 查看编号，/下架 @编号 可撤回"], ["/市场", "/背包", "/状态"]);
         }, cancellationToken);
@@ -683,7 +683,7 @@ public sealed partial class EconomyService(
             if (state.Credits < listing.Price)
             {
                 return ActionResult.Fail("金币不足", "没有发生任何交易",
-                    $"需要 {listing.Price} 金币，当前 {state.Credits}", "/状态");
+                    $"需要 {GameplayRules.Money(listing.Price)} 金币，当前 {GameplayRules.Money(state.Credits)}", "/状态");
             }
             PlayerItem? item = await ItemStore.ByIdAsync(db, listing.ItemInstanceId, ct);
             if (item is null) return ActionResult.Fail("挂单物品已丢失", "没有发生任何交易", "联系管理员核查", "/市场");
@@ -696,8 +696,8 @@ public sealed partial class EconomyService(
             listing.Status = 1;
             listing.ClosedAtUtc = DateTime.UtcNow;
             return ActionResult.Success("🤝 交易达成",
-                $"{PlayerService.ReadName(item)} · {listing.Price} 金币",
-                [$"- 买家支出 {listing.Price}，卖家收入 {listing.Price}",
+                $"{PlayerService.ReadName(item)} · {GameplayRules.Money(listing.Price)} 金币",
+                [$"- 买家支出 {GameplayRules.Money(listing.Price)}，卖家收入 {GameplayRules.Money(listing.Price)}",
                     "- 双方各写一条 ledger，金额可对账",
                     "- 物品已放入买家背包"], ["/市场", "/背包", "/状态"]);
         }, cancellationToken);
@@ -774,7 +774,7 @@ public sealed partial class EconomyService(
             if (state.Credits < GameplayRules.InstanceCostCredits)
             {
                 return ActionResult.Fail("金币不足", "没有开始探索",
-                    $"需要 {GameplayRules.InstanceCostCredits} 金币，当前 {state.Credits}", "/状态");
+                    $"需要 {GameplayRules.Money(GameplayRules.InstanceCostCredits)} 金币，当前 {GameplayRules.Money(state.Credits)}", "/状态");
             }
 
             // 规格解析：`金币 3` / `精英` / `3` / 空 → 类型 + 难度 1-5
@@ -810,7 +810,7 @@ public sealed partial class EconomyService(
             string rewardHint = GameplayRules.InstanceRewardHint(kind, level);
             return ActionResult.Success("🗺️ 进入秘境",
                 $"{kindName}秘境 · 难度 {level} · {GameplayRules.InstanceDefaultMinutes} 分钟后结算",
-                [$"- 消耗金币 {GameplayRules.InstanceCostCredits}",
+                [$"- 消耗金币 {GameplayRules.Money(GameplayRules.InstanceCostCredits)}",
                     $"- 敌人：{GameplayRules.InstanceEnemyCount(level)} 名 Lv.{GameplayRules.InstanceEnemyLevel(level)}",
                     $"- 预计收获：{rewardHint}（按出战人数叠乘）",
                     "- 胜利全额，失败半额；用 /收取秘境 结算"],
@@ -912,11 +912,11 @@ public sealed partial class EconomyService(
             List<string> lines =
             [
                 $"- 结果：{(win ? "清剿成功" : "被迫撤退")} · {battle.Rounds} 回合 · 难度 {level} · 出战 {party.Count} 人",
-                $"- 经验 +{exp}　金币 +{credits}　钻石 +{diamonds}",
+                $"- 经验 +{exp}　金币 +{GameplayRules.Money(credits)}　钻石 +{GameplayRules.Money(diamonds)}",
                 $"- 掉落：{(drops.Count == 0 ? "无" : string.Join("、", drops))} · {kindName}秘境",
                 levelTarget is null
-                    ? $"- 金币：{state.Credits}　钻石：{state.Materials}"
-                    : $"- {levelTarget.Name} 经验 +{exp}{(levelGain > 0 ? $" · 升 {levelGain} 级 → Lv.{levelTarget.Level}" : $"（Lv.{levelTarget.Level}）")}　金币：{state.Credits}　钻石：{state.Materials}"
+                    ? $"- 金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}"
+                    : $"- {levelTarget.Name} 经验 +{exp}{(levelGain > 0 ? $" · 升 {levelGain} 级 → Lv.{levelTarget.Level}" : $"（Lv.{levelTarget.Level}）")}　金币：{GameplayRules.Money(state.Credits)}　钻石：{GameplayRules.Money(state.Materials)}"
             ];
             lines.AddRange(battle.Tail(2)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -936,7 +936,7 @@ public sealed partial class EconomyService(
             if (state.Credits < GameplayRules.DuelCostCredits)
             {
                 return ActionResult.Fail("金币不足", "没有开始决斗",
-                    $"需要 {GameplayRules.DuelCostCredits} 金币，当前 {state.Credits}", "/状态");
+                    $"需要 {GameplayRules.Money(GameplayRules.DuelCostCredits)} 金币，当前 {GameplayRules.Money(state.Credits)}", "/状态");
             }
 
             // 出战角色：优先主战，否则取第一个角色（与旧版「默认角色 1」一致）。
@@ -979,7 +979,7 @@ public sealed partial class EconomyService(
                 $"- 我方：{me.Name} Lv.{me.Level}　HP {me.HP:F0}/{me.MaxHP:F0}",
                 $"- 对手：{enemy.Name} Lv.{enemy.Level}　HP {enemy.HP:F0}/{enemy.MaxHP:F0}",
                 $"- {battle.Rounds} 回合 · 耗时 {battle.TotalTime:F1}",
-                $"- 当前战绩积分：{points}　金币：{state.Credits}",
+                $"- 当前战绩积分：{points}　金币：{GameplayRules.Money(state.Credits)}",
                 "- 战斗摘要："
             ];
             lines.AddRange(BattleTail(battle, 3));
@@ -987,7 +987,7 @@ public sealed partial class EconomyService(
             return ActionResult.Success(win ? "⚔️ 决斗胜利" : "🛡️ 决斗失利",
                 win
                     ? $"击败 {enemy.Name} · 净获 {GameplayRules.DuelRewardCredits - GameplayRules.DuelCostCredits} 金币 · 战绩 +{gain}"
-                    : $"不敌 {enemy.Name} · 损失报名费 {GameplayRules.DuelCostCredits} · 战绩 +{gain}",
+                    : $"不敌 {enemy.Name} · 损失报名费 {GameplayRules.Money(GameplayRules.DuelCostCredits)} · 战绩 +{gain}",
                 lines,
                 ["/决斗", "/排行榜 战绩", "/状态"]);
         }, cancellationToken);
@@ -1076,7 +1076,7 @@ public sealed partial class EconomyService(
                     ? $"- 对方：{enemies.Count} 人（{string.Join("、", enemies.Select(x => $"{x.Name} Lv.{x.Level}"))}）"
                     : $"- 对方：{enemies[0].Name} Lv.{enemies[0].Level}　HP {enemies[0].HP:F0}/{enemies[0].MaxHP:F0}",
                 $"- 对手：{display}　{battle.Rounds} 回合 · 耗时 {battle.TotalTime:F1}",
-                $"- 战绩 +{gain}　当前战绩：{points}　金币：{state.Credits}",
+                $"- 战绩 +{gain}　当前战绩：{points}　金币：{GameplayRules.Money(state.Credits)}",
                 "- 战斗摘要："
             ];
             lines.AddRange(BattleTail(battle, 3));
@@ -1186,7 +1186,7 @@ public sealed partial class EconomyService(
                 diamonds > 0
                     ? $"- 结算：钻石 +{diamonds}（= 目标等级）· 战绩 +{gain}"
                     : $"- 结算：本次未击杀，只有战绩 +{gain}（击杀才发钻石）",
-                $"- 当前战绩：{points}　金币：{state.Credits}"
+                $"- 当前战绩：{points}　金币：{GameplayRules.Money(state.Credits)}"
             ];
             lines.AddRange(BattleTail(battle, 2));
             if (damage <= 0 && !killed)

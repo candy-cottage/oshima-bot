@@ -44,7 +44,7 @@ public sealed partial class ClubService
             if (club.Funds < cost)
             {
                 return ActionResult.Fail("社团基金不足", "没有扣基金，也没有发放物品",
-                    $"需要 {cost} 基金，当前 {club.Funds:0.##}；让成员 /社团捐献 补一点", "/社团捐献");
+                    $"需要 {GameplayRules.Money(cost)} 基金，当前 {GameplayRules.Money(club.Funds)}；让成员 /社团捐献 补一点", "/社团捐献");
             }
 
             club.Funds -= cost;
@@ -64,10 +64,10 @@ public sealed partial class ClubService
             account.UpdatedAtUtc = clock.UtcNow;
 
             return ActionResult.Success("🛍️ 兑换成功",
-                $"{good.Name} ×{amount} · 花费 {cost} 社团基金",
+                $"{good.Name} ×{amount} · 花费 {GameplayRules.Money(cost)} 社团基金",
                 [
-                    $"- 社团基金：{club.Funds:0.##}",
-                    $"- 你的钱包：金币 {account.Credits:0.##}　钻石 {account.Materials:0.##}",
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}",
+                    $"- 你的钱包：金币 {GameplayRules.Money(account.Credits)}　钻石 {GameplayRules.Money(account.Materials)}",
                     "- 基金是公会公款，花费请和成员说一声"
                 ], ["/社团商店", "/背包", "/我的社团"]);
         }, cancellationToken);
@@ -96,7 +96,7 @@ public sealed partial class ClubService
             if (club.Funds < payout)
             {
                 return ActionResult.Fail("社团基金不足", "没有收购任何物品",
-                    $"这件要付 {payout} 金币，基金只有 {club.Funds:0.##}", "/社团捐献");
+                    $"这件要付 {GameplayRules.Money(payout)} 金币，基金只有 {GameplayRules.Money(club.Funds)}", "/社团捐献");
             }
 
             string name = PlayerService.ReadName(item);
@@ -110,11 +110,11 @@ public sealed partial class ClubService
             account.UpdatedAtUtc = clock.UtcNow;
 
             return ActionResult.Success("📥 社团已收购",
-                $"{name} ×{amount} · 你获得 {payout} 金币",
+                $"{name} ×{amount} · 你获得 {GameplayRules.Money(payout)} 金币",
                 [
                     $"- 收购价按{GameplayRules.QualityName(quality)}分解价的一半折算",
-                    $"- 社团基金：{club.Funds:0.##}",
-                    $"- 当前金币：{account.Credits:0.##}"
+                    $"- 社团基金：{GameplayRules.Money(club.Funds)}",
+                    $"- 当前金币：{GameplayRules.Money(account.Credits)}"
                 ], ["/社团商店", "/背包", "/社团任务"]);
         }, cancellationToken);
 }

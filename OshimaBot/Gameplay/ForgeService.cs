@@ -74,7 +74,7 @@ public sealed class ForgeService(
             if (account.Credits < ForgeRules.CostCredits)
             {
                 return ActionResult.Fail("金币不足", "没有扣除任何材料",
-                    $"需要 {ForgeRules.CostCredits}，当前 {account.Credits:0.##}", "/状态");
+                    $"需要 {GameplayRules.Money(ForgeRules.CostCredits)}，当前 {GameplayRules.Money(account.Credits)}", "/状态");
             }
             PlayerService.ApplyCurrency(db, account, -ForgeRules.CostCredits, "credits", "forge_start", "forge",
                 userId.ToString(CultureInfo.InvariantCulture));
@@ -105,7 +105,7 @@ public sealed class ForgeService(
                 [
                     $"- {plan.Message}",
                     $"- 预计品质：{ForgeRules.QualityName(plan.Quality)}（产地 {plan.RegionName}）",
-                    $"- 消耗 {ForgeRules.CostCredits} 金币，剩余 {account.Credits:0.##}",
+                    $"- 消耗 {GameplayRules.Money(ForgeRules.CostCredits)} 金币，剩余 {GameplayRules.Money(account.Credits)}",
                     "- 结束后 /收取锻造；期间可用 /锻造 大师 指定目标"
                 ], ["/锻造 信息", "/收取锻造", "/状态"]);
         }, cancellationToken);
@@ -174,7 +174,7 @@ public sealed class ForgeService(
             account.UpdatedAtUtc = clock.UtcNow;
 
             job.SettledAtUtc = clock.UtcNow;
-            return ActionResult.Success("↩️ 已取消锻造", $"退回 {refunded} 件材料与 {ForgeRules.CostCredits} 金币",
+            return ActionResult.Success("↩️ 已取消锻造", $"退回 {refunded} 件材料与 {GameplayRules.Money(ForgeRules.CostCredits)} 金币",
                 ["- 配方已清空，可以重新配"], ["/背包", "/锻造"]);
         }, cancellationToken);
 
