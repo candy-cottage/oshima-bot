@@ -1,0 +1,235 @@
+# OshimaBot 旧版帮助条目迁移矩阵
+
+> 数据源：`migration/matrix.tsv`（163 行，人工维护的唯一位置）。
+> 渲染与校验：`python migration/gen_matrix.py`；CI 用 `--check` 只校验不写文件。
+> 旧版基线：`migration/LEGACY_BASELINE.md`（`FunGame.Core 2.1` / `OshimaGameModule`）。
+> 计划与差距分析：本地 `docs/2026-11-13/MIGRATION_PLAN.md`、`docs/2026-11-13/MIGRATION_GAP_ANALYSIS.md`（不入库）。
+> 本文件由脚本生成，**不要手工编辑**；改数据请改 `matrix.tsv`。
+
+## 0. 口径说明
+
+| 指标 | 数值 | 说明 |
+|---|---:|---|
+| 帮助条目（字典 key 行） | 176 | 3 / 29 / 24 / 17 / 33 / 32 / 6 / 32 |
+| 帮助内命令名 | 181 | 一行含两个命令的条目拆开计 |
+| **去重后唯一入口（本表行数）** | **163** | 同名命令在多个分类重复出现 |
+| 批准迁移范围 | 159 | 不含 `scope-excluded` |
+| 范围排除 | 4 | 生命之泉 / 酒馆 / 加物 / 减物 |
+| 有夹具落地的行 | 22 | Fixture 列指向真实存在的 `.json` |
+| 只有待建夹具的行 | 82 | 已声明 L0–L2 但尚无对照样本 |
+
+状态定义：
+
+| 状态 | 含义 | 等级要求 |
+|---|---|---|
+| `等价` | 入口、状态与数值都与旧版一致 | 必须 L0–L3 |
+| `增强` | 保留旧行为，另有新架构增益 | 必须 L0–L3 |
+| `简化替代` | 做得到，但入口或交互与旧版不同 | 必须 L0–L3 |
+| `部分缺失` | 主体可用、部分子能力未做 | 必须 L0–L3 |
+| `缺失` | 旧版有、新版没有入口 | — |
+| `有意差异` | 已实现，但按产品决策与旧版不同，见 `DIVERGENCES.md` | 可标已对拍的部分 |
+| `scope-excluded` | 正式不迁移（不计入批准范围） | — |
+
+`Fixture` 列：指向存在的夹具表示已有对照样本；`待建 FIX-…` 表示该行声明了等价等级但尚无夹具，属于**未证明的等价声明**，`gen_matrix.py --check` 会在夹具建成后要求去掉前缀。
+
+## 1. 总览
+
+| 状态 | 条目数 | 占全量 | 占批准范围 |
+|---|---:|---:|---:|
+| 等价 | 98 | 60.1% | 61.6% |
+| 增强 | 3 | 1.8% | 1.9% |
+| 简化替代 | 53 | 32.5% | 33.3% |
+| 缺失 | 1 | 0.6% | 0.6% |
+| 有意差异 | 4 | 2.5% | 2.5% |
+| scope-excluded | 4 | 2.5% | — |
+
+| 分类 | 条目 | 等价/增强 | 简化替代 | 部分缺失 | 缺失 | 有意差异 | scope-excluded |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 存档 | 3 | 0 | 2 | 0 | 1 | 0 | 0 |
+| 角色 | 29 | 8 | 17 | 0 | 0 | 0 | 4 |
+| 物品 | 24 | 9 | 13 | 0 | 0 | 2 | 0 |
+| 战斗 | 12 | 6 | 5 | 0 | 0 | 1 | 0 |
+| 玩法 | 28 | 19 | 9 | 0 | 0 | 0 | 0 |
+| 社团 | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
+| 活动 | 6 | 6 | 0 | 0 | 0 | 0 | 0 |
+| 商店 | 29 | 21 | 7 | 0 | 0 | 1 | 0 |
+
+## 2. 矩阵
+
+| 行为 ID | 帮助分类 | 旧入口 | 旧实现 | 当前入口 | 当前实现 | 等价 | 状态 | 差异 / 备注 | Fixture |
+|---|---|---|---|---|---|---|---|---|---|
+| ARC-001 | 存档 | 创建存档 | `RainBOTService.cs:773` | /注册 | PlayerService.RegisterAsync | L1 | 简化替代 | 初始金币 5000 与「注册即送自建角色」都已对齐（CustomCharacter 属性当场随机，默认名 `旅人XXXX` 同旧版随机昵称思路）；差异只剩懒建档：首次任意操作即自动建档，不必先 /注册（差异登记 DIV-008） | FIX-CHR-REGISTER |
+| ARC-002 | 存档 | 还原存档 | `RainBOTService.cs:834` | — | — | — | 缺失 | 旧版可回滚到上一份存档，新版无任何回滚入口。**已排期**：先设计快照策略（单表原地更新 → 按日快照 + 手动还原点），用户 2026-11-12 同意后续做 | TODO-ARC-SNAPSHOT |
+| ARC-003 | 存档 | 我的存档 | `RainBOTService.cs:781` | /状态 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 字段集合不同：旧版含账号/绑定信息，新版为旅人等级/货币/角色/背包概览 |  |
+| CHR-001 | 角色 | 我角色 | `RainBOTService.cs:1190` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 旧版简略/详细两档并支持角色序号，新版合并为一页列表 + 分页 |  |
+| CHR-002 | 角色 | 我的角色 | `RainBOTService.cs:1206` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 同上；旧版可查看任意序号角色的技能/装备明细，新版仅列表摘要 |  |
+| CHR-003 | 角色 | 设置主战 | `RainBOTService.cs:1254` | /设主战 | PlayerService.SetMainAsync | L1 | 简化替代 | 旧版按角色序号，新版按 @编号；后者依赖列表顺序，需保证稳定映射 |  |
+| CHR-004 | 角色 | 我的主战 | `RainBOTService.cs:796` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 无独立查询入口，主战以标记形式出现在角色列表 |  |
+| CHR-005 | 角色 / 战斗 | 开启练级 | `RainBOTService.cs:1270` | /练级 | PlayerService.TrainStartAsync | L2 | 等价 | 不收金币；收益按会话实际时长 ×2/分钟，单次上限 2880 分钟（旧版 GetTrainingInfo） | FIX-CHR-TRAIN |
+| CHR-006 | 角色 / 战斗 | 练级结算 | `RainBOTService.cs:1293` | /收取练级 | PlayerService.TrainClaimAsync | L2 | 简化替代 | 旧版结算同时回血与复活，新版只结算经验，不改变生命状态 |  |
+| CHR-007 | 角色 / 战斗 | 练级信息 | `RainBOTService.cs:1286` | /练级 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 新版无剩余时间/预计收益预览 |  |
+| CHR-008 | 角色 | 我的状态 | `RainBOTService.cs:804` | /状态 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 新版无角色生命、能量、复活次数等状态字段 |  |
+| CHR-009 | 角色 | 装备 | `RainBOTService.cs:1384` | /装备 | PlayerService.EquipAsync | L1 | 简化替代 | 旧版 <角色序号> <物品序号> 且 6 个槽位，新版仅主战角色 3 槽（武器/防具/饰品） |  |
+| CHR-010 | 角色 | 取消装备 | `RainBOTService.cs:1368` | /卸下 | PlayerService.UnequipAsync | L1 | 简化替代 | 旧版按槽位 1-6，新版按槽位名 weapon\|armor\|trinket |  |
+| CHR-011 | 角色 | 加物 | `RainBOTService.cs:3501` | — | — | — | scope-excluded | 【范围排除】旧版「角色背包」是战斗内携带的 `Character.Items`，与玩家库存 `Inventory.Items` 不是一回事；v3 角色没有持久状态、战斗单位按存档重建，角色背包无处安放。用户 2026-11-12 决定不做 | — |
+| CHR-012 | 角色 | 减物 | `RainBOTService.cs:3526` | — | — | — | scope-excluded | 【范围排除】同上：没有持久化的角色背包，取出也无从谈起 | — |
+| CHR-013 | 角色 | 角色升级 | `RainBOTService.cs:1450` | /升级 | PlayerService.LevelUpAsync | L2 | 简化替代 | 新版经验公式 100×Lv^1.5、消耗旅人经验；旧版按角色经验与等级表，需逐级对齐 | FIX-CHR-LEVELUP |
+| CHR-014 | 角色 | 角色突破 | `RainBOTService.cs:1498` | /突破 | PlayerService.BreakAsync | L2 | 等价 | 已按 LevelBreakNeedyList 搬入突破材料（钻石+五种印，5 档），不足时不扣任何材料 | FIX-CHR-BREAK |
+| CHR-015 | 角色 | 突破信息 | `RainBOTService.cs:1514` | /突破 | PlayerService.BreakAsync | L2 | 简化替代 | 无独立预览命令，但失败提示列出缺口、成功提示列出下一阶需求 |  |
+| CHR-016 | 角色 | 普攻升级 | `RainBOTService.cs:1482` | /普攻升级 | PlayerService.UpgradeNormalAttackAsync | L2 | 等价 | 按旧版 NormalAttackLevelUpList：目标 2–8 级，需要角色等级 + 金币 + 钻石 + 技能卷轴等；6 级额外要求突破进度 ≥4 |  |
+| CHR-017 | 角色 | 查看普攻升级 | `RainBOTService.cs:1466` | /查看普攻升级 | PlayerService.UpgradeNormalAttackAsync | L1 | 等价 | preview 模式只列需求与当前持有，不扣任何材料 |  |
+| CHR-018 | 角色 | 技能升级 | `RainBOTService.cs:1417` | /技能升级 | PlayerService.UpgradeSkillAsync | L2 | 等价 | 按旧版 SkillLevelUpList：目标 1–6 级；技能 Level 0 表示未学，第一次即学习 |  |
+| CHR-019 | 角色 | 查看技能升级 | `RainBOTService.cs:1400` | /查看技能升级 | PlayerService.UpgradeSkillAsync | L1 | 等价 | 同预览模式 |  |
+| CHR-020 | 角色 | 角色重随 | `RainBOTService.cs:980` | /角色重随 · /确认重随 · /取消重随 | PlayerService.RerollPreviewAsync | L2 | 等价 | 自建角色（注册即送的 CustomCharacter）重摇初始生命/魔法/攻击/三围/成长/速度/回复，消耗 3 钻；先出「旧值 => 新值」预览，确认才生效、取消不退钻（同旧版）；预览存 ActivityProgress | 待建 FIX-CHR-REROLL |
+| CHR-021 | 角色 | 角色改名 | `RainBOTService.cs:855` | /角色改名 · /我的改名 | PlayerService.RenameAsync / ClubService.ApproveRenameAsync | L2 | 增强 | 旧版只能**随机改名**（`GenerateRandomChineseUserName`，200 金币）；v3 允许玩家自定义 2–12 字并**先过审核**（`RenameRequests` → /改名审核、/批准改名、/拒绝改名），批准后同步角色名与 `Users.Nickname`；`/我的改名` 查自己的待审。差异：没收 200 金币（审核取代了经济闸门）、不做防重名的全局唯一校验（差异登记 DIV-010） | 待建 FIX-CHR-RENAME-REVIEW |
+| CHR-022 | 角色 | 我的小队 | `RainBOTService.cs:820` | /小队 | PlayerService.SquadAsync | L1 | 简化替代 | 新版上限 3 人，旧版 1-4 人 |  |
+| CHR-023 | 角色 | 设置小队 | `RainBOTService.cs:1828` | /小队 | PlayerService.SquadAsync | L1 | 简化替代 | 旧版一次传 1-4 个角色序号，新版逐个加入/移除 |  |
+| CHR-024 | 角色 | 小队添加 | `RainBOTService.cs:1808` | /小队 加入 | PlayerService.SquadAsync | L1 | 简化替代 | 参数形式不同 |  |
+| CHR-025 | 角色 | 小队移除 | `RainBOTService.cs:1818` | /小队 移除 | PlayerService.SquadAsync | L1 | 简化替代 | 参数形式不同 |  |
+| CHR-026 | 角色 | 小队状态 | `RainBOTService.cs:812` | /小队 | PlayerService.SquadAsync | L1 | 简化替代 | 新版无生命/能量/复活状态 |  |
+| CHR-027 | 角色 | 清空小队 | `RainBOTService.cs:827` | /小队 | PlayerService.SquadAsync | L1 | 简化替代 | 无独立清空子命令 |  |
+| CHR-028 | 角色 / 战斗 | 生命之泉 | `RainBOTService.cs:2333` | — | — | — | scope-excluded | 【范围排除】旧版花金币给角色回血，依赖持久 HP；v3 角色无持久 HP（每场战斗 Recovery 满血进场），没有作用对象。用户 2026-11-12 决定不做 | — |
+| CHR-029 | 角色 / 战斗 | 酒馆 | `RainBOTService.cs:2340` | — | — | — | scope-excluded | 【范围排除】同上：旧版用钻石补满能量（EP），v3 的 EP 只在战斗内存在 | — |
+| ITM-001 | 物品 | 我的库存 | `RainBOTService.cs:788` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 旧版支持 [页码] 与 <类型> [页码] 两种用法；新版仅分页，无类型过滤 |  |
+| ITM-002 | 物品 | 分类库存 | `RainBOTService.cs:1139` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 无索引分类视图 |  |
+| ITM-003 | 物品 | 物品库存 | `RainBOTService.cs:1107` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 旧版可只看物品区，新版与角色区合并展示 |  |
+| ITM-004 | 物品 | 角色库存 | `RainBOTService.cs:1123` | /背包 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 新版角色在 /我的角色，不在背包 |  |
+| ITM-005 | 物品 | 我的物品 | `RainBOTService.cs:1341` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 旧版可查看单个物品详情（属性/技能/次数），新版仅列表行 |  |
+| ITM-006 | 物品 | 库存搜索2 | `RainBOTService.cs:1160` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 旧版「只搜名称」是「连描述一起搜」的子集，已合并为同一入口；无装备/出售/交易序号分组 | 待建 FIX-ITM-SEARCH |
+| ITM-007 | 物品 | 库存搜索 | `RainBOTService.cs:1175` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 同时匹配名称与描述，命中行保留 /背包 的 @编号；每行附描述摘要，支持 p2 分页 | 待建 FIX-ITM-SEARCH |
+| ITM-008 | 物品 | 抽卡 | `RainBOTService.cs:1006` | /抽卡 | PlayerService.GachaAsync | L2 | 等价 | 金币 1000/次（/抽卡）、钻石 5/次（/钻石抽卡）；每次独立判定 dice>0.8 才中（20%）；命中后 Next(8) 分 8 类产出（魔法卡包/武器/防具/鞋子/饰品/角色/魔法卡/随机物品），品质按 DrawCardProbabilities 阈值判定；魔法卡与卡包无内容包模板，按掷出的品质当场生成（3 张卡合包） | FIX-ITM-GACHA |
+| ITM-009 | 物品 | 十连抽卡 | `RainBOTService.cs:1014` | /十连抽卡 | PlayerService.GachaAsync | L2 | 等价 | 金币 10000、钻石 50，都是单价 ×10 无折扣；每抽独立 20% 命中、无保底，可能全空 | FIX-ITM-GACHA |
+| ITM-010 | 物品 | 钻石抽卡 | `RainBOTService.cs:1016` | /抽卡 | PlayerService.GachaAsync | L2 | 简化替代 | 旧版材料 5/次（20% 中奖、无保底、6 档概率 White 49.53→Red 3.06）；新版 100% 得物 + 保底 | FIX-ITM-GACHA |
+| ITM-011 | 物品 | 钻石十连抽卡 | `RainBOTService.cs:1017` | /十连抽卡 | PlayerService.GachaAsync | L2 | 简化替代 | 旧版十连 = 10×材料单抽价 50，可能全空；新版 45 钻 + 保底 | FIX-ITM-GACHA |
+| ITM-012 | 物品 | 兑换金币 | `RainBOTService.cs:1356` | /兑换金币 | PlayerService.ExchangeCreditsAsync | L1 | 等价 | 同旧版：先抬到最低 10、再向下取整到 10 的倍数，10 钻 = 2000 金币，零头保留 | 待建 FIX-ITM-EXCHANGE |
+| ITM-013 | 物品 | 使用 | `RainBOTService.cs:1530` | /使用 | PlayerService.UseItemAsync | L1 | 简化替代 | 旧版支持 <名称\|序号> [次数] [角色] [角色序号]；新版仅 @编号 [x数量] 且只换旅人经验 |  |
+| ITM-014 | 物品 | 使用魔法卡 | `RainBOTService.cs:1550` | /使用魔法卡 | PlayerService.UseMagicCardAsync | L1 | 简化替代 | 同品质校验、同名魔法叠等级、满级折算 10 钻/级补偿；目标可以是背包卡包或主战已装备卡包（后者需重新装备才生效），不做交易中校验 | 待建 FIX-ITM-MAGICCARD |
+| ITM-015 | 物品 | 合成魔法卡 | `RainBOTService.cs:1434` | /合成魔法卡 | PlayerService.CraftMagicCardPackAsync | L1 | 等价 | 3 张可用魔法卡 → 一个卡包，三围定品质、魔法按 Id 合并叠等级；额外拒绝重复编号（旧版会把同一张卡当 3 张材料） | 待建 FIX-ITM-MAGICCARD |
+| ITM-016 | 物品 | 分解物品 | `RainBOTService.cs:1611` | /分解 | PlayerService.SalvageAsync | L2 | 等价 | 按旧版 DecomposedMaterials 返还材料：White 1 / Green 3 / Blue 8 / Purple 16 / Orange 32 / Red 64 / Gold 128（是 Materials 不是金币） |  |
+| ITM-017 | 物品 | 分解 | `RainBOTService.cs:1639` | /分解 | PlayerService.SalvageAsync | L2 | 简化替代 | 旧版按名称+数量批量分解，新版按 @编号 + x数量 |  |
+| ITM-018 | 物品 | 强制分解 | `RainBOTService.cs:1628` | /分解 | PlayerService.SalvageAsync | L2 | 简化替代 | 旧版可绕过保护强制分解，新版必须先解锁 |  |
+| ITM-019 | 物品 | 品质分解 | `RainBOTService.cs:1664` | /品质分解 | PlayerService.SalvageByQualityAsync | L2 | 等价 | 品质索引 0–6 = White…Gold；只分解未锁定/未绑定物品，按件数累计返还材料（同 DecomposedMaterials） | 待建 FIX-ITM-SALVAGE-Q |
+| ITM-020 | 物品 / 玩法 | 锻造配方 | `RainBOTService.cs:2951` | /锻造 @1 x40 [@2 x20…] | ForgeService.StartAsync | L2 | 有意差异 | 自定义配方（多组材料 + 件数，可混合产地）；材料必须是野外地区作物，产地决定系数与品质门槛（差异登记 DIV-002） | FIX-ITM-FORGE |
+| ITM-021 | 物品 / 玩法 | 锻造信息 | `RainBOTService.cs:3002` | /锻造 信息 | ForgeService.InfoAsync | L1 | 等价 | 配方、地区折算说明、预估品质、大师目标、剩余时间与可收取状态 | FIX-ITM-FORGE |
+| ITM-022 | 物品 / 玩法 | 取消锻造 | `RainBOTService.cs:2986` | /锻造 取消 | ForgeService.CancelAsync | L2 | 等价 | 未结算前可取消：材料按原数量退回背包，200 金币退回 | FIX-ITM-FORGE |
+| ITM-023 | 物品 / 玩法 | 模拟锻造 | `RainBOTService.cs:2978` | /锻造 模拟 @1 x40 | ForgeService.SimulateAsync | L2 | 等价 | 不扣材料、不占任务，只推演有效用量/品质/产地/产物与积分 | FIX-ITM-FORGE |
+| ITM-024 | 物品 / 玩法 | 确认开始锻造 | `RainBOTService.cs:2994` | /锻造 @1 x40 | ForgeService.StartAsync | L2 | 有意差异 | 提交材料即开始（5 分钟，上限 120）；品质门槛、地区系数、三段积分与大师锻造都按旧版（差异登记 DIV-002） | FIX-ITM-FORGE |
+| BAT-001 | 战斗 | 决斗 | `RainBOTService.cs:1720` | /决斗 | EconomyService.DuelAsync / DuelWithAsync | L2 | 等价 | 真实战斗；不给对手打随机对手，给 UID/Handle/昵称则打对方主战（旧版 FightCustom 的两条入参都覆盖）；费用与奖励同旧版（都不收不发）（差异登记 DIV-006） | 待建 FIX-BAT-PVP |
+| BAT-002 | 战斗 | 完整决斗 | `RainBOTService.cs:1702` | /完整决斗 | EconomyService.DuelWithAsync + CommandCatalog.Report | L2 | 等价 | 同一场 PvP，摘要 + 逐回合战报分页（旧版是 showAllRound 打印全部回合） | 待建 FIX-BAT-PVP |
+| BAT-003 | 战斗 | 小队决斗 | `RainBOTService.cs:1738` | /小队决斗 | EconomyService.TeamDuelWithAsync | L2 | 简化替代 | 双方小队 RunTeam，附逐回合战报；小队上限 3 人（旧版 1–4） | 待建 FIX-BAT-PVP |
+| BAT-004 | 战斗 | 查询boss | `RainBOTService.cs:1756` | /查询Boss | CommandCatalog.BossInfo | L1 | 等价 | 列表给编号/等级/剩余 HP，单只详情给生命/攻防/命中闪避暴击/技能/装备 | 待建 FIX-BAT-BOSS-INDEX |
+| BAT-005 | 战斗 | 讨伐boss | `RainBOTService.cs:1790` | /Boss | EconomyService.BossAsync | L2 | 有意差异 | 10 只池、等级/技能/魔法/普攻按 cutRate 折算、5 件红装 + 金色卡包 + 消耗品 + 随机被动/绝招、DynamicsEffect 全项、全服共享血量累计、击杀补池；入场费 0、击杀只给 Materials += 等级（无金币奖励）；强化以 OpenSkill「BOSS专属被动」+ DynamicsEffect/ExMDF 特效承载；支持 /Boss <编号> 指定目标（差异登记 DIV-001） | FIX-BAT-BOSS |
+| BAT-006 | 战斗 | 小队讨伐boss | `RainBOTService.cs:1775` | /小队讨伐Boss | EconomyService.BossTeamAsync | L2 | 简化替代 | 小队 vs 同一只全服共享目标，结算与单人共用（击杀发钻石 = 目标等级）；小队上限 3 人，且不做旧版「全员重伤」门槛（本作无持久 HP） | 待建 FIX-BAT-BOSS-INDEX |
+| BAT-007 | 战斗 | 排行榜 | `RainBOTService.cs:3459` | /排行榜 | EconomyService.GetRankingAsync | L2 | 简化替代 | 旧版养成榜；新版金币/等级/战绩三榜，口径不同 |  |
+| BAT-008 | 战斗 | 金币排行榜 | — | /排行榜 金币 | EconomyService.GetRankingAsync | L2 | 简化替代 | 排序口径需与旧版核对（是否含托管资产） |  |
+| BAT-009 | 战斗 | 钻石排行榜 | — | /排行榜 | EconomyService.GetRankingAsync | L2 | 简化替代 | 新版无钻石榜 |  |
+| BAT-010 | 战斗 | 赛马排行榜 | `RainBOTService.cs:3480` | /赛马排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 旧版独立的「赛马排行榜」指令，也支持 /排行榜 赛马；读个人 `HorseRacingPoints`（旧版按群存，已按用户决定改个人） | 待建 FIX-BAT-RANK |
+| BAT-011 | 战斗 | 共斗排行榜 | `RainBOTService.cs:3487` | /共斗排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 读个人 `CooperativePoints`，也支持 /排行榜 共斗 | 待建 FIX-BAT-RANK |
+| BAT-012 | 战斗 | 锻造排行榜 | `RainBOTService.cs:3494` | /锻造排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 读个人 `ForgePoints`；/锻造 按旧版三段积分发放（通用 count×0.3 + 成功 count−门槛 / 失败 count×0.2），也支持 /排行榜 锻造 | 待建 FIX-BAT-RANK |
+| PLY-001 | 玩法 | 任务列表 | `RainBOTService.cs:789` | /每日任务 · /任务列表 | PlayerService.GetQuestsAsync / QuestBoardService.ListAsync | L1 | 等价 | 两套列表：/每日任务 是每日三项进度，/任务列表 是任务板（持续 2 / 即时 1 / 渐进 1），都给状态与奖励 | 待建 FIX-PLY-QUEST |
+| PLY-002 | 玩法 | 做任务 | `RainBOTService.cs:1303` | /做任务 | QuestBoardService.AcceptAsync | L2 | 等价 | 三类任务同旧版：持续任务等 30/60 分钟、即时任务当场执行并发奖、渐进任务提交 3 件物品推进；非渐进任务同时只能进行一个；已结算不能重接 | 待建 FIX-PLY-QUEST |
+| PLY-003 | 玩法 | 任务信息 | `RainBOTService.cs:1308` | /任务信息 | QuestBoardService.WorkingAsync | L1 | 等价 | 只列进行中与已完成的任务，带剩余时间/提交进度、要求与奖励 | 待建 FIX-PLY-QUEST |
+| PLY-004 | 玩法 | 任务结算 | `RainBOTService.cs:1315` | /领奖 · /任务结算 | PlayerService.ClaimQuestAsync / QuestBoardService.SettleAsync | L2 | 等价 | /领奖 结算每日任务（逐条），/任务结算 一次结算所有已完成的任务板任务；奖励都走 ledger | 待建 FIX-PLY-QUEST |
+| PLY-005 | 玩法 | 世界地图 | `RainBOTService.cs:2240` | /世界地图 | FunGameQueryService.GetRegions | L1 | 等价 | 列出全部 13 个地区（编号/分类/难度/当前天气与温度/可采材料），分页 | 待建 FIX-PLY-WORLD |
+| PLY-006 | 玩法 | 主城 | `RainBOTService.cs:2230` | /主城 | FunGameQueryService.GetRegionInfo(0) | L1 | 等价 | 铎京城详情；旧版主城还带商店读写，v3 商店已独立，这里只给地区信息 | 待建 FIX-PLY-WORLD |
+| PLY-007 | 玩法 | 查地区 | `RainBOTService.cs:2204` | /查地区 [编号\|名称] | FunGameQueryService.GetRegionInfo | L1 | 等价 | 支持编号与地区名；不带参数等价于世界地图（同旧版）；详情含头目/生物/材料/NPC/区域与三段探索剧情 | 待建 FIX-PLY-WORLD |
+| PLY-008 | 玩法 | 探索 | `RainBOTService.cs:2263` | /探索 | ExploreService.StartAsync | L2 | 等价 | 探索许可是虚物品配额：每日 60、11–13 点与 17–19 点上线各 +30、4:00 刷新；消耗 = 人数 × 星级；角色探索期间锁定；2 分钟后可结算（旧版 ExploreTime=2）；遭遇战走真实战斗 | 待建 FIX-PLY-EXPLORE |
+| PLY-009 | 玩法 | 小队探索 | `RainBOTService.cs:2300` | /小队探索 <地区> | ExploreService.StartAsync(useSquad) | L2 | 等价 | 旧写法 `/小队探索 1` 直接取小队编成（按槽位），未编成给引导；消耗与结算同单人 | 待建 FIX-PLY-EXPLORE |
+| PLY-010 | 玩法 | 探索结算 | `RainBOTService.cs:2256` | /探索结算 | ExploreService.ClaimAsync | L2 | 等价 | 结果按难度掷骰（普通 45%/空手 20%/遭遇 25%/拾得 10%，星级越高战斗越多，同旧版概率表）；遭遇战真实开打，胜利掉地区材料、失败给三分之一金币；一次结算所有已完成的探索（差异登记 DIV-005） | 待建 FIX-PLY-EXPLORE |
+| PLY-011 | 玩法 | 挑战金币秘境 | `RainBOTService.cs:2695` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 已接入 7 类（金币/钻石/经验/地区/突破/技能/魔法卡）× 难度 1-5（敌人数量=难度+1、等级=难度×8、奖励随难度放大）+ 真实战斗；队伍条件仍缺 |  |
+| PLY-012 | 玩法 | 挑战钻石秘境 | `RainBOTService.cs:2709` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-013 | 玩法 | 挑战经验秘境 | `RainBOTService.cs:2723` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-014 | 玩法 | 挑战地区秘境 | `RainBOTService.cs:2737` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-015 | 玩法 | 挑战突破秘境 | `RainBOTService.cs:2751` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-016 | 玩法 | 挑战技能秘境 | `RainBOTService.cs:2765` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-017 | 玩法 | 挑战魔法卡秘境 | `RainBOTService.cs:2779` | /秘境 | EconomyService.InstanceAsync | L2 | 简化替代 | 同上 |  |
+| PLY-018 | 玩法 | 创建房间 | `RainBOTService.cs:3300` | /创建房间 | RoomService.CreateAsync | L2 | 等价 | 四种房型、7 位房号（去 0/O/1/I）、可选密码、按群隔离（旧版 GameMap=groupId）、赛马每群限一个、空闲 10 分钟解散；状态只在进程内存（同旧版）（差异登记 DIV-007） | 待建 FIX-PLY-ROOM |
+| PLY-019 | 玩法 | 加入房间 | `RainBOTService.cs:3335` | /加入房间 | RoomService.JoinAsync | L2 | 等价 | 房号大小写不敏感，校验密码 / 人数上限 / 是否已开局 / 是否已在别的房间 | 待建 FIX-PLY-ROOM |
+| PLY-020 | 玩法 | 退出房间 | `RainBOTService.cs:3391` | /退出房间 | RoomService.QuitAsync | L1 | 等价 | 最后一人离开自动解散；房主离开自动转让给下一位 | 待建 FIX-PLY-ROOM |
+| PLY-021 | 玩法 | 开始游戏 | `RainBOTService.cs:3370` | /开始游戏 | RoomService.StartAsync | L2 | 简化替代 | 房主开局（赛马房间任何人都能开）、至少 2 人、开局期间房间锁在 Gaming；混战/团战跑真实战斗，赛马与共斗等各自玩法模块接入 | 待建 FIX-PLY-ROOM |
+| PLY-022 | 玩法 | 房间列表 | `RainBOTService.cs:3392` | /房间列表 | RoomService.List | L1 | 等价 | 只列本群房间，带人数/房主/是否有密码/是否对局中 | 待建 FIX-PLY-ROOM |
+| PLY-023 | 玩法 | 房间信息 | `RainBOTService.cs:3452` | /房间信息 | RoomService.Info | L1 | 简化替代 | 成员列表、房主标记、对局状态；旧版的「准备」位没有实现，开局只要求人数 | 待建 FIX-PLY-ROOM |
+| PLY-024 | 玩法 | 创建赛马 | `RainBOTService.cs:3178` | /创建赛马 | RoomService.CreateAsync | L2 | 等价 | 房间可建（每群限一个、8 人），/开始游戏 真跑赛马：赛道 Next(8,16)、随机 1–3 个技能、30% 随机事件、名次积分 10/8/6/4/3/2/1 | 待建 FIX-PLY-HORSE |
+| PLY-025 | 玩法 | 加入赛马 | `RainBOTService.cs:3270` | /加入赛马 | RoomService.JoinHorseRoomAsync | L1 | 等价 | 不用记房号，自动找本群的赛马房间并加入；没有房间时提示先 /创建赛马 | 待建 FIX-PLY-HORSE |
+| PLY-026 | 玩法 | 创建共斗 | `RainBOTService.cs:3201` | /创建共斗 | RoomService.RunCoopRoomAsync | L2 | 等价 | 成员各出主战角色组队讨伐：敌人数 = 参战人数、等级 = 队伍平均 +5、技能/魔法/普攻按 7/9 折算并挂红装与增益特效；全灭给「等级」的钻石 + 共斗积分，未打完按击杀比例折算，MVP 多一份钻石（差异登记 DIV-004） | 待建 FIX-PLY-COOP |
+| PLY-027 | 玩法 | 创建混战 | `RainBOTService.cs:3224` | /创建混战 | RoomService.CreateAsync | L2 | 增强 | 旧版 `/开始游戏` 的 default 分支只打印「游戏已开始/结束」（空壳）；这里用 `FunGameActionQueue.RunMix` 真打，战报含存活 HP | 待建 FIX-PLY-ROOM |
+| PLY-028 | 玩法 | 创建团战 | `RainBOTService.cs:3247` | /创建团战 | RoomService.CreateAsync | L2 | 增强 | 同上，用 `RunTeam` 红蓝交替分队真打（旧版同样没有实现分队规则） | 待建 FIX-PLY-ROOM |
+| CLB-001 | 社团 | 社团列表 | `RainBOTService.cs:1905` | /社团列表 | ClubService.ListAsync | L1 | 等价 | 列出编号/名称/人数/社长/公开与审批状态/基金，分页 | 待建 FIX-CLB-CORE |
+| CLB-002 | 社团 | 查看社团 | — | /查看社团 | ClubService.InfoAsync | L1 | 等价 | 公告、成员数、基金、加入规则、对你的身份标记 | 待建 FIX-CLB-CORE |
+| CLB-003 | 社团 | 我的社团 | `RainBOTService.cs:1898` | /我的社团 | ClubService.MineAsync | L1 | 等价 | 同上，按自己所在社团查 | 待建 FIX-CLB-CORE |
+| CLB-004 | 社团 | 私信 | `RainBOTService.cs:3140` | /私信 · /收件箱 · /读信 | MailService | L2 | 等价 | 内容过 NamingPolicy 校验（链接/引流/联系方式拒绝），每人每天 20 封，收件箱取最近 50 封、支持只看未读；读后标记已读 | 待建 FIX-CLB-MAIL |
+| CLB-005 | 社团 | 加入社团 | `RainBOTService.cs:1844` | /加入社团 | ClubService.JoinAsync | L2 | 等价 | 未公开且未被邀请拒绝；需批准时进申请队列；被邀请可绕过两者 | 待建 FIX-CLB-CORE |
+| CLB-006 | 社团 | 邀请加入 | `RainBOTService.cs:1855` | /邀请加入 | ClubService.InviteAsync | L2 | 等价 | UID / Handle / 昵称都能指定；被邀请人可直接加入 | 待建 FIX-CLB-CORE |
+| CLB-007 | 社团 | 退出社团 | `RainBOTService.cs:1891` | /退出社团 | ClubService.QuitAsync | L1 | 等价 | 社长不能退（旧版同），需转让或解散 | 待建 FIX-CLB-CORE |
+| CLB-008 | 社团 | 创建社团 | `RainBOTService.cs:1877` | /创建社团 | ClubService.CreateAsync | L2 | 等价 | 前缀 3–4 位（旧版正则 + 放开数字）、名字自动生成、公开/私密、创建者即社长；一人一团由唯一索引兜底 | 待建 FIX-CLB-CORE |
+| CLB-009 | 社团 | 查看社团成员 | `RainBOTService.cs:1928` | /查看社团成员 | ClubService.MembersAsync | L1 | 等价 | 身份、入团日期、个人累计捐献；@编号 供踢出/转让 | 待建 FIX-CLB-CORE |
+| CLB-010 | 社团 | 查看社团管理 | `RainBOTService.cs:1944` | /查看社团管理 | ClubService.MembersAsync | L1 | 等价 | 只列社长与管理员 | 待建 FIX-CLB-CORE |
+| CLB-011 | 社团 | 查看申请人列表 | `RainBOTService.cs:1960` | /查看申请人列表 | ClubService.ApplicationsAsync | L1 | 等价 | 社长/管理可见，按申请时间排序 | 待建 FIX-CLB-CORE |
+| CLB-012 | 社团 | 查看受邀人列表 | `RainBOTService.cs:1976` | /查看受邀人列表 | ClubService.InvitesAsync | L1 | 等价 | 已发出未接受的邀请 | 待建 FIX-CLB-CORE |
+| CLB-013 | 社团 | 解散社团 | `RainBOTService.cs:1921` | /解散社团 | ClubService.DisbandAsync | L2 | 等价 | 仅社长；成员/申请/邀请一并清空，基金不退 | 待建 FIX-CLB-CORE |
+| CLB-014 | 社团 | 社团批准 | `RainBOTService.cs:1992` | /社团批准 | ClubService.ApproveAsync | L2 | 等价 | @编号取自申请人列表；满员拒绝 | 待建 FIX-CLB-CORE |
+| CLB-015 | 社团 | 社团拒绝 | `RainBOTService.cs:2003` | /社团拒绝 | ClubService.RejectAsync | L1 | 等价 | 删除申请，不通知对方 | 待建 FIX-CLB-CORE |
+| CLB-016 | 社团 | 社团踢出 | `RainBOTService.cs:2014` | /社团踢出 | ClubService.KickAsync | L2 | 等价 | 不能踢社长；管理不能踢管理（旧版由管理权限隐式保证） | 待建 FIX-CLB-CORE |
+| CLB-017 | 社团 | 社团转让 | `RainBOTService.cs:2054` | /社团转让 | ClubService.TransferAsync | L2 | 等价 | 仅社长；原社长降为普通成员 | 待建 FIX-CLB-CORE |
+| CLB-018 | 社团 | 社团设置 | `RainBOTService.cs:2025` | /社团设置 | ClubService.UpdateSettingsAsync | L2 | 等价 | 公开/私密、需批准/免批准、公告、改名、任命/卸任管理。改名**走审核队列**（`RenameRequests` → /改名审核、/批准改名、/拒绝改名），提交后不立即生效；名称与公告先过 NamingPolicy 预检（长度、不可见字符、冒充官方、站外引流、刷屏重复） | 待建 FIX-CLB-REVIEW |
+| CLB-019 | 社团 | 社团捐献 | `RainBOTService.cs:2063` | /社团捐献 | ClubService.DonateAsync | L2 | 等价 | 金币入社团基金（旧版 ClubPoins），同时记个人累计捐献；走 ledger | 待建 FIX-CLB-CORE |
+| CLB-020 | 社团 | 社团任务列表 | — | /社团任务 | ClubService.TasksAsync | L2 | 等价 | 旧版 P3 未实现。v3 每周三个任务（捐献/招募/物资征集），进度按社团行为累计，换周（ISO 周、4:00 界）归零 | 待建 FIX-CLB-TASK |
+| CLB-021 | 社团 | 做社团任务 | — | /社团任务 提交 @编号 [x数量] | ClubService.ContributeTaskAsync | L2 | 等价 | 旧版 P3 未实现。提交背包物品推进「物资征集」，每件按分解价一半折算社团基金并记个人贡献；锁定/绑定物品拒绝 | 待建 FIX-CLB-TASK |
+| CLB-022 | 社团 | 社团任务结算 | — | /社团任务 领取 编号 | ClubService.ClaimTaskAsync | L2 | 等价 | 旧版 P3 未实现。满目标后由社长/管理结算：奖励进社团基金，按人头平分记个人贡献；一个周期只能领一次 | 待建 FIX-CLB-TASK |
+| CLB-023 | 社团 | 社团商店 | — | /社团商店 | ClubService.StoreAsync | L2 | 等价 | 旧版 P3 未实现。6 件商品（钻石 + 五种突破/锻造材料），货币是社团基金 | 待建 FIX-CLB-STORE |
+| CLB-024 | 社团 | 社团商店查看 | — | /社团商店 | ClubService.StoreAsync | L1 | 等价 | 列表带价格、说明与当前基金余额 | 待建 FIX-CLB-STORE |
+| CLB-025 | 社团 | 社团商店购买 | — | /社团商店 买 编号 [x数量] | ClubService.StoreBuyAsync | L2 | 等价 | 花公款，只有社长/管理能操作；货币型商品直接进钱包，其余进背包；走 ledger | 待建 FIX-CLB-STORE |
+| CLB-026 | 社团 | 社团商店出售 | — | /社团商店 卖 @编号 [x数量] | ClubService.StoreSellAsync | L2 | 等价 | 方向是「社团用基金收购成员物资」：按分解价一半折金币（1 材料 = 100 金币），基金不足整笔拒绝 | 待建 FIX-CLB-STORE |
+| CLB-027 | 社团 / 商店 | 社团市场 | — | /社团市场 | ClubService.MarketAsync | L2 | 等价 | 旧版 P3 未实现。社团内部二手交易，只对本团成员可见 | 待建 FIX-CLB-MARKET |
+| CLB-028 | 社团 / 商店 | 社团市场出售 | — | /社团市场 上架 @编号 价格 | ClubService.MarketListAsync | L2 | 等价 | 上架费 5%（低于全局市场 15%）进社团基金；物品托管给 EscrowUserId；每人 3 件、每团 60 件上限 | 待建 FIX-CLB-MARKET |
+| CLB-029 | 社团 / 商店 | 社团市场下架 | — | /社团市场 下架 编号 | ClubService.MarketDelistAsync | L1 | 等价 | 只能撤自己的挂单，物品回背包，上架费不退 | 待建 FIX-CLB-MARKET |
+| CLB-030 | 社团 / 商店 | 社团市场查看 | — | /社团市场 | ClubService.MarketAsync | L1 | 等价 | 列表带品质、价格、卖家与「（你）」标记 | 待建 FIX-CLB-MARKET |
+| CLB-031 | 社团 / 商店 | 社团市场购买 | — | /社团市场 买 编号 | ClubService.MarketBuyAsync | L2 | 等价 | 金币结算，买卖双方各写一条 ledger；不能买自己的挂单 | 待建 FIX-CLB-MARKET |
+| CLB-032 | 社团 / 商店 | 社团市场清空 | — | /社团市场 清空 | ClubService.MarketClearAsync | L2 | 等价 | 仅社长；全部在售挂单按状态 3 关闭并退回各自卖家背包 | 待建 FIX-CLB-MARKET |
+| ACT-001 | 活动 | 签到 | `RainBOTService.cs:785` | /签到 | PlayerService.SignInAsync | L2 | 等价 | 金币 Random(1000,2999)+10×天数、材料 Random(5,14)+天数/7；额外掉落按 `Next(6)` 分武器/防具/鞋子/饰品/魔法卡/魔法卡包，品质由 `RollSignInQuality` 按连续天数 +3%/天（封顶 +30%）上浮，橙品以上自动锁定；双旦活动期间再送一张十连奖券 | FIX-ACT-SIGNIN |
+| ACT-002 | 活动 | 公告 | `RainBOTService.cs:281` | /公告 · /设置公告 | ActivityService.SetNoticeAsync | L2 | 等价 | 公告落 `AppConfigs`（key=notice），管理员用 /设置公告 改、全服 /公告 立即生效；内容过 NamingPolicy（长度/引流/联系方式）。旧版走 EntityModuleConfig，v3 没有 Web 后台，改由命令编辑 | 待建 FIX-ACT-NOTICE |
+| ACT-003 | 活动 | 活动 | `RainBOTService.cs:2361` | /活动 | ActivityService.ListAsync | L2 | 等价 | 3 个活动（长期「旅人试炼」/每周「周末疾行」/「双旦活动」），列出状态与任务进度；窗口规则在 ActivityCatalog 里（v3 内容包暂无活动数据）：长期 / 周六 04:00–周一 04:00 / 12-20 04:00–次年 01-05 04:00 | 待建 FIX-ACT-EVENT |
+| ACT-004 | 活动 | 查活动 | `RainBOTService.cs:2368` | /查活动 | ActivityService.InfoAsync | L2 | 等价 | 单个活动的状态、时间窗、每个任务的进度/成本/奖励与是否可领 | 待建 FIX-ACT-EVENT |
+| ACT-005 | 活动 | 做活动任务 | `RainBOTService.cs:2380` | /做活动任务 | ActivityService.PerformAsync | L2 | 等价 | 同旧版 PerformEvent：扣成本（金币/钻石/背包物品）→ 进度 +1；做满或已领奖则拒绝；成本不足整笔回滚 | 待建 FIX-ACT-EVENT |
+| ACT-006 | 活动 | 领取奖励 | `RainBOTService.cs:2396` | /领取奖励 | ActivityService.ClaimAsync | L1 | 等价 | 活动任务奖励独立于每日任务（/领奖 仍管每日任务）；每个任务只能领一次，发钱/发钻石/发物品都走 ledger 与背包 | 待建 FIX-ACT-EVENT |
+| SHO-001 | 商店 | 每日商店 | `RainBOTService.cs:790` | /商店 | EconomyService.GetStoreAsync | L2 | 等价 | 新版单一系统货架 3 个种子商品；旧版每日商店按日刷新、限购、回收价 | FIX-SHO-STORE-BUY |
+| SHO-002 | 商店 | 商店1 | — | /商店1 | EconomyService.GetStoreAsync | L2 | 等价 | 探索者协会后勤部，8 件商品与价格照抄旧版商店配置 | FIX-SHO-STORE-BUY |
+| SHO-003 | 商店 | 商店2 | — | /商店2 | EconomyService.GetStoreAsync | L2 | 等价 | 铎京武器商会，4 件武器/饰品，库存 4 | FIX-SHO-STORE-BUY |
+| SHO-004 | 商店 | 商店3 | — | /商店3 | EconomyService.GetStoreAsync | L2 | 等价 | 小雪杂货铺，7 件饰品与改名卡 | FIX-SHO-STORE-BUY |
+| SHO-005 | 商店 | 商店4 | — | /商店4 | EconomyService.GetStoreAsync | L2 | 等价 | 铎京慈善基金会，3 件免费礼包、每人限购 1 | FIX-SHO-STORE-BUY |
+| SHO-006 | 商店 | 锻造商店 | `RainBOTService.cs:2837` | /商店5 | EconomyService.GetStoreAsync | L2 | 等价 | 锻造积分商店：商品与积分价格照抄旧版商店配置，积分消费走 ledger；积分来源为 /锻造 提交材料 |  |
+| SHO-007 | 商店 | 商店5 | — | /商店5 | EconomyService.GetStoreAsync | L2 | 等价 | 同上；/购买 用锻造积分结算 |  |
+| SHO-008 | 商店 | 赛马商店 | `RainBOTService.cs:2848` | /商店6 | EconomyService.GetStoreAsync | L2 | 等价 | 赛马积分商店：5 积分换 1 钻石，每人限购 300；积分来源见 PLY-024 赛马 |  |
+| SHO-009 | 商店 | 商店6 | — | /商店6 | EconomyService.GetStoreAsync | L2 | 等价 | 同上 |  |
+| SHO-010 | 商店 | 共斗商店 | `RainBOTService.cs:2859` | /商店7 | EconomyService.GetStoreAsync | L2 | 等价 | 共斗积分商店：奖券/十连券/五种印，价格照抄旧版；积分来源见 PLY-026 共斗 |  |
+| SHO-011 | 商店 | 商店7 | — | /商店7 | EconomyService.GetStoreAsync | L2 | 等价 | 同上 |  |
+| SHO-012 | 商店 | 商店查看 | `RainBOTService.cs:2122` | /商店详情 | EconomyService.GetStoreDetailAsync | L1 | 等价 | 单件商品的价格/库存/限购/已购与店铺介绍；打开商店后 2 分钟内才能下单（旧版 UserLastVisitStore 窗口），过期要求重新打开 | 待建 FIX-SHO-WINDOW |
+| SHO-013 | 商店 | 商店购买 | `RainBOTService.cs:2092` | /购买 | EconomyService.BuyAsync | L2 | 等价 | 新版无 2 分钟访问窗口、无限购；价格来自种子商品 | FIX-SHO-STORE-BUY |
+| SHO-014 | 商店 | 商店出售 | `RainBOTService.cs:2678` | /商店出售 | EconomyService.SellToStoreAsync | L2 | 等价 | 按物品回收价卖给商店（入包时按 PriceRanges[品质] 定价），可批量；跳过锁定/绑定/无回收价的物品，金币合计走一条 ledger | 待建 FIX-SHO-SELL |
+| SHO-015 | 商店 | 创建报价 | `RainBOTService.cs:2490` | /报价 | EconomyService.CreateOfferAsync | L1 | 简化替代 | 旧版双边物物交易状态机；新版单向出售报价 |  |
+| SHO-016 | 商店 | 我的报价 | `RainBOTService.cs:2502` | /报价列表 | EconomyService.GetOffersAsync | L1 | 简化替代 | 旧版按报价序号查详情，新版为公开列表 |  |
+| SHO-017 | 商店 | 发送报价 | `RainBOTService.cs:2530` | /发送报价 | EconomyService.SendOfferAsync | L2 | 等价 | 草稿 → 待接受；发送前至少要有我方物品。草稿只对发起人可见 | 待建 FIX-SHO-OFFER |
+| SHO-018 | 商店 | 取消报价 | `RainBOTService.cs:2542` | /撤回报价 | EconomyService.CancelOfferAsync | L1 | 简化替代 | 仅发起方可撤回 |  |
+| SHO-019 | 商店 | 接受报价 | `RainBOTService.cs:2554` | /接受报价 | EconomyService.AcceptOfferAsync | L1 | 简化替代 | 接受即成交，无接收方确认环节 |  |
+| SHO-020 | 商店 | 拒绝报价 | `RainBOTService.cs:2566` | /拒绝报价 | EconomyService.RejectOfferAsync | L1 | 等价 | 仅接收方；拒绝后发起方托管物品全部退回，状态记为已拒绝 | 待建 FIX-SHO-OFFER |
+| SHO-021 | 商店 | 报价添加物品 | `RainBOTService.cs:2578` | /报价添加物品 | EconomyService.AddOfferItemsAsync | L2 | 等价 | 从发起人背包加入并托管；已在其它未完成报价中的物品拒绝重复加入 | 待建 FIX-SHO-OFFER |
+| SHO-022 | 商店 | 报价添加对方物品 | `RainBOTService.cs:2603` | /报价添加对方物品 | EconomyService.AddOfferItemsAsync | L2 | 等价 | 从接收方背包挑选「想要的」物品，不托管；成交时校验是否还在对方背包 | 待建 FIX-SHO-OFFER |
+| SHO-023 | 商店 | 报价移除物品 | `RainBOTService.cs:2628` | /报价移除物品 | EconomyService.RemoveOfferItemsAsync | L1 | 等价 | 按 /查报价 里「发起方给」栏的编号移除，托管物品退回背包 | 待建 FIX-SHO-OFFER |
+| SHO-024 | 商店 | 报价移除对方物品 | `RainBOTService.cs:2653` | /报价移除对方物品 | EconomyService.RemoveOfferItemsAsync | L1 | 等价 | 按「想要的」栏的编号移除；草稿之外的状态不允许改内容 | 待建 FIX-SHO-OFFER |
+| SHO-025 | 商店 | 市场 | `RainBOTService.cs:3124` | /市场 | EconomyService.GetMarketAsync | L2 | 简化替代 | 手续费已对齐 15%；仍缺旧版的挂单刷新规则，且每人 5 单上限是新版自加 |  |
+| SHO-026 | 商店 | 市场出售 | `RainBOTService.cs:3027` | /上架 | EconomyService.ListOnMarketAsync | L2 | 有意差异 | 手续费 15%（旧版 fee = amount * 0.15），整数除法后下限 1（差异登记 DIV-003） | FIX-SHO-MARKET-SELL |
+| SHO-027 | 商店 | 市场下架 | `RainBOTService.cs:3080` | /下架 | EconomyService.DelistAsync | L1 | 等价 | 托管物品归还背包，无额外费用 |  |
+| SHO-028 | 商店 | 市场查看 | `RainBOTService.cs:3068` | /市场 | EconomyService.GetMarketAsync | L1 | 简化替代 | 无单品详情页 |  |
+| SHO-029 | 商店 | 市场购买 | `RainBOTService.cs:3050` | /购买市场 | EconomyService.BuyMarketAsync | L2 | 简化替代 | 新版买卖双方各记一条 ledger；旧版无 ledger，需按余额变化对拍 |  |
+
+## 3. 矩阵外功能（旧版无帮助条目）
+
+| 行为 ID | 功能 | 当前入口 | 状态 | 说明 |
+|---|---|---|---|---|
+| SIM-001 | 战斗模拟（混战/团队/地图/调试） | `/FunGame模拟` 等 6 条 | 增强 | 统计与日志已入库；需冻结种子回归样本 |
+| SIM-002 | 模拟统计与排行 | `/查数据` `/查个人评分` 等 6 条 | 增强 | 旧版同源数据，新版持久化 |
+| IDN-001 | 身份绑定 | `/绑定` + `POST /QQBot/bind` | 增强 | 旧版直接回显 OpenID，新版一次性码 |
+| SYS-001 | 服务器状态 | `/查询服务器启动时间` | 增强 | 旧版无 |
+| SYS-002 | 会话重置 | `/取消` | 增强 | 旧版无显式会话态 |
+
+合计矩阵内 163 条 + 矩阵外 5 条。

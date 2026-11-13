@@ -29,5 +29,9 @@ rounds_archive.zip
 *.db-shm
 TestResults/
 
+# Python 缓存（migration/ 下的生成脚本）
+__pycache__/
+*.pyc
+
 # Ubuntu 部署包产物（publish-linux.bat 生成）
 /publish/

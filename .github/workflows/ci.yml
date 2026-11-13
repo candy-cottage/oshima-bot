@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # 矩阵门禁：不需要旧版仓库，任何机器/CI 都能跑。
+  # 校验内容：行数与命令集、行为 ID 前缀、状态与等级匹配、夹具引用是否存在、
+  # 有意差异登记（DIV-xxx）是否存在、行顺序是否偏离旧版帮助顺序。
+  migration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate migration matrix
+        run: python migration/gen_matrix.py --check
+      - name: Fail when the rendered matrix is stale
+        run: |
+          python migration/gen_matrix.py
+          git diff --exit-code -- migration/MIGRATION_MATRIX.md
+
+  # 构建与测试。解决方案通过 ProjectReference 引用仓库外的 FunGame.Core
+  # （../../FunGame/FunGame.Core），因此需要把引擎仓库检出到同级目录。
+  # 未配置 FUNGAME_CORE_REPO 变量时本 job 跳过，避免把「缺引擎」误报成失败。
+  build-test:
+    if: vars.FUNGAME_CORE_REPO != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout engine (FunGame.Core)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.FUNGAME_CORE_REPO }}
+          ref: ${{ vars.FUNGAME_CORE_REF || 'v3-dev' }}
+          path: ../../FunGame
+          token: ${{ secrets.FUNGAME_CORE_TOKEN || github.token }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore
+        run: dotnet restore OshimaBot.slnx
+      - name: Build
+        run: dotnet build OshimaBot.slnx --no-restore -warnaserror
+      - name: Test
+        run: dotnet test OshimaBot.Tests/OshimaBot.Tests.csproj --no-build --logger "console;verbosity=normal"
