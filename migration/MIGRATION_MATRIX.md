@@ -37,22 +37,22 @@
 
 | 状态 | 条目数 | 占全量 | 占批准范围 |
 |---|---:|---:|---:|
-| 等价 | 87 | 53.4% | 54.7% |
+| 等价 | 98 | 60.1% | 61.6% |
 | 增强 | 17 | 10.4% | 10.7% |
-| 简化替代 | 51 | 31.3% | 32.1% |
-| 有意差异 | 4 | 2.5% | 2.5% |
+| 简化替代 | 41 | 25.2% | 25.8% |
+| 有意差异 | 3 | 1.8% | 1.9% |
 | scope-excluded | 4 | 2.5% | — |
 
 | 分类 | 条目 | 等价/增强 | 简化替代 | 部分缺失 | 缺失 | 有意差异 | scope-excluded |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 存档 | 3 | 1 | 2 | 0 | 0 | 0 | 0 |
-| 角色 | 29 | 8 | 17 | 0 | 0 | 0 | 4 |
+| 角色 | 29 | 10 | 15 | 0 | 0 | 0 | 4 |
 | 物品 | 24 | 11 | 11 | 0 | 0 | 2 | 0 |
-| 战斗 | 12 | 6 | 5 | 0 | 0 | 1 | 0 |
+| 战斗 | 12 | 11 | 1 | 0 | 0 | 0 | 0 |
 | 玩法 | 28 | 19 | 9 | 0 | 0 | 0 | 0 |
 | 社团 | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
 | 活动 | 6 | 6 | 0 | 0 | 0 | 0 | 0 |
-| 商店 | 29 | 21 | 7 | 0 | 0 | 1 | 0 |
+| 商店 | 29 | 25 | 3 | 0 | 0 | 1 | 0 |
 
 ## 2. 矩阵
 
@@ -62,7 +62,7 @@
 | ARC-002 | 存档 | 还原存档 | `RainBOTService.cs:834` | /还原存档 | SnapshotService.RestoreLatestAsync | L1 | 增强 | 旧版「还原存档」是空壳：RestoreSaved 整个方法体被注释掉，只返回「此功能维护中」——没有可对照的行为，所以这条从「缺失」改为「增强」。新版是真快照：/备份存档 拍一份（钱包/角色/背包/小队/每日任务/签到/活动进度），/还原存档 先预览、/还原存档 确认 才执行；每人留 10 份、每天还原 1 次，快照之后有玩家间成交会被拒绝（防复制物品），还原前自动留底一份可反悔。市场/报价/私信/社团/在途探索与锻造不回滚（DIV-020） | — |
 | ARC-003 | 存档 | 我的存档 | `RainBOTService.cs:781` | /状态 | PlayerService.GetSnapshotAsync | L1 | 简化替代 | 字段集合不同：旧版含账号/绑定信息，新版为旅人等级/货币/角色/背包概览 |  |
 | CHR-001 | 角色 | 我角色 | `RainBOTService.cs:1190` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 旧版简略/详细两档并支持角色序号，新版合并为一页列表 + 分页 |  |
-| CHR-002 | 角色 | 我的角色 | `RainBOTService.cs:1206` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 同上；旧版可查看任意序号角色的技能/装备明细，新版仅列表摘要 |  |
+| CHR-002 | 角色 | 我的角色 | `RainBOTService.cs:1206` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 等价 | 旧版「我的角色」按序号看单个角色的技能/装备明细；新版 /我的角色 给编号即为详情（属性四行、六个装备槽含空槽、技能列表），不带编号是列表 |  |
 | CHR-003 | 角色 | 设置主战 | `RainBOTService.cs:1254` | /设主战 | PlayerService.SetMainAsync | L1 | 简化替代 | 旧版按角色序号，新版按 @编号；后者依赖列表顺序，需保证稳定映射 |  |
 | CHR-004 | 角色 | 我的主战 | `RainBOTService.cs:796` | /我的角色 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 无独立查询入口，主战以标记形式出现在角色列表 |  |
 | CHR-005 | 角色 / 战斗 | 开启练级 | `RainBOTService.cs:1270` | /练级 | PlayerService.TrainStartAsync | L2 | 等价 | 不收金币；收益按会话实际时长 ×2/分钟，单次上限 2880 分钟（旧版 GetTrainingInfo） | FIX-CHR-TRAIN |
@@ -73,7 +73,7 @@
 | CHR-010 | 角色 | 取消装备 | `RainBOTService.cs:1368` | /卸下 | PlayerService.UnequipAsync | L1 | 简化替代 | 旧版按槽位数字 1–6；新版按槽位名 weapon / armor / shoes / accessory1 / accessory2 / magiccardpack（同样是 6 个，旧名 trinket 兼容映射到 accessory1） |  |
 | CHR-011 | 角色 | 加物 | `RainBOTService.cs:3501` | — | — | — | scope-excluded | 【范围排除】旧版「角色背包」是战斗内携带的 `Character.Items`，与玩家库存 `Inventory.Items` 不是一回事；v3 角色没有持久状态、战斗单位按存档重建，角色背包无处安放。用户 2026-11-12 决定不做 | — |
 | CHR-012 | 角色 | 减物 | `RainBOTService.cs:3526` | — | — | — | scope-excluded | 【范围排除】同上：没有持久化的角色背包，取出也无从谈起 | — |
-| CHR-013 | 角色 | 角色升级 | `RainBOTService.cs:1450` | /升级 | PlayerService.LevelUpAsync | L2 | 简化替代 | 新版经验公式 100×Lv^1.5、消耗旅人经验；旧版按角色经验与等级表，需逐级对齐 | FIX-CHR-LEVELUP |
+| CHR-013 | 角色 | 角色升级 | `RainBOTService.cs:1450` | /升级 | PlayerService.LevelUpAsync | L2 | 等价 | 升级消耗**角色自身** EXP，每级所需经验取 Core 的 <c>EXPUpperLimit</c> 表，与旧版同一张表、同一个 <c>OnLevelUp</c>（受突破进度限制）；此前文案写的「100×Lv^1.5、消耗旅人经验」是错的，代码里没有这套公式 | FIX-CHR-LEVELUP |
 | CHR-014 | 角色 | 角色突破 | `RainBOTService.cs:1498` | /突破 | PlayerService.BreakAsync | L2 | 等价 | 已按 LevelBreakNeedyList 搬入突破材料（钻石+五种印，5 档），不足时不扣任何材料 | FIX-CHR-BREAK |
 | CHR-015 | 角色 | 突破信息 | `RainBOTService.cs:1514` | /突破 | PlayerService.BreakAsync | L2 | 简化替代 | 无独立预览命令，但失败提示列出缺口、成功提示列出下一阶需求 |  |
 | CHR-016 | 角色 | 普攻升级 | `RainBOTService.cs:1482` | /普攻升级 | PlayerService.UpgradeNormalAttackAsync | L2 | 等价 | 按旧版 NormalAttackLevelUpList：目标 2–8 级，需要角色等级 + 金币 + 钻石 + 技能卷轴等；6 级额外要求突破进度 ≥4 |  |
@@ -116,13 +116,13 @@
 | ITM-024 | 物品 / 玩法 | 确认开始锻造 | `RainBOTService.cs:2994` | /锻造 @1 x40 | ForgeService.StartAsync | L2 | 有意差异 | 提交材料即开始（5 分钟，上限 120）；品质门槛、地区系数、三段积分与大师锻造都按旧版（差异登记 DIV-002） | FIX-ITM-FORGE |
 | BAT-001 | 战斗 | 决斗 | `RainBOTService.cs:1720` | /决斗 | EconomyService.DuelAsync / DuelWithAsync | L2 | 等价 | 真实战斗；不给对手时打随机对手，给 UID/昵称则打对方主战；不收费用不发奖励（EconomyTests.Duel_RunsRealBattleInsteadOfDiceRoll） | — |
 | BAT-002 | 战斗 | 完整决斗 | `RainBOTService.cs:1702` | /完整决斗 | EconomyService.DuelWithAsync + CommandCatalog.Report | L2 | 等价 | 同一场 PvP，摘要 + 逐回合战报（BattleFlowTests.DuelWith_*） | — |
-| BAT-003 | 战斗 | 小队决斗 | `RainBOTService.cs:1738` | /小队决斗 | EconomyService.TeamDuelWithAsync | L2 | 简化替代 | 双方小队 RunTeam，小队上限 4 人（BattleFlowTests.TeamDuel_*） | — |
+| BAT-003 | 战斗 | 小队决斗 | `RainBOTService.cs:1738` | /小队决斗 | EconomyService.TeamDuelWithAsync | L2 | 等价 | 双方小队真打（RunTeam），未编成退回主战；不收费用、不发奖励（BattleFlowTests.TeamDuel_*）；小队上限 4 人与旧版一致 | — |
 | BAT-004 | 战斗 | 查询boss | `RainBOTService.cs:1756` | /查询Boss | CommandCatalog.BossInfo | L1 | 等价 | Boss 列表与详情（BossPoolTests / EconomyTests.Boss_SharedTargetAllowsRepeatAndAccumulatesLedger） | — |
-| BAT-005 | 战斗 | 讨伐boss | `RainBOTService.cs:1790` | /Boss | EconomyService.BossAsync | L2 | 有意差异 | 10 只池、等级/技能/魔法/普攻按 cutRate 折算、5 件红装 + 金色卡包 + 消耗品 + 随机被动/绝招、DynamicsEffect 全项、全服共享血量累计、击杀补池；入场费 0、击杀只给 Materials += 等级（无金币奖励）；强化以 OpenSkill「BOSS专属被动」+ DynamicsEffect/ExMDF 特效承载；支持 /Boss <编号> 指定目标（差异登记 DIV-001） | FIX-BAT-BOSS |
-| BAT-006 | 战斗 | 小队讨伐boss | `RainBOTService.cs:1775` | /小队讨伐Boss | EconomyService.BossTeamAsync | L2 | 简化替代 | 小队 vs 全服共享目标，结算与单人共用（BattleFlowTests.BossTeam_RequiresSquadAndReturnsBattleLog） | — |
-| BAT-007 | 战斗 | 排行榜 | `RainBOTService.cs:3459` | /排行榜 | EconomyService.GetRankingAsync | L2 | 简化替代 | 旧版养成榜；新版金币/等级/战绩三榜，口径不同 |  |
-| BAT-008 | 战斗 | 金币排行榜 | — | /排行榜 金币 | EconomyService.GetRankingAsync | L2 | 简化替代 | 排序口径需与旧版核对（是否含托管资产） |  |
-| BAT-009 | 战斗 | 钻石排行榜 | — | /排行榜 | EconomyService.GetRankingAsync | L2 | 简化替代 | 新版无钻石榜 |  |
+| BAT-005 | 战斗 | 讨伐boss | `RainBOTService.cs:1790` | /Boss | EconomyService.BossAsync | L2 | 等价 | 10 只全服共享池（进程内静态，重启重置，旧版同样是静态字典）、战损写回、可反复挑战同一只、击杀补池；单人 / 小队共用同一结算；入场费 0、击杀只发钻石 = 等级、战绩 +25（FIX-BAT-BOSS） | FIX-BAT-BOSS |
+| BAT-006 | 战斗 | 小队讨伐boss | `RainBOTService.cs:1775` | /小队讨伐Boss | EconomyService.BossTeamAsync | L2 | 等价 | 小队打同一个全服共享目标，结算与单人完全共用（BattleFlowTests.BossTeam_RequiresSquadAndReturnsBattleLog） | — |
+| BAT-007 | 战斗 | 排行榜 | `RainBOTService.cs:3459` | /排行榜 | EconomyService.GetRankingAsync | L2 | 简化替代 | 旧版无参「排行榜」是角色养成榜（按累计经验，前 20）；新版默认 /排行榜 是金币榜，养成口径对应 /排行榜 等级（按角色等级、再按经验）——默认榜不同，榜单长度已对齐 20 |  |
+| BAT-008 | 战斗 | 金币排行榜 | — | /排行榜 金币 | EconomyService.GetRankingAsync | L2 | 等价 | 金币榜直接读钱包（CorePlayers.Credits），前 20 名，与旧版 UserCreditsRanking 口径一致；托管资产不进钱包，因此天然不计入 |  |
+| BAT-009 | 战斗 | 钻石排行榜 | — | /排行榜 | EconomyService.GetRankingAsync | L2 | 等价 | 钻石榜已补齐：/排行榜 钻石（旧名 /钻石排行榜 重写到这里），读钱包 Materials，前 20 名 |  |
 | BAT-010 | 战斗 | 赛马排行榜 | `RainBOTService.cs:3480` | /赛马排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 赛马积分榜（EconomyTests.Ranking_HasHorseCoopAndForgeBoards） | — |
 | BAT-011 | 战斗 | 共斗排行榜 | `RainBOTService.cs:3487` | /共斗排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 共斗积分榜（EconomyTests.Ranking_HasHorseCoopAndForgeBoards） | — |
 | BAT-012 | 战斗 | 锻造排行榜 | `RainBOTService.cs:3494` | /锻造排行榜 | EconomyService.GetRankingAsync | L1 | 等价 | 锻造积分榜；积分按三段发放（EconomyTests.Ranking_* / ForgeServiceTests.Plan_QualityThresholdsAndPointsMatchLegacy） | — |
@@ -146,9 +146,9 @@
 | PLY-018 | 玩法 | 创建房间 | `RainBOTService.cs:3300` | /创建房间 | RoomService.CreateAsync | L2 | 等价 | 四种房型、7 位房号、可选密码、按群隔离、赛马每群限一个、进程内状态（RoomServiceTests.Create_* / HorseRacing_AllowsOnlyOneRoomPerGroup） | — |
 | PLY-019 | 玩法 | 加入房间 | `RainBOTService.cs:3335` | /加入房间 | RoomService.JoinAsync | L2 | 等价 | 房号大小写不敏感，校验密码/人数上限/是否开局（RoomServiceTests.Join_ChecksCodePasswordAndCapacity） | — |
 | PLY-020 | 玩法 | 退出房间 | `RainBOTService.cs:3391` | /退出房间 | RoomService.QuitAsync | L1 | 等价 | 最后一人离开解散、房主离开转让（RoomServiceTests.Quit_TransfersMasterThenDisbands） | — |
-| PLY-021 | 玩法 | 开始游戏 | `RainBOTService.cs:3370` | /开始游戏 | RoomService.StartAsync | L2 | 简化替代 | 房主开局（赛马房任何人都能开）、至少 2 人、开局锁房（RoomServiceTests.Start_RequiresMasterAndTwoMembers） | — |
+| PLY-021 | 玩法 | 开始游戏 | `RainBOTService.cs:3370` | /开始游戏 | RoomService.StartAsync | L2 | 简化替代 | 房主开局（赛马房任何人都能开）、至少 2 人、开局锁房（RoomServiceTests.Start_RequiresMasterAndTwoMembers）（2026-11-14 已定：不补准备位，房间由房主直接开局） | — |
 | PLY-022 | 玩法 | 房间列表 | `RainBOTService.cs:3392` | /房间列表 | RoomService.List | L1 | 等价 | 只列本群房间（RoomServiceTests.Create_RejectsPrivateChatAndSecondRoom） | — |
-| PLY-023 | 玩法 | 房间信息 | `RainBOTService.cs:3452` | /房间信息 | RoomService.Info | L1 | 简化替代 | 成员列表与房主标记（RoomServiceTests.Join_*）；旧版「准备」位未实现 | — |
+| PLY-023 | 玩法 | 房间信息 | `RainBOTService.cs:3452` | /房间信息 | RoomService.Info | L1 | 简化替代 | 成员列表与房主标记（RoomServiceTests.Join_*）；旧版「准备」位未实现（2026-11-14 已定：不补准备位，房间由房主直接开局） | — |
 | PLY-024 | 玩法 | 创建赛马 | `RainBOTService.cs:3178` | /创建赛马 | RoomService.CreateAsync | L2 | 等价 | 房间可建（每群限一个、8 人），/开始游戏 真跑赛马：赛道 Next(8,16)、随机 1–3 个技能、30% 随机事件；名次积分 10/8/6/4/3/2/1 后恒为 1，与旧版逐档一致（FIX-PLY-HORSE / HorseRaceTests） | FIX-PLY-HORSE |
 | PLY-025 | 玩法 | 加入赛马 | `RainBOTService.cs:3270` | /加入赛马 | RoomService.JoinHorseRoomAsync | L1 | 等价 | 房间可建（每群限一个、8 人），/开始游戏 真跑赛马：赛道 Next(8,16)、随机 1–3 个技能、30% 随机事件；名次积分 10/8/6/4/3/2/1 后恒为 1，与旧版逐档一致（FIX-PLY-HORSE / HorseRaceTests） | FIX-PLY-HORSE |
 | PLY-026 | 玩法 | 创建共斗 | `RainBOTService.cs:3201` | /创建共斗 | RoomService.RunCoopRoomAsync | L2 | 等价 | 成员各出主战角色组队讨伐：敌人数 = 参战人数、等级 = 队伍平均 +5；全灭给「等级」的钻石 + 共斗积分，未打完按击杀比例折算（旧版多敌模式给 0，见 DIV-019），MVP 额外一份钻石（FIX-PLY-COOP） | FIX-PLY-COOP |
@@ -206,11 +206,11 @@
 | SHO-012 | 商店 | 商店查看 | `RainBOTService.cs:2122` | /商店详情 | EconomyService.GetStoreDetailAsync | L1 | 等价 | 单件详情：价格/库存/限购/已购 + 2 分钟下单窗口（StoreWindowTests.Detail_ShowsGoodsStockQuotaAndWindow） | — |
 | SHO-013 | 商店 | 商店购买 | `RainBOTService.cs:2092` | /购买 | EconomyService.BuyAsync | L2 | 等价 | 新版无 2 分钟访问窗口、无限购；价格来自种子商品 | FIX-SHO-STORE-BUY |
 | SHO-014 | 商店 | 商店出售 | `RainBOTService.cs:2678` | /商店出售 | EconomyService.SellToStoreAsync | L2 | 等价 | 按回收价卖店、批量、跳过锁定（StoreWindowTests.Sell_PaysRecyclePriceAndSkipsLockedItems） | — |
-| SHO-015 | 商店 | 创建报价 | `RainBOTService.cs:2490` | /创建报价 | EconomyService.CreateOfferAsync | L1 | 简化替代 | 旧版双边物物交易状态机；新版单向出售报价 |  |
-| SHO-016 | 商店 | 我的报价 | `RainBOTService.cs:2502` | /报价列表 | EconomyService.GetOffersAsync | L1 | 简化替代 | 旧版按报价序号查详情，新版为公开列表 |  |
+| SHO-015 | 商店 | 创建报价 | `RainBOTService.cs:2490` | /创建报价 | EconomyService.CreateOfferAsync | L1 | 等价 | 旧版 CreateOffer → 加双方物品 → SendOffer → 对方接受/拒绝；新版 /创建报价 <玩家> 建定向草稿，/报价添加物品 与 /报价添加对方物品 分别加两边，发送后由对方接受或拒绝——同一套双边换物流程（OfferFlowTests.Draft_AddBothSidesThenSendAndAccept） |  |
+| SHO-016 | 商店 | 我的报价 | `RainBOTService.cs:2502` | /报价列表 | EconomyService.GetOffersAsync | L1 | 等价 | 旧版「我的报价」看自己参与的报价与双边物品；新版 /报价列表 列出全部待接受（含定向），/查报价 <编号> 看双方各给了什么、当前状态 |  |
 | SHO-017 | 商店 | 发送报价 | `RainBOTService.cs:2530` | /发送报价 | EconomyService.SendOfferAsync | L2 | 等价 | 草稿→待接受，发送前沿用现有报价流程（OfferFlowTests.Draft_AddBothSidesThenSendAndAccept） | — |
-| SHO-018 | 商店 | 取消报价 | `RainBOTService.cs:2542` | /撤回报价 | EconomyService.CancelOfferAsync | L1 | 简化替代 | 仅发起方可撤回 |  |
-| SHO-019 | 商店 | 接受报价 | `RainBOTService.cs:2554` | /接受报价 | EconomyService.AcceptOfferAsync | L1 | 简化替代 | 接受即成交，无接收方确认环节 |  |
+| SHO-018 | 商店 | 取消报价 | `RainBOTService.cs:2542` | /撤回报价 | EconomyService.CancelOfferAsync | L1 | 等价 | 旧版由发起方取消报价；新版 /撤回报价 同样只允许发起方，撤回时我方托管物品退回背包（OfferFlowTests.RemoveAndWithdraw_RestoreItems） |  |
+| SHO-019 | 商店 | 接受报价 | `RainBOTService.cs:2554` | /接受报价 | EconomyService.AcceptOfferAsync | L1 | 等价 | 旧版由接收方接受；新版 /接受报价 同一入口兼容两类：定向报价做双边换物（核对对方物品仍在背包、未锁定未绑定，缺一件整笔作废），公开报价单则走金币结算（OfferFlowTests.Accept_*） |  |
 | SHO-020 | 商店 | 拒绝报价 | `RainBOTService.cs:2566` | /拒绝报价 | EconomyService.RejectOfferAsync | L1 | 等价 | 拒绝后托管物品全部退回（OfferFlowTests.Reject_ReturnsEscrowedItems） | — |
 | SHO-021 | 商店 | 报价添加物品 | `RainBOTService.cs:2578` | /报价添加物品 | EconomyService.AddOfferItemsAsync | L2 | 等价 | 加入物品并托管、重复加入被拒（OfferFlowTests.Draft_AddBothSidesThenSendAndAccept / Guard_RulesForDraftAndTarget） | — |
 | SHO-022 | 商店 | 报价添加对方物品 | `RainBOTService.cs:2603` | /报价添加对方物品 | EconomyService.AddOfferItemsAsync | L2 | 等价 | 挑选对方物品不托管、成交时校验是否还在（OfferFlowTests.Accept_FailsWhenWantedItemLeftTheBag） | — |
@@ -231,5 +231,6 @@
 | IDN-001 | 身份绑定 | `/绑定` + `POST /QQBot/bind` | 增强 | 旧版直接回显 OpenID，新版一次性码 |
 | SYS-001 | 服务器状态 | `/查询服务器启动时间` | 增强 | 旧版无 |
 | SYS-002 | 会话重置 | `/取消` | 增强 | 旧版无显式会话态 |
+| SYS-003 | 公开报价单 | `/报价 @编号 价格` | 增强 | 旧版只有定向换物报价，没有「挂个价给任何人买」的入口；新版两者并存 |
 
-合计矩阵内 163 条 + 矩阵外 5 条。
+合计矩阵内 163 条 + 矩阵外 6 条。

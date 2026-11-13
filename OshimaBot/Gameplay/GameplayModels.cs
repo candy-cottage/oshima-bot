@@ -22,6 +22,16 @@ public sealed record CharacterEntry(
 public sealed record QuestEntry(int Index, string Key, string Name, int Status, int Progress, int Target);
 
 /// <summary>
+/// 单个角色的详情（旧版「我角色 &lt;序号&gt;」）。
+/// <para><see cref="Stats"/> / <see cref="Slots"/> / <see cref="Skills"/> 已在服务层格式化好，
+/// 命令层只负责拼版面——面板类输出分散在各处格式化很容易出现两种口径。</para>
+/// </summary>
+public sealed record CharacterDetail(
+    int Index, string Name, int Level, double Exp, string ExpToNext,
+    int BreakLevel, int Promotion, bool IsMain,
+    IReadOnlyList<string> Stats, IReadOnlyList<string> Slots, IReadOnlyList<string> Skills);
+
+/// <summary>
 /// 带完整战报的战斗结果：<see cref="Result"/> 是摘要（复用四段式渲染），
 /// <see cref="Log"/> 是逐回合战报，供「完整决斗」这类入口分页展示（单条消息放不下）。
 /// </summary>

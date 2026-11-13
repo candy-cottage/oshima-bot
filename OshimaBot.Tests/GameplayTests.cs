@@ -172,6 +172,61 @@ public sealed class GameplayTests
         Assert.True((await players.SalvageAsync(UserId, restored.Count, 1)).Ok);
     }
 
+    /// <summary>
+    /// 堆叠行装备一件只能扣 1：`ItemStore.Remove` 是整行删除，
+    /// 如果直接用它，买 3 件同名武器再 /装备 会一次少 3 件。
+    /// </summary>
+    [Fact]
+    public async Task Equip_FromStackedRowLeavesTheRestInBag()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+
+        FunGame.Core.Entity.Item weapon = FunGameService.AllItems
+            .First(x => x.ItemType == FunGame.Core.Library.Constant.ItemType.Weapon);
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            await ItemStore.AddAsync(context, UserId, weapon.Name,
+                GameplayRules.QualityTierOf(weapon.QualityType), 3, CancellationToken.None,
+                weapon.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await context.SaveChangesAsync();
+        }
+
+        BagEntry stack = Assert.Single(await players.GetBagAsync(UserId));
+        Assert.Equal(3, stack.Quantity);
+
+        Assert.True((await players.EquipAsync(UserId, stack.Index)).Ok);
+
+        BagEntry left = Assert.Single(await players.GetBagAsync(UserId));
+        Assert.Equal(2, left.Quantity);                                    // 其余 2 件还在
+        Assert.Equal(1, Assert.Single(await players.GetCharactersAsync(UserId)).EquipmentCount);
+    }
+
+    /// <summary>
+    /// 单个角色的详情：旧版「我角色 &lt;序号&gt;」那页，新版挂在 /我的角色 @编号 上。
+    /// 六个装备槽必须都列出来（空槽也要显示），否则玩家不知道能装几件。
+    /// </summary>
+    [Fact]
+    public async Task CharacterDetail_ListsStatsSixSlotsAndSkills()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.RegisterAsync(UserId);
+
+        CharacterDetail? detail = await players.GetCharacterDetailAsync(UserId, 1);
+
+        Assert.NotNull(detail);
+        Assert.True(detail!.Level >= 1);
+        Assert.True(detail.IsMain);
+        Assert.Equal(4, detail.Stats.Count);
+        Assert.Equal(6, detail.Slots.Count);                                // 6 个槽，空槽也列
+        Assert.All(detail.Slots, line => Assert.StartsWith("- ", line));
+        Assert.Contains(detail.Slots, line => line.Contains("weapon"));
+        Assert.Null(await players.GetCharacterDetailAsync(UserId, 99));
+    }
+
     [Fact]
     public async Task Train_RequiresExpiryThenGrantsExpForLevelUp()
     {

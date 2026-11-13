@@ -328,7 +328,7 @@ public static class CommandCatalog
 
         "use" => new DelegateCommand(
             key: "use", name: "使用", aliases: ["use"], usage: "/使用 @1 [x2]",
-            description: "使用物品换取旅人经验", group: CommandGroups.Player,
+            description: "使用物品，把经验加给主战角色", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.UseAsync(
                 context.UserId, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
 
@@ -416,8 +416,9 @@ public static class CommandCatalog
             }),
 
         "characters" => new DelegateCommand(
-            key: "characters", name: "我的角色", aliases: ["角色列表", "chars"], usage: "/我的角色 [p2]",
-            description: "角色列表与主战标记", group: CommandGroups.Player,
+            key: "characters", name: "我的角色",
+            aliases: ["角色列表", "chars"], usage: "/我的角色 [@编号|页码]",
+            description: "角色列表；给编号则看单个角色的属性、六个装备槽与技能", group: CommandGroups.Player,
             handler: context => CharactersAsync(deps, context)),
 
         "set-main" => new DelegateCommand(
@@ -428,7 +429,7 @@ public static class CommandCatalog
 
         "levelup" => new DelegateCommand(
             key: "levelup", name: "升级", aliases: ["levelup"], usage: "/升级 @1",
-            description: "消耗旅人经验提升角色等级", group: CommandGroups.Player,
+            description: "消耗角色自身经验提升等级（受突破进度限制）", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.LevelUpAsync(
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
@@ -1669,6 +1670,43 @@ public static class CommandCatalog
 
     private static async Task<BotReply> CharactersAsync(CommandDependencies deps, CommandContext context)
     {
+        // 带编号（@1 或 1）就是「看这个角色」，与旧版「我角色 <序号>」一致；不带则是列表。
+        string? reference = context.Reference(0);
+        int index = 0;
+        if (reference is not null) int.TryParse(reference, out index);
+        else if (context.TryInt(0, out int plain) && context.Args.Count > 0
+                 && !context.Args[0].StartsWith('p')) index = plain;
+
+        if (index > 0)
+        {
+            CharacterDetail? detail = await deps.Players.GetCharacterDetailAsync(
+                context.UserId, index, context.CancellationToken);
+            if (detail is null)
+            {
+                return CommandReplies.Error($"没有 @{index} 号角色", "没有显示角色详情",
+                    "编号见 /我的角色 列表（从 1 开始）", "/我的角色");
+            }
+            List<string> body =
+            [
+                $"- 等级 Lv.{detail.Level}　经验 {GameplayRules.Money(detail.Exp)}"
+                    + $"（距下一级 {detail.ExpToNext}）",
+                $"- 突破 {GameplayRules.BreakProgress(detail.BreakLevel)}　评级 {detail.Promotion}"
+                    + (detail.IsMain ? "　⭐主战" : ""),
+                "",
+                "**属性**",
+                .. detail.Stats,
+                "",
+                "**装备**",
+                .. detail.Slots,
+                "",
+                detail.Skills.Count == 0
+                    ? "**技能**：（无）"
+                    : $"**技能**：{string.Join("、", detail.Skills)}"
+            ];
+            return CommandReplies.Detail($"👤 {detail.Name}", string.Join("\n", body), null,
+                [$"/设主战 {index}", $"/升级 {index}", "/背包"]);
+        }
+
         IReadOnlyList<CharacterEntry> characters = await deps.Players.GetCharactersAsync(
             context.UserId, context.CancellationToken);
         List<string> lines = characters.Select(character =>
@@ -1676,6 +1714,7 @@ public static class CommandCatalog
             + $"　突破 {GameplayRules.BreakProgress(character.BreakLevel)}　装备 {character.EquipmentCount} 件"
             + (character.IsMain ? " ⭐主战" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 还没有角色，输入 /注册 领取初始角色");
+        lines.Add("- 看单个角色：/我的角色 @编号（属性 / 六个装备槽 / 技能）");
         lines.Add("- /设主战 @编号 · /升级 @编号 · /突破 @编号 · /练级 @编号 [分钟]");
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
             "/我的角色", ["/状态", "/背包"]);

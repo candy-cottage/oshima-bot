@@ -7,6 +7,7 @@ using OshimaBot.Data.Entities;
 using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Game.Services;
+using CoreCharacter = FunGame.Core.Entity.Character;
 
 namespace OshimaBot.Gameplay;
 
@@ -51,6 +52,12 @@ public interface IPlayerService
     Task<ActionResult> EquipAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> UnequipAsync(long userId, string slot, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 单个角色的详情：属性、六个装备槽、技能。
+    /// <para>旧版「我角色 &lt;序号&gt;」就是这个视图；新版仍需按序号查，只是入口从「角色库存」变成「我的角色 @编号」。</para>
+    /// </summary>
+    Task<CharacterDetail?> GetCharacterDetailAsync(long userId, int index, CancellationToken cancellationToken = default);
     /// <param name="preview">true 只预览需求，不扣任何材料。</param>
     Task<ActionResult> UpgradeNormalAttackAsync(long userId, int index, bool preview,
         CancellationToken cancellationToken = default);
@@ -168,6 +175,44 @@ public sealed class PlayerService(
                 }
                 return (IReadOnlyList<BagSearchEntry>)result;
             }, cancellationToken);
+
+    public Task<CharacterDetail?> GetCharacterDetailAsync(long userId, int index,
+        CancellationToken cancellationToken = default)
+        => userId <= 0 ? Task.FromResult<CharacterDetail?>(null) : ReadAsync<CharacterDetail?>(async (db, ct) =>
+        {
+            PlayerAccount account = await PlayerService.EnsureAsync(db, userId, ct);
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(
+                db, userId, account.Wallet.MainCharacterGuid, ct);
+            if (index <= 0 || index > characters.Count) return null;
+
+            PlayerCharacter character = characters[index - 1];
+            CoreCharacter core = character.Core;
+            EquipSlot slot = core.EquipSlot;
+            string SlotName(string label, Item? item) => item is null ? $"- {label}：（空）" : $"- {label}：{item.Name}";
+
+            return new CharacterDetail(
+                index, core.Name, core.Level, core.EXP, NeedExp(character),
+                character.BreakLevel, core.Promotion,
+                string.Equals(character.Guid, account.Wallet.MainCharacterGuid, StringComparison.Ordinal),
+                [
+                    $"- 生命 {GameplayRules.Money(core.HP)}/{GameplayRules.Money(core.MaxHP)}"
+                        + $"　魔法 {GameplayRules.Money(core.MP)}/{GameplayRules.Money(core.MaxMP)}",
+                    $"- 攻击 {GameplayRules.Money(core.ATK)}　防御 {GameplayRules.Money(core.DEF)}"
+                        + $"　速度 {GameplayRules.Money(core.SPD)}",
+                    $"- 命中 {GameplayRules.Money(core.HR)}　闪避 {core.EvadeRate:P1}　暴击 {core.CritRate:P1}",
+                    $"- 力量 {GameplayRules.Money(core.STR)}　敏捷 {GameplayRules.Money(core.AGI)}"
+                        + $"　智力 {GameplayRules.Money(core.INT)}"
+                ],
+                [
+                    SlotName("weapon", slot.Weapon),
+                    SlotName("armor", slot.Armor),
+                    SlotName("shoes", slot.Shoes),
+                    SlotName("accessory1", slot.Accessory1),
+                    SlotName("accessory2", slot.Accessory2),
+                    SlotName("magiccardpack", slot.MagicCardPack)
+                ],
+                [.. core.Skills.Select(x => x.Name).OrderBy(x => x, StringComparer.Ordinal)]);
+        }, cancellationToken);
 
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
         => userId <= 0 ? Task.FromResult<IReadOnlyList<CharacterEntry>>([]) : ReadAsync(async (db, ct) =>
@@ -840,7 +885,8 @@ public sealed class PlayerService(
                 return ActionResult.Fail("该物品不能装备", "没有改动装备",
                     "只有武器/防具/鞋子/饰品/魔法卡包可以装备", "/背包");
             }
-            ItemStore.Remove(db, item);                        // 从背包移出
+            // 只移出 1 件：堆叠行 Quantity 可能 > 1，整行 Remove 会把剩下的一起删掉。
+            Consume(db, item, 1);
             CharacterStore.Sync(main);
             if (replaced is not null)
             {
