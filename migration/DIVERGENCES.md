@@ -107,6 +107,18 @@
 - **影响**：`库存搜索2` 的结果在新版是 `库存搜索` 的子集，玩家用一条命令就能拿到更多结果；英文名大小写不再影响命中。旧命令 `库存搜索2` 由 `LegacyAliases` 重写过来。
 - **回归保护**：`ItemFlowTests.Search_MatchesNameAndDescription`（名称命中、描述命中、无结果、大小写不敏感）。
 
+### DIV-015 市场手续费在上架时预扣
+
+- **旧版**：`MarketSellItem` 只把物品挂上去，不收费；买家成交时按 `fee = price × 0.15` 现扣，
+  卖家收 `price − fee`。撤回挂单不产生任何费用。
+- **新版**：上架时按同样费率预扣「上架费」（`fee = max(1, price × 15 / 100)`），成交时卖家收全额标价；
+  **撤回挂单不退费**。
+- **影响**：成交单的净额两种口径相同（都是 `price − fee`）；差别只在撤回与长期挂着不卖的单子——
+  新版要付出一次上架费。另外费率取整沿用 DIV-003（整数除法、下限 1）。
+- **回归保护**：`EconomyTests.Market_FeeIsChargedUpfrontAndNotRefundedOnDelist`、
+  `Market_CompletedSaleNetsPriceMinusListingFee`（含账本 `market_fee` / `market_sale` 两笔）、
+  `Market_EnforcesPriceBoundsAndListingCap`。
+
 ### DIV-014 旧存档的 Ex* 字段不能直接映射
 
 - **2.1.1** 的存档里 `ExSTR` 表示「额外力量固定点数」，`ExSTR2` 是同名字段下的派生百分比值（不可写）。

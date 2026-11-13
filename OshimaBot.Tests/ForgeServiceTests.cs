@@ -55,6 +55,36 @@ public sealed class ForgeServiceTests
         Assert.Equal(1, ForgeRules.Plan(materials, 0.9).RegionId);
     }
 
+    /// <summary>
+    /// 品质门槛与积分（旧版 <c>ForgeNeedy</c> 30/50/80/120/170/230）：
+    /// 有效用量不足 30 直接拒绝；够哪一档出哪一档；通用积分 = 用量 × 0.3，
+    /// 失败积分 = 用量 × 0.2，成功积分 = 用量 − 该品质门槛。
+    /// </summary>
+    [Theory]
+    [InlineData(10, QualityType.White, false)]
+    [InlineData(30, QualityType.White, true)]
+    [InlineData(49, QualityType.White, true)]
+    [InlineData(50, QualityType.Green, true)]
+    [InlineData(80, QualityType.Blue, true)]
+    [InlineData(120, QualityType.Purple, true)]
+    [InlineData(170, QualityType.Orange, true)]
+    [InlineData(230, QualityType.Red, true)]
+    [InlineData(500, QualityType.Red, true)]
+    public void Plan_QualityThresholdsAndPointsMatchLegacy(int count, QualityType expected, bool ok)
+    {
+        ForgePlan plan = ForgeRules.Plan(
+            [new ForgeMaterial(SilverAlloy, count, 1, "银辉城", RarityType.FiveStar)], 0.5);
+
+        Assert.Equal(ok, plan.Ok);
+        if (!ok) return;
+
+        Assert.Equal(expected, plan.Quality);
+        Assert.Equal(count, plan.EffectiveCount);
+        Assert.Equal(count * ForgeRules.GeneralPointsPerCount, plan.GeneralPoints, 6);
+        Assert.Equal(count * ForgeRules.FailPointsPerCount, plan.FailPoints, 6);
+        Assert.Equal(count - ForgeRules.Needy[expected], plan.SuccessPoints, 6);
+    }
+
     [Fact]
     public void Plan_RejectsBelowMinimumAndNonRegion()
     {

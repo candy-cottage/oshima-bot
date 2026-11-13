@@ -174,6 +174,85 @@ public sealed class EconomyTests
         Assert.Equal(2, (await dbContext.MarketListings.FirstAsync()).Status);
     }
 
+    /// <summary>
+    /// 上架费在**上架时**预扣，下架不退；成交时卖家收全额，因此「成交净收入 = 标价 − 上架费」。
+    /// 旧版是成交时按 15% 现扣（见 DIV-003 / DIV-015），两种口径对成交单的净额相同，对撤回单不同。
+    /// </summary>
+    [Fact]
+    public async Task Market_FeeIsChargedUpfrontAndNotRefundedOnDelist()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 3);
+
+        double before = (await players.GetSnapshotAsync(Seller))!.Credits;
+        long fee = GameplayRules.MarketFee(200);
+        Assert.True(fee > 0);
+
+        Assert.True((await economy.ListOnMarketAsync(Seller, 1, 200)).Ok);
+        Assert.Equal(before - fee, (await players.GetSnapshotAsync(Seller))!.Credits, 3);
+
+        Assert.True((await economy.DelistAsync(Seller, 1)).Ok);
+        Assert.Equal(before - fee, (await players.GetSnapshotAsync(Seller))!.Credits, 3);   // 不退费
+        Assert.Equal(3, (await players.GetBagAsync(Seller)).Count);                          // 物品回包
+    }
+
+    [Fact]
+    public async Task Market_CompletedSaleNetsPriceMinusListingFee()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await players.GetSnapshotAsync(Buyer);
+        await TestItems.SeedAsync(db.Provider, Seller, 1);
+
+        double sellerBefore = (await players.GetSnapshotAsync(Seller))!.Credits;
+        double buyerBefore = (await players.GetSnapshotAsync(Buyer))!.Credits;
+        long fee = GameplayRules.MarketFee(200);
+
+        Assert.True((await economy.ListOnMarketAsync(Seller, 1, 200)).Ok);
+        Assert.True((await economy.BuyMarketAsync(Buyer, 1)).Ok);
+
+        double sellerAfter = (await players.GetSnapshotAsync(Seller))!.Credits;
+        double buyerAfter = (await players.GetSnapshotAsync(Buyer))!.Credits;
+
+        Assert.Equal(sellerBefore - fee + 200, sellerAfter, 3);   // 净收入 = 标价 − 上架费
+        Assert.Equal(buyerBefore - 200, buyerAfter, 3);           // 买家只付标价，不再另付手续费
+
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        List<LedgerEntry> sellerLedger = await context.LedgerEntries
+            .Where(x => x.UserId == Seller && x.Reason.StartsWith("market_"))
+            .OrderBy(x => x.Id).ToListAsync();
+        Assert.Equal(["market_fee", "market_sale"], sellerLedger.Select(x => x.Reason));
+        Assert.Equal(-fee, sellerLedger[0].Delta);
+        Assert.Equal(200, sellerLedger[1].Delta);
+    }
+
+    [Fact]
+    public async Task Market_EnforcesPriceBoundsAndListingCap()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await TestItems.SeedAsync(db.Provider, Seller, 8);
+
+        Assert.False((await economy.ListOnMarketAsync(Seller, 1, 0)).Ok);                         // 低于下限
+        Assert.False((await economy.ListOnMarketAsync(Seller, 1, GameplayRules.MarketMaxPrice + 1)).Ok);
+
+        for (int i = 1; i <= GameplayRules.MarketMaxListingsPerUser; i++)
+        {
+            Assert.True((await economy.ListOnMarketAsync(Seller, 1, 100)).Ok, $"第 {i} 件应能上架");
+        }
+        ActionResult sixth = await economy.ListOnMarketAsync(Seller, 1, 100);
+        Assert.False(sixth.Ok);
+        Assert.Contains("在售挂单已满", sixth.Title);
+    }
+
     [Fact]
     public async Task Offer_AcceptAndCancelLifecycle()
     {
