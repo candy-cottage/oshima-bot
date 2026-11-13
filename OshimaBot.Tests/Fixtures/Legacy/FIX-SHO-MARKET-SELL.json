@@ -3,7 +3,7 @@
   "behaviorId": "SHO-026",
   "command": "市场出售",
   "probe": "market-fee",
-  "status": "current-locked",
+  "status": "intentional-divergence",
   "input": {
     "prices": [
       1,
@@ -39,6 +39,23 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:3027",
     "method": "RainBOTService 市场出售分支",
     "note": "旧版手续费 15%，新版 5%；取整为整数除法后下限 1。旧版费率与取整规则待核对，差异会影响所有价格边界"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "feeRatePercent"
+    ]
+  },
+  "divergence": {
+    "reason": "手续费率 15% 一致，但三处实现差异：①旧版 fee = amount * 0.15 全程 double 不取整，新版整数除法后下限 1，低价物品手续费偏高；②旧版不限每人挂单数，新版每人 5 单；③旧版无价格上下限，新版限制 1~1000000。",
+    "decidedBy": "用户",
+    "decidedOn": "2026-11-13",
+    "fields": [
+      "fee",
+      "maxListings",
+      "minPrice",
+      "maxPrice"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

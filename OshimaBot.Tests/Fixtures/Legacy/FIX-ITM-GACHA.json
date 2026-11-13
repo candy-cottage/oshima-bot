@@ -3,7 +3,7 @@
   "behaviorId": "ITM-010",
   "command": "钻石抽卡",
   "probe": "gacha",
-  "status": "current-locked",
+  "status": "legacy-verified",
   "input": {
     "counts": [
       1,
@@ -58,6 +58,20 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1016",
     "method": "RainBOTService 钻石抽卡分支 + FunGameService.DrawCards",
     "note": "旧版 FunGameConstant.DrawCardReduce=1000（金币/次）、DrawCardReduce_Material=5（钻石/次），十连按 10 倍无折扣；每次 dice>0.8 才中奖（20%）、十连无保底；品质按 DrawCardProbabilities 从高到低阈值判定"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "singleCost",
+      "tenCost",
+      "maxPerCall",
+      "costByCount",
+      "singleCostCredits",
+      "tenCostCredits",
+      "hitChancePercent",
+      "pityQuality",
+      "qualityThresholds"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

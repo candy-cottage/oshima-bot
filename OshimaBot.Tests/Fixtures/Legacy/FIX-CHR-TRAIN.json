@@ -3,7 +3,7 @@
   "behaviorId": "CHR-005",
   "command": "开启练级",
   "probe": "train",
-  "status": "current-locked",
+  "status": "legacy-verified",
   "input": {
     "minutes": [
       10,
@@ -42,6 +42,16 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1270",
     "method": "RainBOTService 开启练级分支 + FunGameService.GetTrainingInfo",
     "note": "旧版 FunGameService.GetTrainingInfo：每分钟 2 经验、每日上限 2880 分钟、不收金币；新版已逐项对齐（按会话时长结算）"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "costCredits",
+      "defaultMinutes",
+      "maxMinutes",
+      "expPerMinute",
+      "expByMinutes"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

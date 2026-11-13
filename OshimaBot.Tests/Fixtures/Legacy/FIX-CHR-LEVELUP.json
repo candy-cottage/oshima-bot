@@ -3,7 +3,7 @@
   "behaviorId": "CHR-013",
   "command": "角色升级",
   "probe": "levelup",
-  "status": "current-locked",
+  "status": "legacy-verified",
   "input": {
     "levels": [
       1,
@@ -40,6 +40,12 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1450",
     "method": "RainBOTService 角色升级分支",
     "note": "旧版 CharacterLevelUp 调 character.OnLevelUp(upCount)，经验门槛来自 Core 的 EXPUpperLimit；新版同样调 OnLevelUp，数值逐项一致"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "expForLevel"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

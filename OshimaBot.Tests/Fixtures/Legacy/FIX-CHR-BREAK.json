@@ -3,7 +3,7 @@
   "behaviorId": "CHR-014",
   "command": "角色突破",
   "probe": "break",
-  "status": "current-locked",
+  "status": "legacy-verified",
   "input": {
     "breakLevels": [
       -1,
@@ -51,6 +51,13 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1498",
     "method": "RainBOTService 角色突破分支",
     "note": "旧版 RainBOTService 角色突破分支直接查 FunGameConstant.LevelBreakNeedyList（突破到 N 阶用第 N 档），等级门槛取 Core 的 LevelBreakList；Core 的 Character.LevelBreak 默认 -1，第一次突破 -1 → 0 取 0 档（钻石 40 + 升华之印 2）。新版同构抄录，数值逐项一致"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "levelCap",
+      "breakNeedy"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

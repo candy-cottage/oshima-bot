@@ -3,7 +3,7 @@
   "behaviorId": "SHO-013",
   "command": "商店购买",
   "probe": "store",
-  "status": "current-locked",
+  "status": "legacy-verified",
   "input": {},
   "expected": {
     "current": {
@@ -123,6 +123,14 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:2092",
     "method": "RainBOTService 商店购买分支 + FunGameService.StoreBuyItem",
     "note": "照抄旧版 configs/stores/dokyo.json：7 个商店、36 件商品，价格与库存逐项对齐；每日商店为每用户 4 件随机、本地 4:00 刷新（旧版 CheckDailyStore）"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "stores",
+      "dailyCount",
+      "dailyRefreshHour"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

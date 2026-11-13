@@ -3,7 +3,7 @@
   "behaviorId": "ITM-020",
   "command": "锻造配方",
   "probe": "forge",
-  "status": "legacy-verified",
+  "status": "intentional-divergence",
   "input": {},
   "expected": {
     "current": {
@@ -55,6 +55,25 @@
     "file": "OshimaWebAPI/Services/RainBOTService.cs:2951",
     "method": "RainBOTService 锻造配方分支 + FunGameService.GenerateForgeResult",
     "note": "旧版支持自定义配方、模拟与成功率；新版 ForgeService 同样支持自定义配方、模拟、取消与大师锻造，材料按所属地区折算"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "materialNeedyByQuality",
+      "regionCoefficientByRarity",
+      "generalPointsPerCount",
+      "failPointsPerCount"
+    ]
+  },
+  "divergence": {
+    "reason": "旧版 GenerateForgeResult 无固定时长、不收金币，提交材料即刻结算；新版保留同一套地区系数/品质门槛/三段积分，额外收 200 金币并插入 1 分钟的「开始 → 收取」，以便和练级、探索共用同一套会话交互。",
+    "decidedBy": "用户",
+    "decidedOn": "2026-11-13",
+    "fields": [
+      "costCredits",
+      "defaultMinutes",
+      "maxMinutes"
+    ]
   },
   "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
   "catalogVersion": "core-v3",

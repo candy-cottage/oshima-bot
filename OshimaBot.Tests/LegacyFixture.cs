@@ -22,6 +22,17 @@ public sealed class LegacyFixture
     public required JsonElement Input { get; init; }
     public required LegacyExpectation Expected { get; init; }
     public required LegacySource Source { get; init; }
+
+    /// <summary>
+    /// 旧值比较策略。<c>current-locked</c> 可为 null；其余状态必填，否则测试失败。
+    /// <para><c>fields</c> 列出必须逐字段比较的顶层键，避免整棵树 <c>DeepEquals</c>
+    /// 把「旧版没有的字段」误判成差异。</para>
+    /// </summary>
+    public LegacyMatchPolicy? LegacyMatchPolicy { get; init; }
+
+    /// <summary>有意差异登记，<c>intentional-divergence</c> 必填。</summary>
+    public LegacyDivergence? Divergence { get; init; }
+
     public string? LegacyBaseline { get; init; }
     public string? CatalogVersion { get; init; }
     public int? Seed { get; init; }
@@ -39,6 +50,33 @@ public sealed class LegacySource
     public required string File { get; init; }
     public string? Method { get; init; }
     public string? Note { get; init; }
+}
+
+/// <summary>旧值与当前值的字段级比较策略。</summary>
+public sealed class LegacyMatchPolicy
+{
+    /// <summary>精确相等，或按绝对误差比较。</summary>
+    public const string ModeExact = "exact";
+    public const string ModeTolerance = "tolerance";
+
+    public string Mode { get; init; } = ModeExact;
+
+    /// <summary>参与比较的顶层字段名。</summary>
+    public IReadOnlyList<string> Fields { get; init; } = [];
+
+    /// <summary>tolerance 模式下的绝对误差，默认 1e-6。</summary>
+    public double? Tolerance { get; init; }
+}
+
+/// <summary>已登记的有意差异：旧行为、新行为与决策来源。</summary>
+public sealed class LegacyDivergence
+{
+    public required string Reason { get; init; }
+    public string? DecidedBy { get; init; }
+    public string? DecidedOn { get; init; }
+
+    /// <summary>必须确实不等的字段；任一侧没有该字段也算不等。</summary>
+    public IReadOnlyList<string> Fields { get; init; } = [];
 }
 
 public static class LegacyFixtureLoader
@@ -74,6 +112,77 @@ public static class LegacyFixtureLoader
             result.Add(fixture);
         }
         return result.OrderBy(x => x.Id, StringComparer.Ordinal).ToList();
+    }
+}
+
+/// <summary>
+/// 字段级旧值比较器。
+/// <para>只比较 <see cref="LegacyMatchPolicy.Fields"/> 列出的顶层字段：旧版往往没有新版新增的
+/// 字段（如 <c>maxListings</c>），整树 <c>DeepEquals</c> 会把「旧版没有」误报成「数值不同」。</para>
+/// </summary>
+public static class LegacyFieldComparer
+{
+    private const double DefaultTolerance = 1e-6;
+
+    /// <summary>返回第一处差异的可读描述；全部一致时返回 null。</summary>
+    public static string? FirstDifference(JsonObject current, JsonObject legacy, LegacyMatchPolicy policy)
+    {
+        bool tolerance = string.Equals(policy.Mode, LegacyMatchPolicy.ModeTolerance, StringComparison.Ordinal);
+        double allowed = policy.Tolerance ?? DefaultTolerance;
+
+        foreach (string field in policy.Fields)
+        {
+            JsonNode? left = current.TryGetPropertyValue(field, out JsonNode? l) ? l : null;
+            JsonNode? right = legacy.TryGetPropertyValue(field, out JsonNode? r) ? r : null;
+
+            if (!current.ContainsKey(field)) return $"当前值缺少字段 {field}";
+            if (!legacy.ContainsKey(field)) return $"旧版值缺少字段 {field}";
+
+            if (left is null && right is null) continue;
+
+            if (tolerance && TryNumber(left, out double a) && TryNumber(right, out double b))
+            {
+                if (Math.Abs(a - b) > allowed)
+                {
+                    return $"{field} 超出容差：当前 {a}，旧版 {b}，容差 {allowed}";
+                }
+                continue;
+            }
+
+            if (!JsonNode.DeepEquals(left, right))
+            {
+                return $"{field} 不一致：当前 {Show(left)}，旧版 {Show(right)}";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>该字段在新旧之间是否确实不同（任一侧缺失也算不同）。</summary>
+    public static bool Differs(JsonObject current, JsonObject legacy, string field)
+    {
+        bool inCurrent = current.ContainsKey(field);
+        bool inLegacy = legacy.ContainsKey(field);
+        if (!inCurrent && !inLegacy) return false;
+        if (inCurrent != inLegacy) return true;
+
+        JsonNode? left = current[field];
+        JsonNode? right = legacy[field];
+        if (left is null && right is null) return false;
+        return !JsonNode.DeepEquals(left, right);
+    }
+
+    private static string Show(JsonNode? node) => node?.ToJsonString() ?? "null";
+
+    private static bool TryNumber(JsonNode? node, out double value)
+    {
+        if (node is JsonValue json && json.TryGetValue(out double parsed))
+        {
+            value = parsed;
+            return true;
+        }
+        value = 0;
+        return false;
     }
 }
 
