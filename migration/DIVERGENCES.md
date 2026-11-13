@@ -133,6 +133,13 @@
 旧版 NuGet 从 2.1.0 升到 **2.1.1**（tag `2.1.1` / commit `7ecb11f`「补齐核心属性百分比传导」），
 并对照了本地源码 `../FunGame.Legacy/FunGame.Core` 与 v3 的 `FunGame/FunGame.Core`。
 
+**两个 PR 别记混**（2026-11-14 查证）：
+
+| PR | 仓库 | 内容 | 对数值的影响 |
+|---|---|---|---|
+| `#208` / `#207` | v2 / v3 | 补齐核心属性百分比加成到战斗属性的传导 —— 同一个修复的两侧 | 两边同步修，**互相等价** |
+| `#210` | v3 | `refactor: 统一角色属性命名与额外值聚合`（`git log -S ExSTR3` 指向它） | 只改名与重新聚合，展开后数值不变 |
+
 **逐条相同的部分**
 
 | 项 | 2.1.1 | v3 |
@@ -144,7 +151,7 @@
 | `OnLevelUp` | 扣 EXP、受突破进度约束、`OnAttributeChanged()` + `Recovery()` | 同 |
 | 平衡常量 | 17 / 0.68 / 1.5 / 0.14 / 0.95 / 0.045 / 13 … | 同 |
 
-**只是改名、数值等价的部分（PR#207）**
+**只是改名、数值等价的部分（PR#210）**
 
 - 2.1.1：`ExSTR` = 固定点数（可写）、`ExSTR2` = `BaseSTR × ExSTRPercentage`（派生）、`STR = BaseSTR + ExSTR + ExSTR2`。
 - v3：`ExSTR2` = 固定点数（可写）、`ExSTR3 = BaseSTR × ExSTRPercentage`、`ExSTR = ExSTR2 + ExSTR3`。
