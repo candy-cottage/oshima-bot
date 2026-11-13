@@ -70,6 +70,10 @@ public sealed class ItemFlowTests
         Assert.Equal("龙鳞碎片", Assert.Single(byDescription).Name);
 
         Assert.Empty(await players.SearchBagAsync(UserId, "不存在的关键词"));
+
+        // 旧版用区分大小写的 Contains；新版统一不区分大小写（见 DIV-013），英文名搜小写也能命中
+        await SeedCountedAsync(db, (Named("Ash Blade", "", QualityType.Blue), 1));
+        Assert.Equal("Ash Blade", Assert.Single(await players.SearchBagAsync(UserId, "ash")).Name);
     }
 
     [Fact]

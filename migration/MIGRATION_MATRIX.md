@@ -17,7 +17,7 @@
 | 批准迁移范围 | 159 | 不含 `scope-excluded` |
 | 范围排除 | 4 | 生命之泉 / 酒馆 / 加物 / 减物 |
 | 有夹具落地的行 | 27 | Fixture 列指向真实存在的 `.json` |
-| 只有待建夹具的行 | 77 | 已声明 L0–L2 但尚无对照样本 |
+| 只有待建夹具的行 | 75 | 已声明 L0–L2 但尚无对照样本 |
 
 状态定义：
 
@@ -96,8 +96,8 @@
 | ITM-003 | 物品 | 物品库存 | `RainBOTService.cs:1107` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 旧版可只看物品区，新版与角色区合并展示 |  |
 | ITM-004 | 物品 | 角色库存 | `RainBOTService.cs:1123` | /背包 | PlayerService.GetCharactersAsync | L1 | 简化替代 | 新版角色在 /我的角色，不在背包 |  |
 | ITM-005 | 物品 | 我的物品 | `RainBOTService.cs:1341` | /背包 | PlayerService.GetBagAsync | L1 | 简化替代 | 旧版可查看单个物品详情（属性/技能/次数），新版仅列表行 |  |
-| ITM-006 | 物品 | 库存搜索2 | `RainBOTService.cs:1160` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 旧版「只搜名称」是「连描述一起搜」的子集，已合并为同一入口；无装备/出售/交易序号分组 | 待建 FIX-ITM-SEARCH |
-| ITM-007 | 物品 | 库存搜索 | `RainBOTService.cs:1175` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 同时匹配名称与描述，命中行保留 /背包 的 @编号；每行附描述摘要，支持 p2 分页 | 待建 FIX-ITM-SEARCH |
+| ITM-006 | 物品 | 库存搜索2 | `RainBOTService.cs:1160` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 与「库存搜索」合并为同一入口（DIV-013）：都按名称或描述匹配，且不区分大小写；L1 行为由 ItemFlowTests.Search_MatchesNameAndDescription 覆盖，没有数值可锁，故不建数值夹具 | — |
+| ITM-007 | 物品 | 库存搜索 | `RainBOTService.cs:1175` | /库存搜索 | PlayerService.SearchBagAsync | L1 | 简化替代 | 按名称或描述包含关键词匹配，命中行保留 /背包 的 @编号、附描述摘要、支持分页；旧版区分大小写，新版不区分（DIV-013）；L1 由 ItemFlowTests 覆盖 | — |
 | ITM-008 | 物品 | 抽卡 | `RainBOTService.cs:1006` | /抽卡 | PlayerService.GachaAsync | L2 | 等价 | 金币 1000/次（/抽卡）、钻石 5/次（/钻石抽卡）；每次独立判定 dice>0.8 才中（20%）、十连可能全空；命中后 Next(8) 均匀分 8 类产出；品质按 DrawCardProbabilities 累计阈值；重复角色折算 50 材料；橙品以上抽到即锁定。分布、重复折算与锁定均有测试与夹具（FIX-ITM-GACHA / GachaLegacyTests） | FIX-ITM-GACHA |
 | ITM-009 | 物品 | 十连抽卡 | `RainBOTService.cs:1014` | /十连抽卡 | PlayerService.GachaAsync | L2 | 等价 | 金币 10000、钻石 50，都是单价 ×10 无折扣；每抽独立 20% 命中、无保底，可能全空 | FIX-ITM-GACHA |
 | ITM-010 | 物品 | 钻石抽卡 | `RainBOTService.cs:1016` | /钻石抽卡 | PlayerService.GachaAsync | L2 | 等价 | 钻石 5/次、20% 命中、无保底、6 档累计阈值（White 80.6% / Green 5.9% / Blue 5.2% / Purple 1.9% / Orange 3.3% / Red 3.1%），与旧版一致 | FIX-ITM-GACHA |
