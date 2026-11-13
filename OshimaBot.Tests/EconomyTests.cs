@@ -387,12 +387,19 @@ public sealed class EconomyTests
         IPlayerService players = db.Get<IPlayerService>();
         await players.RegisterAsync(Seller);   // 建档并发放初始角色
 
+        double creditsBefore = (await players.GetSnapshotAsync(Seller))!.Credits;
         ActionResult result = await economy.DuelAsync(Seller);
 
         Assert.True(result.Ok, result.Title);
         Assert.Contains(result.Lines, line => line.Contains("回合"));
         Assert.Contains(result.Lines, line => line.Contains("HP"));
         Assert.Contains(result.Lines, line => line.Contains("战斗摘要"));
+
+        // 旧版决斗既不入场费也不发奖励：余额一分不动，账本不留痕迹
+        Assert.Equal(creditsBefore, (await players.GetSnapshotAsync(Seller))!.Credits, 3);
+        using IServiceScope scope = db.Provider.CreateScope();
+        BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        Assert.Equal(0, await context.LedgerEntries.CountAsync(x => x.Reason.StartsWith("duel")));
     }
 
     [Fact]

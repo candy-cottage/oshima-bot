@@ -20,6 +20,37 @@ public sealed class StoreWindowTests
 {
     private const long Player = 42;
 
+    /// <summary>商店日以本地 4:00 为界（旧版 <c>Today.AddHours(4)</c>），凌晨 3:59 仍算前一天。</summary>
+    [Theory]
+    [InlineData(2026, 11, 14, 19, 59, "2026-11-14")]  // 本地 11-15 03:59 → 仍算 14 号
+    [InlineData(2026, 11, 14, 20, 0, "2026-11-15")]   // 本地 11-15 04:00 → 跨到 15 号
+    [InlineData(2026, 11, 15, 12, 0, "2026-11-15")]
+    public void StoreDay_FlipsAtFourAmLocal(int year, int month, int day, int hour, int minute, string expected)
+    {
+        DateTime utc = new(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+        Assert.Equal(expected, GameplayRules.StoreDay(utc));
+    }
+
+    /// <summary>
+    /// 本地 04:00–08:00 之间，UTC 日期还停在前一天：如果拿 UTC 日期去和「商店日」比，
+    /// 每次 /商店 都会判定过期、把整摊货重摇一遍（玩家等于可以无限刷新）。
+    /// </summary>
+    [Fact]
+    public async Task DailyStore_DoesNotRerollBetweenFourAndEightAm()
+    {
+        DateTime utc = new(2026, 11, 14, 20, 30, 0, DateTimeKind.Utc);   // 本地 11-15 04:30
+        using StoreDatabase db = new(new FakeClock(utc));
+        IEconomyService economy = db.Get<IEconomyService>();
+        await db.CreatePlayerAsync(Player);
+
+        IReadOnlyList<StoreEntry> first = await economy.GetStoreAsync(Player, StoreCatalog.DailyKey);
+        IReadOnlyList<StoreEntry> second = await economy.GetStoreAsync(Player, StoreCatalog.DailyKey);
+
+        Assert.Equal(StoreCatalog.DailyGoodsCount, first.Count);
+        Assert.Equal(first.Select(x => x.Id), second.Select(x => x.Id));       // 货架没被重摇
+        Assert.Equal(first.Select(x => x.Name), second.Select(x => x.Name));
+    }
+
     [Fact]
     public async Task Buy_RequiresAFreshlyOpenedStore()
     {
@@ -111,12 +142,12 @@ public sealed class StoreWindowTests
         public ServiceProvider Provider { get; }
         public FakeClock Clock { get; }
 
-        public StoreDatabase()
+        public StoreDatabase(FakeClock? clock = null)
         {
             FunGameRuntime.EnsureInitialized();
             Connection = new SqliteConnection("Data Source=:memory:");
             Connection.Open();
-            Clock = new FakeClock(new DateTime(2026, 11, 12, 12, 0, 0, DateTimeKind.Utc));
+            Clock = clock ?? new FakeClock(new DateTime(2026, 11, 12, 12, 0, 0, DateTimeKind.Utc));
             ServiceCollection services = new();
             services.AddLogging();
             services.AddDbContext<BotDbContext>(options => options.UseSqlite(Connection));
