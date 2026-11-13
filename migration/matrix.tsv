@@ -21,7 +21,7 @@ CHR-016	角色	普攻升级	`RainBOTService.cs:1482`	/普攻升级	PlayerService
 CHR-017	角色	查看普攻升级	`RainBOTService.cs:1466`	/查看普攻升级	PlayerService.UpgradeNormalAttackAsync	L1	等价	preview 模式只列需求与当前持有，不扣任何材料	
 CHR-018	角色	技能升级	`RainBOTService.cs:1417`	/技能升级	PlayerService.UpgradeSkillAsync	L2	等价	按旧版 SkillLevelUpList：目标 1–6 级；技能 Level 0 表示未学，第一次即学习	
 CHR-019	角色	查看技能升级	`RainBOTService.cs:1400`	/查看技能升级	PlayerService.UpgradeSkillAsync	L1	等价	同预览模式	
-CHR-020	角色	角色重随	`RainBOTService.cs:980`	/角色重随 · /确认重随 · /取消重随	PlayerService.RerollPreviewAsync	L2	等价	自建角色（注册即送的 CustomCharacter）重摇初始生命/魔法/攻击/三围/成长/速度/回复，消耗 3 钻；先出「旧值 => 新值」预览，确认才生效、取消不退钻（同旧版）；预览存 ActivityProgress	待建 FIX-CHR-REROLL
+CHR-020	角色	角色重随	`RainBOTService.cs:980`	/角色重随 · /确认重随 · /取消重随	PlayerService.RerollPreviewAsync	L2	等价	自建角色重随：先扣 3 钻出预览、确认才覆盖 13 项属性、取消不退钻，与旧版 RandomCustomCharacter 三段式一致；取值区间（ATK 15–25 / HP 40–85 / MP 20–55 / SPD 220–290 / HR·MR 1–5、三围合计 30）与旧版构造函数逐条对齐	FIX-CHR-REROLL
 CHR-021	角色	角色改名	`RainBOTService.cs:855`	/角色改名 · /我的改名	PlayerService.RenameAsync / ClubService.ApproveRenameAsync	L2	增强	旧版只能**随机改名**（`GenerateRandomChineseUserName`，200 金币）；v3 允许玩家自定义 2–12 字并**先过审核**（`RenameRequests` → /改名审核、/批准改名、/拒绝改名），批准后同步角色名与 `Users.Nickname`；`/我的改名` 查自己的待审。差异：没收 200 金币（审核取代了经济闸门）、不做防重名的全局唯一校验（差异登记 DIV-010）	待建 FIX-CHR-RENAME-REVIEW
 CHR-022	角色	我的小队	`RainBOTService.cs:820`	/小队	PlayerService.SquadAsync	L1	简化替代	上限 4 人与旧版一致（2026-11-13 恢复）；差异只剩「主战标记 + 4 个位置」的一页展示，旧版按角色序号查询	
 CHR-023	角色	设置小队	`RainBOTService.cs:1828`	/小队	PlayerService.SquadAsync	L1	简化替代	旧版一次传 1-4 个角色序号，新版逐个 /小队 加入；容量同为 4。旧写法已给说明（LegacyAliases）	

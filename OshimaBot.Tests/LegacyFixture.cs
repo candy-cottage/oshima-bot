@@ -195,7 +195,7 @@ public static class LegacyFixtureProbes
     public static readonly IReadOnlySet<string> KnownProbes = new HashSet<string>
     {
         "levelup", "break", "train", "register", "gacha",
-        "forge", "store", "market-fee", "boss", "signin"
+        "forge", "store", "market-fee", "boss", "signin", "reroll"
     };
 
     public static JsonNode Run(string probe, JsonElement input)
@@ -215,6 +215,7 @@ public static class LegacyFixtureProbes
             "market-fee" => MarketFee(input),
             "boss" => Boss(),
             "signin" => SignIn(input),
+            "reroll" => Reroll(),
             _ => throw new NotSupportedException($"未注册的探针：{probe}")
         };
     }
@@ -358,6 +359,28 @@ public static class LegacyFixtureProbes
         ["bossLevels"] = new JsonArray(
             JsonValue.Create(15), JsonValue.Create(30), JsonValue.Create(60)),
         ["winPoints"] = GameplayRules.BossWinPoints
+    };
+
+    /// <summary>
+    /// 自建角色重随的取值契约（旧版 <c>OshimaModules/Characters/CustomCharacter.cs</c> 构造函数）：
+    /// 生命/魔法/攻击/速度/回复是固定区间，三围与成长按「主属性 15–30、其余合计 31」分配，
+    /// 成长值再除以 10 保留两位；钻一次 3 个材料。
+    /// </summary>
+    private static JsonObject Reroll() => new()
+    {
+        ["costMaterials"] = GameplayRules.CustomRerollCost,
+        ["initialAtk"] = new JsonArray(15, 25),
+        ["initialHp"] = new JsonArray(40, 85),
+        ["initialMp"] = new JsonArray(20, 55),
+        ["initialSpd"] = new JsonArray(220, 290),
+        ["initialHr"] = new JsonArray(1, 5),
+        ["initialMr"] = new JsonArray(1, 5),
+        ["primaryAttributeRoll"] = new JsonArray(1, 3),
+        // 重随调用时 primaryAttribute = None：三项从一个 31 的池子里分配，最后一项取「剩余 - 1」，
+        // 所以三项合计恒为 30（留 1 点未分配，旧版如此，不补齐）。
+        ["traitPool"] = 31,
+        ["traitAllocated"] = 30,
+        ["growthScale"] = 0.1
     };
 
     private static JsonObject SignIn(JsonElement input)

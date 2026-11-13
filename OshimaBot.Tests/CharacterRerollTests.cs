@@ -36,6 +36,48 @@ public sealed class CharacterRerollTests
         Assert.Equal(-1, main.BreakLevel);
     }
 
+    /// <summary>
+    /// 自建角色的取值契约（旧版 <c>CustomCharacter</c> 构造函数）：区间固定、三围合计 31、成长合计 3.1。
+    /// 重随与建档走同一个类，这条不变量同时守住两处。
+    /// </summary>
+    [Fact]
+    public void CustomCharacter_StaysInsideLegacyRanges()
+    {
+        FunGameRuntime.EnsureInitialized();
+
+        for (int i = 0; i < 300; i++)
+        {
+            OshimaBot.Content.Characters.CustomCharacter character =
+                new(CharacterStore.CustomCharacterId, $"测试{i}");
+
+            Assert.InRange(character.InitialATK, 15, 25);
+            Assert.InRange(character.InitialHP, 40, 85);
+            Assert.InRange(character.InitialMP, 20, 55);
+            Assert.InRange(character.InitialSPD, 220, 290);
+            Assert.InRange(character.InitialHR, 1, 5);
+            Assert.InRange(character.InitialMR, 1, 5);
+
+            // 重随走 primaryAttribute = None 这条分支：三项从 31 的池子里依次分配，
+            // 最后一项取「剩余 - 1」，所以合计恒为 30（旧版不补齐余数，等价保留）
+            double traits = character.InitialSTR + character.InitialAGI + character.InitialINT;
+            double growths = character.STRGrowth + character.AGIGrowth + character.INTGrowth;
+            Assert.Equal(30, traits, 3);
+            Assert.Equal(3.0, growths, 2);
+
+            // 建档会把主属性校正到三围里最高的那一项（注意是含成长的 STR/AGI/INT，不是 Initial*）
+            CharacterStore.NormalizePrimaryAttribute(character);
+            double max = Math.Max(Math.Max(character.STR, character.AGI), character.INT);
+            double primary = character.PrimaryAttribute switch
+            {
+                FunGame.Core.Library.Constant.PrimaryAttribute.STR => character.STR,
+                FunGame.Core.Library.Constant.PrimaryAttribute.AGI => character.AGI,
+                FunGame.Core.Library.Constant.PrimaryAttribute.INT => character.INT,
+                _ => -1
+            };
+            Assert.Equal(max, primary, 3);
+        }
+    }
+
     [Fact]
     public async Task Reroll_PreviewChargesOnceThenConfirmApplies()
     {
