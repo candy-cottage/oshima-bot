@@ -1,0 +1,65 @@
+{
+  "id": "FIX-ITM-SALVAGE-Q",
+  "behaviorId": "ITM-019",
+  "command": "品质分解",
+  "probe": "salvage-quality",
+  "status": "legacy-verified",
+  "input": {},
+  "expected": {
+    "current": {
+      "materialsByQuality": {
+        "White": 1,
+        "Green": 3,
+        "Blue": 8,
+        "Purple": 16,
+        "Orange": 32,
+        "Red": 64,
+        "Gold": 128
+      },
+      "materialsForThreeOfEach": {
+        "White": 3,
+        "Green": 9,
+        "Blue": 24,
+        "Purple": 48,
+        "Orange": 96,
+        "Red": 192,
+        "Gold": 384
+      }
+    },
+    "legacy": {
+      "materialsByQuality": {
+        "White": 1,
+        "Green": 3,
+        "Blue": 8,
+        "Purple": 16,
+        "Orange": 32,
+        "Red": 64,
+        "Gold": 128
+      },
+      "materialsForThreeOfEach": {
+        "White": 3,
+        "Green": 9,
+        "Blue": 24,
+        "Purple": 48,
+        "Orange": 96,
+        "Red": 192,
+        "Gold": 384
+      }
+    }
+  },
+  "source": {
+    "file": "OshimaModules/Models/FunGameConstant.cs:635",
+    "method": "FunGameConstant.DecomposedMaterials",
+    "note": "按品质固定返还：White 1 / Green 3 / Blue 8 / Purple 16 / Orange 32 / Red 64 / Gold 128，返的是 Inventory.Materials（钻石），不是金币；数量按件数直乘。"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "materialsByQuality",
+      "materialsForThreeOfEach"
+    ]
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T00:05:00+08:00"
+}

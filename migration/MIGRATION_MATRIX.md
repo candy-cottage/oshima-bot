@@ -16,8 +16,8 @@
 | **去重后唯一入口（本表行数）** | **163** | 同名命令在多个分类重复出现 |
 | 批准迁移范围 | 159 | 不含 `scope-excluded` |
 | 范围排除 | 4 | 生命之泉 / 酒馆 / 加物 / 减物 |
-| 有夹具落地的行 | 23 | Fixture 列指向真实存在的 `.json` |
-| 只有待建夹具的行 | 81 | 已声明 L0–L2 但尚无对照样本 |
+| 有夹具落地的行 | 27 | Fixture 列指向真实存在的 `.json` |
+| 只有待建夹具的行 | 77 | 已声明 L0–L2 但尚无对照样本 |
 
 状态定义：
 
@@ -102,14 +102,14 @@
 | ITM-009 | 物品 | 十连抽卡 | `RainBOTService.cs:1014` | /十连抽卡 | PlayerService.GachaAsync | L2 | 等价 | 金币 10000、钻石 50，都是单价 ×10 无折扣；每抽独立 20% 命中、无保底，可能全空 | FIX-ITM-GACHA |
 | ITM-010 | 物品 | 钻石抽卡 | `RainBOTService.cs:1016` | /钻石抽卡 | PlayerService.GachaAsync | L2 | 等价 | 钻石 5/次、20% 命中、无保底、6 档累计阈值（White 80.6% / Green 5.9% / Blue 5.2% / Purple 1.9% / Orange 3.3% / Red 3.1%），与旧版一致 | FIX-ITM-GACHA |
 | ITM-011 | 物品 | 钻石十连抽卡 | `RainBOTService.cs:1017` | /钻石十连抽卡 | PlayerService.GachaAsync | L2 | 等价 | 十连 = 5×10 = 50 钻，无折扣、每抽独立 20%、可能全空；与旧版一致 | FIX-ITM-GACHA |
-| ITM-012 | 物品 | 兑换金币 | `RainBOTService.cs:1356` | /兑换金币 | PlayerService.ExchangeCreditsAsync | L1 | 等价 | 同旧版：先抬到最低 10、再向下取整到 10 的倍数，10 钻 = 2000 金币，零头保留 | 待建 FIX-ITM-EXCHANGE |
+| ITM-012 | 物品 | 兑换金币 | `RainBOTService.cs:1356` | /兑换金币 | PlayerService.ExchangeCreditsAsync | L1 | 等价 | 10 钻一档、每档 2000 金币：请求值先抬到 ≥10 再向下取整到 10 的倍数（0/1/7 → 10 钻 = 2000 金币，25 → 20 钻 = 4000），零头保留；与旧版 ExchangeCredits 逐条一致 | FIX-ITM-EXCHANGE |
 | ITM-013 | 物品 | 使用 | `RainBOTService.cs:1530` | /使用 | PlayerService.UseItemAsync | L1 | 简化替代 | 旧版支持 <名称\|序号> [次数] [角色] [角色序号]；新版仅 @编号 [x数量] 且只换旅人经验 |  |
-| ITM-014 | 物品 | 使用魔法卡 | `RainBOTService.cs:1550` | /使用魔法卡 | PlayerService.UseMagicCardAsync | L1 | 简化替代 | 同品质校验、同名魔法叠等级、满级折算 10 钻/级补偿；目标可以是背包卡包或主战已装备卡包（后者需重新装备才生效），不做交易中校验 | 待建 FIX-ITM-MAGICCARD |
-| ITM-015 | 物品 | 合成魔法卡 | `RainBOTService.cs:1434` | /合成魔法卡 | PlayerService.CraftMagicCardPackAsync | L1 | 等价 | 3 张可用魔法卡 → 一个卡包，三围定品质、魔法按 Id 合并叠等级；额外拒绝重复编号（旧版会把同一张卡当 3 张材料） | 待建 FIX-ITM-MAGICCARD |
+| ITM-014 | 物品 | 使用魔法卡 | `RainBOTService.cs:1550` | /使用魔法卡 | PlayerService.UseMagicCardAsync | L1 | 简化替代 | 魔法卡打进卡包：需已装备的卡包、剩余使用次数 > 0、未锁定；一个卡包最多 3 张（同旧版 ConflateMagicCardPack 的 3 张上限） | FIX-ITM-MAGICCARD |
+| ITM-015 | 物品 | 合成魔法卡 | `RainBOTService.cs:1434` | /合成魔法卡 | PlayerService.CraftMagicCardPackAsync | L1 | 等价 | 固定吃 3 张未使用、未上锁的魔法卡换 1 个卡包；任一张被锁或已用则整体拒绝，与旧版 ConflateMagicCardPack 一致 | FIX-ITM-MAGICCARD |
 | ITM-016 | 物品 | 分解物品 | `RainBOTService.cs:1611` | /分解 | PlayerService.SalvageAsync | L2 | 等价 | 按旧版 DecomposedMaterials 返还材料：White 1 / Green 3 / Blue 8 / Purple 16 / Orange 32 / Red 64 / Gold 128（是 Materials 不是金币） |  |
 | ITM-017 | 物品 | 分解 | `RainBOTService.cs:1639` | /分解 | PlayerService.SalvageAsync | L2 | 简化替代 | 旧版按名称+数量批量分解，新版按 @编号 + x数量 |  |
 | ITM-018 | 物品 | 强制分解 | `RainBOTService.cs:1628` | /分解 | PlayerService.SalvageAsync | L2 | 简化替代 | 旧版可绕过保护强制分解，新版必须先解锁 |  |
-| ITM-019 | 物品 | 品质分解 | `RainBOTService.cs:1664` | /品质分解 | PlayerService.SalvageByQualityAsync | L2 | 等价 | 品质索引 0–6 = White…Gold；只分解未锁定/未绑定物品，按件数累计返还材料（同 DecomposedMaterials） | 待建 FIX-ITM-SALVAGE-Q |
+| ITM-019 | 物品 | 品质分解 | `RainBOTService.cs:1664` | /品质分解 | PlayerService.SalvageByQualityAsync | L2 | 等价 | 按品质档位批量分解：White 1 / Green 3 / Blue 8 / Purple 16 / Orange 32 / Red 64 / Gold 128（返钻石），按件数直乘；只分解未锁定未绑定的 | FIX-ITM-SALVAGE-Q |
 | ITM-020 | 物品 / 玩法 | 锻造配方 | `RainBOTService.cs:2951` | /锻造 @1 x40 [@2 x20…] | ForgeService.StartAsync | L2 | 有意差异 | 自定义配方（多组材料 + 件数，可混合产地）；材料必须是野外地区作物，产地决定系数与品质门槛（差异登记 DIV-002） | FIX-ITM-FORGE |
 | ITM-021 | 物品 / 玩法 | 锻造信息 | `RainBOTService.cs:3002` | /锻造 信息 | ForgeService.InfoAsync | L1 | 等价 | 配方、地区折算说明、预估品质、大师目标、剩余时间与可收取状态 | FIX-ITM-FORGE |
 | ITM-022 | 物品 / 玩法 | 取消锻造 | `RainBOTService.cs:2986` | /锻造 取消 | ForgeService.CancelAsync | L2 | 等价 | 未结算前可取消：材料按原数量退回背包，200 金币退回 | FIX-ITM-FORGE |

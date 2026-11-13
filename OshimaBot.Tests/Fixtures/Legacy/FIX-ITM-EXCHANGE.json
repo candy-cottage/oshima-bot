@@ -1,0 +1,104 @@
+{
+  "id": "FIX-ITM-EXCHANGE",
+  "behaviorId": "ITM-012",
+  "command": "兑换金币",
+  "probe": "exchange",
+  "status": "legacy-verified",
+  "input": {
+    "requests": [
+      0,
+      1,
+      7,
+      10,
+      25,
+      100,
+      105
+    ]
+  },
+  "expected": {
+    "current": {
+      "materialUnit": 10,
+      "creditsPerUnit": 2000,
+      "plans": [
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          20,
+          4000
+        ],
+        [
+          100,
+          20000
+        ],
+        [
+          100,
+          20000
+        ]
+      ]
+    },
+    "legacy": {
+      "materialUnit": 10,
+      "creditsPerUnit": 2000,
+      "plans": [
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          10,
+          2000
+        ],
+        [
+          20,
+          4000
+        ],
+        [
+          100,
+          20000
+        ],
+        [
+          100,
+          20000
+        ]
+      ]
+    }
+  },
+  "source": {
+    "file": "OshimaWebAPI/Controllers/FunGameController.cs:1700",
+    "method": "ExchangeCredits",
+    "note": "reduce = max(10, 请求值)，再 reduce -= reduce % 10 向下取整到 10 的倍数；reward = reduce / 10 * 2000。帮助文案「1 钻石 = 200 金币」是展示口径，实际按 10 钻一档结算。"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "materialUnit",
+      "creditsPerUnit",
+      "plans"
+    ]
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T00:05:00+08:00"
+}

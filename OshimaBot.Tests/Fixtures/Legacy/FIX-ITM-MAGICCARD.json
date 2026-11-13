@@ -1,0 +1,39 @@
+{
+  "id": "FIX-ITM-MAGICCARD",
+  "behaviorId": "ITM-015",
+  "command": "合成魔法卡",
+  "probe": "magic-card",
+  "status": "legacy-verified",
+  "input": {},
+  "expected": {
+    "current": {
+      "craftNeeds": 3,
+      "packMaxMagics": 3,
+      "requiresUnused": true,
+      "rejectsLocked": true
+    },
+    "legacy": {
+      "craftNeeds": 3,
+      "packMaxMagics": 3,
+      "requiresUnused": true,
+      "rejectsLocked": true
+    }
+  },
+  "source": {
+    "file": "OshimaWebAPI/Controllers/FunGameController.cs:3512",
+    "method": "ConflateMagicCardPack + FunGameService.ConflateMagicCardPack",
+    "note": "固定吃 3 张：每张必须 ItemType.MagicCard 且 RemainUseTimes > 0，任一张 IsLock 就整体拒绝；成功后移除 3 张、生成一个装这 3 张的魔法卡包。"
+  },
+  "legacyMatchPolicy": {
+    "mode": "exact",
+    "fields": [
+      "craftNeeds",
+      "packMaxMagics",
+      "requiresUnused",
+      "rejectsLocked"
+    ]
+  },
+  "legacyBaseline": "f1061043d6b576dae882cad36824ddbc65d6fb2989c69cb6f82022c43bbc0593",
+  "catalogVersion": "core-v3",
+  "now": "2026-11-14T00:05:00+08:00"
+}

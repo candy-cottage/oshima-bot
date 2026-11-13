@@ -153,6 +153,10 @@ public static class GameplayRules
     /// 分解返还的**材料**数量（旧版 <c>FunGameConstant.DecomposedMaterials</c>，按品质固定值）。
     /// <para>1 普通 = 1、2 优秀 = 3、3 稀有 = 8、4 史诗 = 16、5 传说 = 32、6 神话 = 64、7 不朽 = 128；
     /// 旧版返还的是 <c>Inventory.Materials</c>（即「钻石」），不是金币。</para>
+    /// <para><b>坑</b>：<paramref name="quality"/> 是「品质档位」1–7（White=1 … Gold=7），
+    /// 不是 <see cref="QualityType"/> 枚举值（White=0 … Gold=6）。传枚举值会整体错一档：
+    /// Green 只返 1 个而应是 3 个。调用方传 <c>PlayerItem.Quality</c>（已是档位）或
+    /// <see cref="QualityTierOf"/> 的结果。</para>
     /// </summary>
     public static long SalvageMaterials(int quality, int quantity) => quality switch
     {

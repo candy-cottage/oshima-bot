@@ -195,7 +195,8 @@ public static class LegacyFixtureProbes
     public static readonly IReadOnlySet<string> KnownProbes = new HashSet<string>
     {
         "levelup", "break", "train", "register", "gacha",
-        "forge", "store", "market-fee", "boss", "signin", "reroll"
+        "forge", "store", "market-fee", "boss", "signin", "reroll",
+        "exchange", "salvage-quality", "magic-card"
     };
 
     public static JsonNode Run(string probe, JsonElement input)
@@ -216,6 +217,9 @@ public static class LegacyFixtureProbes
             "boss" => Boss(),
             "signin" => SignIn(input),
             "reroll" => Reroll(),
+            "exchange" => Exchange(input),
+            "salvage-quality" => SalvageQuality(),
+            "magic-card" => MagicCard(),
             _ => throw new NotSupportedException($"未注册的探针：{probe}")
         };
     }
@@ -381,6 +385,54 @@ public static class LegacyFixtureProbes
         ["traitPool"] = 31,
         ["traitAllocated"] = 30,
         ["growthScale"] = 0.1
+    };
+
+    /// <summary>
+    /// 钻石兑换金币（旧版 <c>ExchangeCredits</c>）：<c>reduce = max(10, 请求)</c>，
+    /// 再向下取整到 10 的倍数，<c>reward = reduce / 10 * 2000</c>。
+    /// </summary>
+    private static JsonObject Exchange(JsonElement input)
+    {
+        int[] requests = IntArray(input, "requests");
+        return new JsonObject
+        {
+            ["materialUnit"] = GameplayRules.ExchangeMaterialUnit,
+            ["creditsPerUnit"] = GameplayRules.ExchangeCreditsPerUnit,
+            ["plans"] = new JsonArray(requests
+                .Select(r => (JsonNode?)new JsonArray(
+                    JsonValue.Create(GameplayRules.ExchangePlan(r).Materials),
+                    JsonValue.Create(GameplayRules.ExchangePlan(r).Credits)))
+                .ToArray())
+        };
+    }
+
+    /// <summary>品质分解返还（旧版 <c>FunGameConstant.DecomposedMaterials</c>，单位是材料/钻石）。</summary>
+    private static JsonObject SalvageQuality()
+    {
+        JsonObject byQuality = [];
+        foreach (QualityType quality in Enum.GetValues<QualityType>())
+        {
+            // 注意：SalvageMaterials 吃的是「品质档位」（White=1 … Gold=7），不是 QualityType 枚举值
+            byQuality[quality.ToString()] = GameplayRules.SalvageMaterials(GameplayRules.QualityTierOf(quality), 1);
+        }
+        return new JsonObject
+        {
+            ["materialsByQuality"] = byQuality,
+            ["materialsForThreeOfEach"] = new JsonObject(
+                Enum.GetValues<QualityType>().Select(q =>
+                    KeyValuePair.Create(q.ToString(),
+                        (JsonNode?)JsonValue.Create(
+                            GameplayRules.SalvageMaterials(GameplayRules.QualityTierOf(q), 3)))))
+        };
+    }
+
+    /// <summary>魔法卡合成（旧版 <c>ConflateMagicCardPack</c>）：3 张未使用且未上锁的魔法卡换 1 个卡包。</summary>
+    private static JsonObject MagicCard() => new()
+    {
+        ["craftNeeds"] = 3,
+        ["packMaxMagics"] = GameplayRules.MagicCardPackMaxMagics,
+        ["requiresUnused"] = true,
+        ["rejectsLocked"] = true
     };
 
     private static JsonObject SignIn(JsonElement input)

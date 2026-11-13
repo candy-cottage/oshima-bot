@@ -64,7 +64,8 @@
 
 显式 switch 注册（`OshimaBot.Tests/LegacyFixture.cs`），不做反射扫描：
 
-`levelup` · `break` · `train` · `register` · `gacha` · `forge` · `store` · `market-fee` · `boss` · `signin`
+`levelup` · `break` · `train` · `register` · `gacha` · `forge` · `store` · `market-fee` · `boss` · `signin` ·
+`reroll` · `exchange` · `salvage-quality` · `magic-card`
 
 新增探针必须同时改 `KnownProbes` 与 `Run` 的 switch，两处缺一会在测试中失败。
 
