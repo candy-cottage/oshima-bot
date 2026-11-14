@@ -554,6 +554,11 @@ public sealed partial class ClubService(
                             "等管理员处理，或让管理员先拒绝掉旧的", "/我的社团");
                     }
                     // 平台规范：公开可见的名字要过审核，不能由玩家直接生效。
+                    // 频率限制与角色改名共用一套（被拒冷却 + 窗口配额）。
+                    ActionResult? throttled = await RenameThrottle.CheckAsync(
+                        db, userId, RenameTargets.Club, club.Id.ToString(CultureInfo.InvariantCulture), clock.UtcNow, ct);
+                    if (throttled is not null) return throttled;
+
                     db.RenameRequests.Add(new RenameRequest
                     {
                         UserId = userId,

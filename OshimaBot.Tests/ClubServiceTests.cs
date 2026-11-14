@@ -412,11 +412,13 @@ public sealed class ClubServiceTests
         // 同一时间只允许一个待审申请
         Assert.Contains("审核中", (await clubs.UpdateSettingsAsync(Master, "名称", "别的名字")).Title);
 
-        // 拒绝后名字不变，且能重新提交
+        // 拒绝后名字不变；冷却期内不能马上重提（RenameThrottle，2026-11-15 补）
         Assert.True((await clubs.RejectRenameAsync(Master, 1)).Ok);
         Assert.Equal(original, (await clubs.MineAsync(Master))!.Name);
         Assert.Empty(await clubs.PendingRenamesAsync());
-        Assert.True((await clubs.UpdateSettingsAsync(Master, "名称", "第二名字")).Ok);
+        ActionResult cooled = await clubs.UpdateSettingsAsync(Master, "名称", "第二名字");
+        Assert.False(cooled.Ok);
+        Assert.Contains("刚被拒绝", cooled.Title);
 
         // 公告也走同一套内容校验
         Assert.False((await clubs.UpdateSettingsAsync(Master, "公告", "扫码进群 12345678")).Ok);

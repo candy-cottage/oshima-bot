@@ -441,10 +441,20 @@ public static class GameplayRules
     public const int MarketMaxListingsPerUser = 5;
 
     /// <summary>
-    /// 商店下单窗口（分钟）。旧版 <c>UserLastVisitStore</c> 的 2 分钟有效期：
+    /// 商城下单窗口（分钟）。旧版 <c>UserLastVisitStore</c> 的 2 分钟有效期：
     /// 商店用序号指代，容易连着看几家后买错，所以超时要求重新打开。
     /// </summary>
     public const int StoreWindowMinutes = 2;
+
+    // ---- 改名审核的频率限制（2026-11-15 补，见 RenameThrottle）----
+    /// <summary>同一目标被拒绝后的冷却时长。冷却期内换名字也不能提交。</summary>
+    public const int RenameRejectCooldownHours = 6;
+
+    /// <summary>每人每个窗口最多提交几次改名（角色名与社团名合计）。</summary>
+    public const int RenameQuotaPerWindow = 3;
+
+    /// <summary>配额窗口长度（小时）。配额是滚动窗口，不是自然日。</summary>
+    public const int RenameQuotaWindowHours = 24;
 
     // 锻造的数值与配方规则集中在 ForgeRules（按材料所属地区折算），这里不再重复定义。
 

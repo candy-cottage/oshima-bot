@@ -1058,7 +1058,7 @@ public sealed class PlayerService(
                 return ActionResult.Fail("新名字和原来一样", "没有提交改名申请", "换一个名字", "/角色");
             }
 
-            // 同一个角色同时只允许一个待审申请（与社团改名同一套规则）。
+            // 同一角色同时只允许一个待审申请（与社团改名同一套规则）。
             bool pending = await db.RenameRequests.AnyAsync(x =>
                 x.TargetType == RenameTargets.Character && x.TargetId == main.Guid && x.Status == 0, ct);
             if (pending)
@@ -1066,6 +1066,11 @@ public sealed class PlayerService(
                 return ActionResult.Fail("已有一个改名申请在审核中", "没有重复提交",
                     "等管理员处理，或用 /我的改名 看当前申请", "/我的改名");
             }
+
+            // 频率限制：被拒后的冷却 + 每天的配额（RenameThrottle）。
+            ActionResult? throttled = await RenameThrottle.CheckAsync(
+                db, userId, RenameTargets.Character, main.Guid, clock.UtcNow, ct);
+            if (throttled is not null) return throttled;
 
             // 平台规范：公开可见的名字先审后生效，不能由玩家直接改。
             db.RenameRequests.Add(new RenameRequest
