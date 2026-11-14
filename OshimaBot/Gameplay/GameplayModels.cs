@@ -94,4 +94,7 @@ public sealed record OfferDetail(
 public sealed record OfferEntry(
     int Index, long Id, string ItemName, long Price, string SellerHandle, bool IsMine);
 
+/// <summary>我在市场买过什么（旧版 <c>MarketShowListMyBuys</c>）。</summary>
+public sealed record PurchaseEntry(int Index, string Date, string ItemName, double Price, string Seller);
+
 public sealed record RankEntry(int Index, string Handle, double Value);

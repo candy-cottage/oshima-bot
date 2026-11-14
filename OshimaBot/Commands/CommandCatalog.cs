@@ -29,7 +29,7 @@ public static class CommandCatalog
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
         "register", "status", "backup", "snapshots", "restore", "grant-item", "grant-currency", "grant-magic",
-        "store-add",
+        "store-add", "my-purchases", "db-backup",
         "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
@@ -217,6 +217,35 @@ public static class CommandCatalog
             description: $"给玩家发指定品质的魔法卡（管理员，单次 ≤ {AdminService.MaxGrantPerCall} 张）",
             group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
             handler: context => GrantMagicAsync(deps, context)),
+
+        "db-backup" => new DelegateCommand(
+            key: "db-backup", name: "备份数据库", aliases: ["数据库备份", "备份库"],
+            usage: "/备份数据库", description: "给整个数据库打一份快照（管理员；保留最近 10 份）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true,
+            handler: async context =>
+            {
+                BackupResult result = await deps.Backups.BackupAsync(context.CancellationToken);
+                List<string> lines =
+                [
+                    $"- 文件：{Path.GetFileName(result.Path)}",
+                    $"- 目录：{Path.GetDirectoryName(result.Path)}",
+                    $"- 大小：{result.Bytes / 1024.0:0.0} KB　时间戳：{result.TakenAt}（UTC）",
+                    $"- 当前保留 {result.KeptCount} 份（超过 {BackupService.KeepCount} 份自动删最旧的）",
+                    "- 还原要停服务再换文件，步骤见 ops/README.md"
+                ];
+                IReadOnlyList<BackupEntry> history = deps.Backups.List(5);
+                if (history.Count > 1)
+                {
+                    lines.Add("- 最近几份：" + string.Join("、", history.Select(x => x.Name)));
+                }
+                return CommandReplies.Compose("💾 数据库已备份", result.TakenAt, lines, ["/状态", "/备份数据库"]);
+            }),
+
+        "my-purchases" => new DelegateCommand(
+            key: "my-purchases", name: "我的购买", aliases: ["购买记录", "我的市场记录"],
+            usage: "/我的购买 [p2]", description: "我最近在市场买过什么（按流水还原，最多 50 条）",
+            group: CommandGroups.Economy,
+            handler: context => MyPurchasesAsync(deps, context)),
 
         "store-add" => new DelegateCommand(
             key: "store-add", name: "商店加货", aliases: ["加货", "上架商品", "商店上架"],
@@ -1676,6 +1705,25 @@ public static class CommandCatalog
         2 => "已领取",
         _ => "进行中"
     };
+
+    private static async Task<BotReply> MyPurchasesAsync(CommandDependencies deps, CommandContext context)
+    {
+        IReadOnlyList<PurchaseEntry> rows = await deps.Economy.GetPurchaseHistoryAsync(
+            context.UserId, 50, context.CancellationToken);
+        if (rows.Count == 0)
+        {
+            return CommandReplies.Compose("🧾 我的购买", "还没有买过东西",
+                ["- 市场里看中了就用 /购买市场 @编号", "- 买过的记录会留在这里，方便对账与找回"],
+                ["/市场", "/状态"]);
+        }
+
+        List<string> lines = [.. rows.Select(x =>
+            $"- {x.Index}. {x.Date}　{x.ItemName}　{GameplayRules.Money(x.Price)} 金币　卖家 {x.Seller}")];
+        double total = rows.Sum(x => x.Price);
+        lines.Add($"- 合计 {rows.Count} 笔，共 {GameplayRules.Money(total)} 金币");
+        return CommandReplies.ListPage("🧾 我的购买", $"最近 {rows.Count} 笔", lines,
+            context.Page, "/我的购买", ["/市场", "/状态"]);
+    }
 
     private static async Task<BotReply> StoreAddAsync(CommandDependencies deps, CommandContext context)
     {

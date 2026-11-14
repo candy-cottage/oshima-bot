@@ -29,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(162, registry.All.Count);
+        Assert.Equal(164, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -264,6 +264,7 @@ public sealed class EconomyCommandTests
                 Provider.GetRequiredService<IForgeService>(),
                 null!,
                 Provider.GetRequiredService<IAdminService>(),
+                null!,
                 NullLogger.Instance);
         }
 

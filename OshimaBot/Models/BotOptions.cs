@@ -79,6 +79,10 @@ namespace OshimaBot.Models
 
         /// <summary>processed_events 幂等记录保留时长（小时），过期由后台任务每小时清理。</summary>
         public int ProcessedEventRetentionHours { get; set; } = 24;
+
+        /// <summary>数据库备份目录（相对路径按程序工作目录解析）。不存在时首次备份自动创建。</summary>
+        public string BackupDirectory { get; set; } = "backups";
+
     }
 
     public sealed class ServerOptions

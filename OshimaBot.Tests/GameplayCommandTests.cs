@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(162, registry.All.Count);
+        Assert.Equal(164, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -417,7 +417,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(162, registry.All.Count);
+        Assert.Equal(164, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -523,6 +523,7 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IQuestBoardService>(),
                 Provider.GetRequiredService<IForgeService>(),
                 Provider.GetRequiredService<ISnapshotService>(),
+                null!,
                 null!,
                 NullLogger.Instance);
         }

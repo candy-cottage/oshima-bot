@@ -288,6 +288,42 @@ public sealed class EconomyTests
         Assert.Equal(200, sellerLedger[1].Delta);
     }
 
+    /// <summary>
+    /// 我的购买（旧版 MarketShowListMyBuys）：成交后挂单不删、物品行改归属，
+    /// 所以能用 ledger 的 market_buy → listing → item 还原「买了什么、多少钱、跟谁买的」。
+    /// </summary>
+    [Fact]
+    public async Task PurchaseHistory_ListsOnlyMyBuys()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+        await players.GetSnapshotAsync(Buyer);
+        await TestItems.SeedAsync(db.Provider, Seller, 2);
+
+        Assert.Empty(await economy.GetPurchaseHistoryAsync(Buyer));       // 没买过
+
+        Assert.True((await economy.ListOnMarketAsync(Seller, 1, 200)).Ok);
+        Assert.True((await economy.BuyMarketAsync(Buyer, 1)).Ok);
+
+        PurchaseEntry row = Assert.Single(await economy.GetPurchaseHistoryAsync(Buyer));
+        Assert.Equal(200, row.Price, 3);
+        Assert.NotEmpty(row.ItemName);
+        Assert.DoesNotContain("不在", row.ItemName);
+        Assert.Equal($"旅人{Seller}", row.Seller);                          // 没有 users 行时退回占位名
+
+        Assert.Empty(await economy.GetPurchaseHistoryAsync(Seller));       // 卖家不出现在自己的购买里
+
+        // 买第二件 → 两条，最新的在前
+        Assert.True((await economy.ListOnMarketAsync(Seller, 1, 300)).Ok);
+        Assert.True((await economy.BuyMarketAsync(Buyer, 1)).Ok);
+        IReadOnlyList<PurchaseEntry> two = await economy.GetPurchaseHistoryAsync(Buyer);
+        Assert.Equal(2, two.Count);
+        Assert.Equal(300, two[0].Price, 3);
+        Assert.Equal(200, two[1].Price, 3);
+    }
+
     [Fact]
     public async Task Market_EnforcesPriceBoundsAndListingCap()
     {

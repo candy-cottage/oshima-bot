@@ -11,5 +11,6 @@ ADM-003	系统商店加货	`/商店加货 <商店1-7|店名> <物品名|ID> <价
 ADM-004	任务计划查询	`查询任务计划 <关键字>`	缺失	旧版 TestController.GetTaskScheduler：看定时任务的状态与下次触发时间。新版没有调度器（每日重置是惰性计算），无对应物
 ADM-005	公告重新推送	`刷新公告`	缺失	旧版 FunGameService.RefreshNotice 重推缓存中的公告。新版公告直读库、按需渲染，没有「推送」这一步；如需群发属新增能力
 ADM-006	改名审核 / 批准 / 拒绝	`/改名审核` `/批准改名` `/拒绝改名`	增强	旧版「改名审核/改名批准/改名拒绝」与「社团改名批准/拒绝」；新版合并成一张 RenameRequests 表，requiredRole=Admin + audit（CommandCatalog.cs:1108）
-SHO-030	市场购买历史	`我的购买 [页码]`	缺失	旧版 MarketShowListMyBuys：我自己买过什么。新版 ledger 有 market_buy 流水可派生，但没有查询入口
+SHO-030	市场购买历史	`/我的购买 [p2]`	等价	旧版 MarketShowListMyBuys：我自己买过什么。新版用 ledger 的 market_buy → 挂单 → 物品行还原（成交不删单、只改归属），显示时间/物品/价格/卖家，最新在前
 ADM-007	管理员发放货币	`/发放货币 <金币|钻石> <数量> [给 <目标>]`	增强	旧版没有发货币的入口（CreateItem 只发物品）。新版支持金币/钻石，**不设上限**（2026-11-14 决定），仍校验正数与有限值，并写 ledger（reason=admin_grant）
+OPS-001	数据库备份	`/备份数据库`	增强	旧版靠手工拷贝 MySQL 目录。新版用 VACUUM INTO 打一致性快照（WAL 下复制文件不安全），保留最近 10 份；还原步骤见 ops/README.md

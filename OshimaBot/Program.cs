@@ -100,6 +100,8 @@ builder.Services.AddSingleton<IForgeService, ForgeService>();
 builder.Services.AddSingleton<ISnapshotService, SnapshotService>();
 // 管理员发放（旧版 生成 / 生成指定魔法卡）。只加不删，扣减交给封禁与回滚流程。
 builder.Services.AddSingleton<IAdminService, AdminService>();
+// 运维：用 VACUUM INTO 打一致性快照（服务运行期间也能跑）。
+builder.Services.AddSingleton<IBackupService, BackupService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -118,6 +120,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IForgeService>(),
     sp.GetRequiredService<ISnapshotService>(),
     sp.GetRequiredService<IAdminService>(),
+    sp.GetRequiredService<IBackupService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

@@ -28,6 +28,10 @@ public interface IEconomyService
     Task<ActionResult> SellToStoreAsync(long userId, IReadOnlyList<int> indexes,
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MarketEntry>> GetMarketAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>我的市场购买记录（旧版 <c>MarketShowListMyBuys</c>）；数据源是 ledger 的 market_buy 流水。</summary>
+    Task<IReadOnlyList<PurchaseEntry>> GetPurchaseHistoryAsync(long userId, int limit = 20,
+        CancellationToken cancellationToken = default);
     Task<ActionResult> ListOnMarketAsync(long userId, int itemIndex, long price, CancellationToken cancellationToken = default);
     Task<ActionResult> DelistAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> BuyMarketAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -670,6 +674,48 @@ public sealed partial class EconomyService(
                 listing.SellerUserId == userId);
         }).ToArray();
     }
+
+    public Task<IReadOnlyList<PurchaseEntry>> GetPurchaseHistoryAsync(long userId, int limit = 20,
+        CancellationToken cancellationToken = default)
+        => ReadAsync<IReadOnlyList<PurchaseEntry>>(async (db, ct) =>
+        {
+            // 成交时挂单不删（Status=1），物品行只是改了 UserId，所以买过什么可以完整还原：
+            // ledger(market_buy) → listing → item 名称。
+            List<LedgerEntry> buys = await db.LedgerEntries.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Reason == "market_buy")
+                .OrderByDescending(x => x.Id).Take(Math.Clamp(limit, 1, 50)).ToListAsync(ct);
+            if (buys.Count == 0) return [];
+
+            List<long> listingIds = [];
+            foreach (LedgerEntry entry in buys)
+            {
+                if (long.TryParse(entry.RefId, out long id) && id > 0) listingIds.Add(id);
+            }
+            Dictionary<long, MarketListing> listings = await db.MarketListings.AsNoTracking()
+                .Where(x => listingIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x, ct);
+            Dictionary<long, PlayerItem> items = await ItemStore.ByIdsAsync(
+                db, listings.Values.Select(x => x.ItemInstanceId).Distinct().ToList(), ct);
+            List<long> sellers = listings.Values.Select(x => x.SellerUserId).Distinct().ToList();
+            Dictionary<long, string> handles = await db.Users.AsNoTracking()
+                .Where(x => sellers.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Handle, ct);
+
+            List<PurchaseEntry> rows = [];
+            foreach (LedgerEntry entry in buys)
+            {
+                if (!long.TryParse(entry.RefId, out long id) || !listings.TryGetValue(id, out MarketListing? listing))
+                {
+                    continue;
+                }
+                items.TryGetValue(listing.ItemInstanceId, out PlayerItem? item);
+                rows.Add(new PurchaseEntry(rows.Count + 1,
+                    GameplayRules.ToLocal(entry.CreatedAtUtc).ToString("MM-dd HH:mm", CultureInfo.InvariantCulture),
+                    item is null ? "（物品已不在）" : PlayerService.ReadName(item),
+                    -entry.Delta,
+                    handles.GetValueOrDefault(listing.SellerUserId, $"旅人{listing.SellerUserId}")));
+            }
+            return rows;
+        }, cancellationToken);
 
     public Task<IReadOnlyList<MarketEntry>> GetMarketAsync(long userId, CancellationToken cancellationToken = default)
         => ReadAsync<IReadOnlyList<MarketEntry>>((db, ct) => MarketViewAsync(db, userId, ct), cancellationToken);

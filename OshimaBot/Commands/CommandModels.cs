@@ -35,6 +35,7 @@ public sealed record CommandDependencies(
     IForgeService Forge,
     ISnapshotService Snapshots,
     IAdminService Admin,
+    IBackupService Backups,
     ILogger Logger);
 
 public interface ICommand
