@@ -2,13 +2,13 @@ id	groups	command	legacy_src	entry	impl	level	status	diff	fixture
 ARC-001	存档	创建存档	`RainBOTService.cs:773`	/注册	PlayerService.RegisterAsync	L1	简化替代	初始金币 5000 与「注册即送自建角色」都已对齐（CustomCharacter 属性当场随机，默认名 `旅人XXXX` 同旧版随机昵称思路）；差异只剩懒建档：首次任意操作即自动建档，不必先 /注册（差异登记 DIV-008）	FIX-CHR-REGISTER
 ARC-002	存档	还原存档	`RainBOTService.cs:834`	/还原存档	SnapshotService.RestoreLatestAsync	L1	增强	旧版「还原存档」是空壳：RestoreSaved 整个方法体被注释掉，只返回「此功能维护中」——没有可对照的行为，所以这条从「缺失」改为「增强」。新版是真快照：/备份存档 拍一份（钱包/角色/背包/小队/每日任务/签到/活动进度），/还原存档 先预览、/还原存档 确认 才执行；每人留 10 份、每天还原 1 次，快照之后有玩家间成交会被拒绝（防复制物品），还原前自动留底一份可反悔。市场/报价/私信/社团/在途探索与锻造不回滚（DIV-020）	—
 ARC-003	存档	我的存档	`RainBOTService.cs:781`	/状态	PlayerService.GetSnapshotAsync	L1	简化替代	字段集合不同：旧版含账号/绑定信息，新版为旅人等级/货币/角色/背包概览	
-CHR-001	角色	我角色	`RainBOTService.cs:1190`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	旧版简略/详细两档并支持角色序号，新版合并为一页列表 + 分页	
+CHR-001	角色	我角色	`RainBOTService.cs:1190`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	旧版把角色页分两档：「我角色 序号」给简略（等级/装备数），「我的角色 序号」给详细；新版只有一档——列表每行就是简略信息（@编号/等级/突破/装备件数），给编号直接看详细页，不再分两档	
 CHR-002	角色	我的角色	`RainBOTService.cs:1206`	/我的角色	PlayerService.GetCharactersAsync	L1	等价	旧版「我的角色」按序号看单个角色的技能/装备明细；新版 /我的角色 给编号即为详情（属性四行、六个装备槽含空槽、技能列表），不带编号是列表（GameplayTests.CharacterDetail_ListsStatsSixSlotsAndSkills）	
 CHR-003	角色	设置主战	`RainBOTService.cs:1254`	/设主战	PlayerService.SetMainAsync	L1	简化替代	旧版按角色序号，新版按 @编号；后者依赖列表顺序，需保证稳定映射	
 CHR-004	角色	我的主战	`RainBOTService.cs:796`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	无独立查询入口，主战以标记形式出现在角色列表	
 CHR-005	角色 / 战斗	开启练级	`RainBOTService.cs:1270`	/练级	PlayerService.TrainStartAsync	L2	简化替代	经验公式一致：每分钟 2 点、单次上限 2880 分钟、不收费（旧版 GetTrainingInfo）。**交互不同**：旧版「开启练级」只给角色序号、开了就一直攒，随时 /练级结算；新版要先选时长（默认 10 分钟、上限 2880），到点才能收。（FIX-CHR-TRAIN 只锁经验公式，不锁时长参数）	FIX-CHR-TRAIN
 CHR-006	角色 / 战斗	练级结算	`RainBOTService.cs:1293`	/收取练级	PlayerService.TrainClaimAsync	L2	简化替代	旧版结算同时回血与复活，新版只结算经验，不改变生命状态	
-CHR-007	角色 / 战斗	练级信息	`RainBOTService.cs:1286`	/练级	PlayerService.GetSnapshotAsync	L1	简化替代	新版无剩余时间/预计收益预览	
+CHR-007	角色 / 战斗	练级信息	`RainBOTService.cs:1286`	/练级	PlayerService.GetSnapshotAsync	L1	等价	练级信息 → /练级 无参：显示练级中的角色、已练/剩余分钟、累计与到点可得经验（GameplayTests.TrainInfo_ShowsProgressUntilClaim）；旧版还附带溢出经验书数量，新版没有经验书（溢出直接升级，见 CHR-006）	—
 CHR-008	角色	我的状态	`RainBOTService.cs:804`	/状态	PlayerService.GetSnapshotAsync	L1	简化替代	角色有生命/魔法数值，但没有**持久战损**与复活次数：每场战斗按模板重建战斗单位并 Recovery 满状态进场，战斗内的掉血不写回存档，所以「生命」永远等于上限（旧版有战损 + 复活次数）	
 CHR-009	角色	装备	`RainBOTService.cs:1384`	/装备	PlayerService.EquipAsync	L1	简化替代	旧版按「角色序号 + 物品序号」给**任意角色**装备；新版 /装备 @编号 只装到主战角色。槽位本身已完全对齐 Core 的 6 个（Weapon / Armor / Shoes / Accessory1 / Accessory2 / MagicCardPack），由物品 ItemType 决定，饰品自动找空位——不再有「3 槽」这回事	
 CHR-010	角色	取消装备	`RainBOTService.cs:1368`	/卸下	PlayerService.UnequipAsync	L1	简化替代	旧版按槽位数字 1–6；新版按槽位名 weapon / armor / shoes / accessory1 / accessory2 / magiccardpack（同样是 6 个，旧名 trinket 兼容映射到 accessory1）	
@@ -31,10 +31,10 @@ CHR-026	角色	小队状态	`RainBOTService.cs:812`	/小队	PlayerService.SquadA
 CHR-027	角色	清空小队	`RainBOTService.cs:827`	/小队	PlayerService.SquadAsync	L1	简化替代	无独立清空子命令；逐个移除即可，旧写法已给说明	
 CHR-028	角色 / 战斗	生命之泉	`RainBOTService.cs:2333`	—	—	—	scope-excluded	【范围排除】旧版花金币给角色回血，依赖持久 HP；v3 角色无持久 HP（每场战斗 Recovery 满血进场），没有作用对象。用户 2026-11-12 决定不做	—
 CHR-029	角色 / 战斗	酒馆	`RainBOTService.cs:2340`	—	—	—	scope-excluded	【范围排除】同上：旧版用钻石补满能量（EP），v3 的 EP 只在战斗内存在	—
-ITM-001	物品	我的库存	`RainBOTService.cs:788`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版支持 [页码] 与 <类型> [页码] 两种用法；新版仅分页，无类型过滤	
-ITM-002	物品	分类库存	`RainBOTService.cs:1139`	/背包	PlayerService.GetBagAsync	L1	简化替代	无索引分类视图	
-ITM-003	物品	物品库存	`RainBOTService.cs:1107`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版可只看物品区，新版与角色区合并展示	
-ITM-004	物品	角色库存	`RainBOTService.cs:1123`	/背包	PlayerService.GetCharactersAsync	L1	简化替代	新版角色在 /我的角色，不在背包	
+ITM-001	物品	我的库存	`RainBOTService.cs:788`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版「我的库存」一页里同时列角色与物品，并支持 <类型> [页码] 过滤；新版拆成 /背包（只列物品）与 /我的角色（角色），且没有按类型过滤。物品按入库顺序列出	
+ITM-002	物品	分类库存	`RainBOTService.cs:1139`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版「分类库存 <索引>」按物品分类索引逐类翻页；新版没有分类索引，只能用 /背包 翻页或 /库存搜索 按关键词找	
+ITM-003	物品	物品库存	`RainBOTService.cs:1107`	/背包	PlayerService.GetBagAsync	L1	简化替代	列表内容一致（都是背包里的全部物品），差别在排序：旧版固定按品质倒序、同名分在一组（GetInventoryInfo3 传 order=2），新版按入库顺序，没有排序选项	
+ITM-004	物品	角色库存	`RainBOTService.cs:1123`	/我的角色	PlayerService.GetCharactersAsync	L1	等价	角色库存 → /我的角色：列表带等级/突破/装备件数，@编号看属性、6 个装备槽与技能（GameplayTests.CharacterDetail_ListsStatsSixSlotsAndSkills）	—
 ITM-005	物品	我的物品	`RainBOTService.cs:1341`	/背包	PlayerService.GetBagAsync	L1	简化替代	旧版可查看单个物品详情（属性/技能/次数），新版仅列表行	
 ITM-006	物品	库存搜索2	`RainBOTService.cs:1160`	/库存搜索	PlayerService.SearchBagAsync	L1	简化替代	与「库存搜索」合并为同一入口（DIV-013）：都按名称或描述匹配，且不区分大小写；L1 行为由 ItemFlowTests.Search_MatchesNameAndDescription 覆盖，没有数值可锁，故不建数值夹具	—
 ITM-007	物品	库存搜索	`RainBOTService.cs:1175`	/库存搜索	PlayerService.SearchBagAsync	L1	简化替代	按名称或描述包含关键词匹配，命中行保留 /背包 的 @编号、附描述摘要、支持分页；旧版区分大小写，新版不区分（DIV-013）；L1 由 ItemFlowTests 覆盖	—
@@ -87,9 +87,9 @@ PLY-017	玩法	挑战魔法卡秘境	`RainBOTService.cs:2779`	/秘境	EconomySer
 PLY-018	玩法	创建房间	`RainBOTService.cs:3300`	/创建房间	RoomService.CreateAsync	L2	等价	四种房型、7 位房号、可选密码、按群隔离、赛马每群限一个、进程内状态（RoomServiceTests.Create_* / HorseRacing_AllowsOnlyOneRoomPerGroup）	—
 PLY-019	玩法	加入房间	`RainBOTService.cs:3335`	/加入房间	RoomService.JoinAsync	L2	等价	房号大小写不敏感，校验密码/人数上限/是否开局（RoomServiceTests.Join_ChecksCodePasswordAndCapacity）	—
 PLY-020	玩法	退出房间	`RainBOTService.cs:3391`	/退出房间	RoomService.QuitAsync	L1	等价	最后一人离开解散、房主离开转让（RoomServiceTests.Quit_TransfersMasterThenDisbands）	—
-PLY-021	玩法	开始游戏	`RainBOTService.cs:3370`	/开始游戏	RoomService.StartAsync	L2	简化替代	房主开局（赛马房任何人都能开）、至少 2 人、开局锁房（RoomServiceTests.Start_RequiresMasterAndTwoMembers）（2026-11-14 已定：不补准备位，房间由房主直接开局）	—
+PLY-021	玩法	开始游戏	`RainBOTService.cs:3370`	/开始游戏	RoomService.StartAsync	L2	简化替代	开局人数下限 2 人一致；权限不同：旧版只有房主能开（含赛马房，RainBOTService 里写死「只有房主才可以开始游戏」），新版赛马房任何人都能开、其他房型仍限房主。旧版没有「准备」位，本条与准备无关；如要对齐旧版，把 RoomService.StartAsync 里 RoomKind.HorseRacing 的例外去掉即可	—
 PLY-022	玩法	房间列表	`RainBOTService.cs:3392`	/房间列表	RoomService.List	L1	等价	只列本群房间（RoomServiceTests.Create_RejectsPrivateChatAndSecondRoom）	—
-PLY-023	玩法	房间信息	`RainBOTService.cs:3452`	/房间信息	RoomService.Info	L1	简化替代	成员列表与房主标记（RoomServiceTests.Join_*）；旧版「准备」位未实现（2026-11-14 已定：不补准备位，房间由房主直接开局）	—
+PLY-023	玩法	房间信息	`RainBOTService.cs:3452`	/房间信息	RoomService.Info	L1	简化替代	成员列表与房主标记（RoomServiceTests.Join_*）；旧版没有准备位（帮助里也没有这条命令），新版同样没有，开局由 /开始游戏 直接触发	—
 PLY-024	玩法	创建赛马	`RainBOTService.cs:3178`	/创建赛马	RoomService.CreateAsync	L2	等价	房间可建（每群限一个、8 人），/开始游戏 真跑赛马：赛道 Next(8,16)、随机 1–3 个技能、30% 随机事件；名次积分 10/8/6/4/3/2/1 后恒为 1，与旧版逐档一致（FIX-PLY-HORSE / HorseRaceTests）	FIX-PLY-HORSE
 PLY-025	玩法	加入赛马	`RainBOTService.cs:3270`	/加入赛马	RoomService.JoinHorseRoomAsync	L1	等价	房间可建（每群限一个、8 人），/开始游戏 真跑赛马：赛道 Next(8,16)、随机 1–3 个技能、30% 随机事件；名次积分 10/8/6/4/3/2/1 后恒为 1，与旧版逐档一致（FIX-PLY-HORSE / HorseRaceTests）	FIX-PLY-HORSE
 PLY-026	玩法	创建共斗	`RainBOTService.cs:3201`	/创建共斗	RoomService.RunCoopRoomAsync	L2	等价	成员各出主战角色组队讨伐：敌人数 = 参战人数、等级 = 队伍平均 +5；全灭给「等级」的钻石 + 共斗积分，未打完按击杀比例折算（旧版多敌模式给 0，见 DIV-019），MVP 额外一份钻石（FIX-PLY-COOP）	FIX-PLY-COOP
@@ -157,8 +157,8 @@ SHO-021	商店	报价添加物品	`RainBOTService.cs:2578`	/报价添加物品	E
 SHO-022	商店	报价添加对方物品	`RainBOTService.cs:2603`	/报价添加对方物品	EconomyService.AddOfferItemsAsync	L2	等价	挑选对方物品不托管、成交时校验是否还在（OfferFlowTests.Accept_FailsWhenWantedItemLeftTheBag）	—
 SHO-023	商店	报价移除物品	`RainBOTService.cs:2628`	/报价移除物品	EconomyService.RemoveOfferItemsAsync	L1	等价	按编号移除我方物品并退托管（OfferFlowTests.RemoveAndWithdraw_RestoreItems）	—
 SHO-024	商店	报价移除对方物品	`RainBOTService.cs:2653`	/报价移除对方物品	EconomyService.RemoveOfferItemsAsync	L1	等价	按编号移除对方物品，仅草稿可改（OfferFlowTests.Guard_RulesForDraftAndTarget）	—
-SHO-025	商店	市场	`RainBOTService.cs:3124`	/市场	EconomyService.GetMarketAsync	L2	简化替代	手续费已对齐 15%；仍缺旧版的挂单刷新规则，且每人 5 单上限是新版自加	
+SHO-025	商店	市场	`RainBOTService.cs:3124`	/市场	EconomyService.GetMarketAsync	L2	简化替代	手续费同为 15%（2026-11-14 起连取整也对齐）；差异只剩管理阈值：旧版不限每人挂单数、无价格上下限、挂单不过期，新版每人 5 单、价格 1~1,000,000，挂单同样不过期	
 SHO-026	商店	市场出售	`RainBOTService.cs:3027`	/上架	EconomyService.ListOnMarketAsync	L2	有意差异	上架时预扣 15% 手续费（标价 × 15%，不取整、无下限，显示两位小数）；成交时卖家收全额标价、撤回不退费；旧版是成交时才扣 15%（DIV-003 / DIV-015）。账本记 market_fee + market_sale 两笔，买卖双方净额已对拍	FIX-SHO-MARKET-SELL
 SHO-027	商店	市场下架	`RainBOTService.cs:3080`	/下架	EconomyService.DelistAsync	L1	等价	托管物品归还背包，无额外费用（EconomyTests.Market_CannotBuyOwnListingAndDelistReturnsItem）	
-SHO-028	商店	市场查看	`RainBOTService.cs:3068`	/市场	EconomyService.GetMarketAsync	L1	简化替代	无单品详情页	
+SHO-028	商店	市场查看	`RainBOTService.cs:3068`	/市场	EconomyService.GetMarketAsync	L1	简化替代	旧版「市场查看 <序号>」给出该商品的属性/技能详情；新版 /市场 只有列表行，没有单件详情（/商店详情 是商店侧的，不适用于市场挂单）	
 SHO-029	商店	市场购买	`RainBOTService.cs:3050`	/购买市场	EconomyService.BuyMarketAsync	L2	等价	买卖双方各记一条 ledger（旧版没有流水表，只能按余额变化对拍）；扣款与移交在同一事务里，买家付标价、卖家收全额（上架费已在上架时预扣）（EconomyTests.Market_CompletedSaleNetsPriceMinusListingFee）	

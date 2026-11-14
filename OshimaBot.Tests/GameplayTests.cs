@@ -227,6 +227,44 @@ public sealed class GameplayTests
         Assert.Null(await players.GetCharacterDetailAsync(UserId, 99));
     }
 
+    /// <summary>
+    /// 旧版「练级信息」：随时能看已经练了多久、还能拿多少。新版挂在 /练级 无参上。
+    /// 用假时钟推进，验「已练/剩余/累计」三个数随时间是变的，而不是一次性算死。
+    /// </summary>
+    [Fact]
+    public async Task TrainInfo_ShowsProgressUntilClaim()
+    {
+        FakeClock clock = new(new DateTime(2026, 11, 14, 4, 0, 0, DateTimeKind.Utc));
+        using GameplayDatabase db = new(clock);
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.RegisterAsync(UserId);
+
+        Assert.Null(await players.GetTrainingInfoAsync(UserId));      // 没在练 = 没有信息
+
+        Assert.True((await players.TrainStartAsync(UserId, 1, 10)).Ok);
+
+        TrainingInfo info = (await players.GetTrainingInfoAsync(UserId))!;
+        Assert.Equal(10, info.RemainingMinutes);
+        Assert.Equal(0, info.ElapsedMinutes);
+        Assert.Equal(0, info.ExpSoFar);
+        Assert.Equal(20, info.ExpTotal);                               // 2 点 × 10 分钟
+
+        clock.Advance(TimeSpan.FromMinutes(4));
+        info = (await players.GetTrainingInfoAsync(UserId))!;
+        Assert.Equal(4, info.ElapsedMinutes);
+        Assert.Equal(6, info.RemainingMinutes);
+        Assert.Equal(8, info.ExpSoFar);
+        Assert.Equal(20, info.ExpTotal);                               // 总量不随时间变化
+
+        clock.Advance(TimeSpan.FromMinutes(6.5));
+        info = (await players.GetTrainingInfoAsync(UserId))!;
+        Assert.Equal(0, info.RemainingMinutes);
+        Assert.Equal(20, info.ExpSoFar);                               // 封顶在总量
+
+        Assert.True((await players.TrainClaimAsync(UserId)).Ok);
+        Assert.Null(await players.GetTrainingInfoAsync(UserId));      // 结算后就没有了
+    }
+
     [Fact]
     public async Task Train_RequiresExpiryThenGrantsExpForLevelUp()
     {

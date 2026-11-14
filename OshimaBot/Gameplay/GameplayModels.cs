@@ -22,6 +22,14 @@ public sealed record CharacterEntry(
 public sealed record QuestEntry(int Index, string Key, string Name, int Status, int Progress, int Target);
 
 /// <summary>
+/// 练级中的那一名角色（旧版「练级信息」）：已练多久、还能拿多少。
+/// <para>旧版 <c>GetTrainingInfo</c> 会顺带算出溢出经验书的数量；新版没有经验书，
+/// 溢出直接继续升级，所以这里只给累计经验。</para>
+/// </summary>
+public sealed record TrainingInfo(
+    string CharacterName, int ElapsedMinutes, int RemainingMinutes, long ExpSoFar, long ExpTotal);
+
+/// <summary>
 /// 单个角色的详情（旧版「我角色 &lt;序号&gt;」）。
 /// <para><see cref="Stats"/> / <see cref="Slots"/> / <see cref="Skills"/> 已在服务层格式化好，
 /// 命令层只负责拼版面——面板类输出分散在各处格式化很容易出现两种口径。</para>

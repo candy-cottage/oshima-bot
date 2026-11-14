@@ -90,6 +90,9 @@ public interface IPlayerService
     Task<ActionResult> BreakAsync(long userId, int index, CancellationToken cancellationToken = default);
     Task<ActionResult> TrainStartAsync(long userId, int index, int minutes, CancellationToken cancellationToken = default);
     Task<ActionResult> TrainClaimAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>旧版「练级信息」：当前练级的角色、已练/剩余分钟与累计经验；没有在练则为 null。</summary>
+    Task<TrainingInfo?> GetTrainingInfoAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> SquadAsync(long userId, string operation, int index, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<QuestEntry>> GetQuestsAsync(long userId, CancellationToken cancellationToken = default);
     Task<ActionResult> ClaimQuestAsync(long userId, int index, CancellationToken cancellationToken = default);
@@ -1495,6 +1498,29 @@ public sealed class PlayerService(
                     $"- 本次预计经验：{GameplayRules.TrainExpPerMinute * duration}"
                 ],
                 ["/收取练级", "/状态"]);
+        }, cancellationToken);
+
+    public Task<TrainingInfo?> GetTrainingInfoAsync(long userId,
+        CancellationToken cancellationToken = default)
+        => userId <= 0 ? Task.FromResult<TrainingInfo?>(null) : ReadAsync<TrainingInfo?>(async (db, ct) =>
+        {
+            TrainingSession? session = await db.TrainingSessions.AsNoTracking()
+                .Where(x => x.UserId == userId && x.SettledAtUtc == null)
+                .OrderBy(x => x.EndsAtUtc).FirstOrDefaultAsync(ct);
+            if (session is null) return null;
+
+            List<PlayerCharacter> characters = await CharacterStore.ListAsync(db, userId, null, ct);
+            PlayerCharacter? character = characters.FirstOrDefault(x => x.Id == session.CharacterId);
+            int total = (int)Math.Min(
+                Math.Max(0, (session.EndsAtUtc - session.StartedAtUtc).TotalMinutes),
+                GameplayRules.TrainMaxMinutes);
+            int elapsed = (int)Math.Clamp(
+                Math.Max(0, (clock.UtcNow - session.StartedAtUtc).TotalMinutes), 0, total);
+            int remaining = (int)Math.Max(0, Math.Ceiling((session.EndsAtUtc - clock.UtcNow).TotalMinutes));
+            return new TrainingInfo(
+                character?.Name ?? "（角色已不存在）", elapsed, remaining,
+                GameplayRules.TrainExpPerMinute * (long)elapsed,
+                GameplayRules.TrainExpPerMinute * (long)total);
         }, cancellationToken);
 
     public Task<ActionResult> TrainClaimAsync(long userId, CancellationToken cancellationToken = default)

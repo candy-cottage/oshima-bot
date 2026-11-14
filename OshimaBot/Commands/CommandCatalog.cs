@@ -440,11 +440,10 @@ public static class CommandCatalog
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
         "train" => new DelegateCommand(
-            key: "train", name: "练级", aliases: ["训练", "train"], usage: "/练级 @1 [分钟]",
-            description: "开始离线练级：不收费，每分钟 2 点经验，单次上限 2880 分钟", group: CommandGroups.Player,
-            handler: async context => CommandReplies.FromResult(await deps.Players.TrainStartAsync(
-                context.UserId, RefIndex(context),
-                Quantity(context, 1, GameplayRules.TrainDefaultMinutes), context.CancellationToken))),
+            key: "train", name: "练级", aliases: ["训练", "train"], usage: "/练级 [@编号 [分钟]]",
+            description: "开始离线练级（不收费，2 点/分钟）；不带编号则查看当前练级进度",
+            group: CommandGroups.Player,
+            handler: context => TrainAsync(deps, context)),
 
         "train-claim" => new DelegateCommand(
             key: "train-claim", name: "收取练级", aliases: ["收训练", "trainclaim"], usage: "/收取练级",
@@ -1631,6 +1630,34 @@ public static class CommandCatalog
         2 => "已领取",
         _ => "进行中"
     };
+
+    private static async Task<BotReply> TrainAsync(CommandDependencies deps, CommandContext context)
+    {
+        // 不带编号 = 旧版「练级信息」：看这名角色练到哪了、到点能拿多少。
+        // 旧版这条命令就是「练级信息」，之前被重写成 /练级 会去开新练级再报错。
+        if (context.Args.Count == 0)
+        {
+            TrainingInfo? info = await deps.Players.GetTrainingInfoAsync(
+                context.UserId, context.CancellationToken);
+            if (info is null)
+            {
+                return CommandReplies.Error("当前没有角色在练级", "没有开始任何练级",
+                    "用法：/练级 @1 [分钟]（默认 10 分钟，上限 2880）", "/我的角色");
+            }
+            return CommandReplies.Compose("🏋️ 练级中",
+                $"{info.CharacterName} · 还需 {info.RemainingMinutes} 分钟",
+                [
+                    $"- 已练 {info.ElapsedMinutes} 分钟，累计 {info.ExpSoFar} 经验",
+                    $"- 到点可得 {info.ExpTotal} 经验（每分钟 {GameplayRules.TrainExpPerMinute} 点）",
+                    "- 旧版的经验书不迁移：溢出经验直接继续升级"
+                ],
+                ["/收取练级", "/状态"]);
+        }
+
+        return CommandReplies.FromResult(await deps.Players.TrainStartAsync(
+            context.UserId, RefIndex(context),
+            Quantity(context, 1, GameplayRules.TrainDefaultMinutes), context.CancellationToken));
+    }
 
     private static async Task<BotReply> BagAsync(CommandDependencies deps, CommandContext context)
     {
