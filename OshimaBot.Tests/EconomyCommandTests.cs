@@ -29,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(161, registry.All.Count);
+        Assert.Equal(162, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -172,6 +172,16 @@ public sealed class EconomyCommandTests
 
         // 品质写错要给出明确提示，而不是静默按普通发
         Assert.Contains("品质看不懂", await RouteAsync(router, AdminMessage($"/发放魔法卡 {magic.Id} 传说级")));
+
+        // 商店加货：店名走别名解析，价格/库存/限购/货币按位置解析
+        string shelf = await RouteAsync(router, AdminMessage($"/商店加货 武器商会 {entry.Name} 700 3 1 金币"));
+        Assert.Contains("已上架", shelf);
+        StoreEntry added = (await db.Provider.GetRequiredService<IEconomyService>()
+            .GetStoreAsync(UserId, StoreCatalog.WeaponsKey))[^1];
+        Assert.Equal(700, added.Price);
+        Assert.Equal(3, added.Stock);
+        Assert.Equal(1, added.Quota);
+        Assert.Contains("没有这家商店", await RouteAsync(router, AdminMessage($"/商店加货 月球商店 {entry.Name} 700")));
     }
 
     private static async Task<string> RouteAsync(CommandRouter router, ThirdPartyMessage message)

@@ -20,6 +20,10 @@ public interface IEconomyService
 
     Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity, CancellationToken cancellationToken = default);
 
+    /// <summary>往固定商店追加一件商品（旧版 <c>SystemStoreAddGoods</c>，管理员）。</summary>
+    Task<ActionResult> AddGoodAsync(long userId, string store, string itemName, long price,
+        StoreCurrency currency, int stock, int quota, CancellationToken cancellationToken = default);
+
     /// <summary>把背包物品按回收价卖给商店（旧版 StoreSellItem）：批量、跳过锁定/绑定。</summary>
     Task<ActionResult> SellToStoreAsync(long userId, IReadOnlyList<int> indexes,
         CancellationToken cancellationToken = default);
@@ -453,6 +457,67 @@ public sealed partial class EconomyService(
             ];
             if (skipped.Count > 0) lines.Add($"- 跳过：{string.Join("、", skipped)}");
             return ActionResult.Success("💰 出售成功", $"+{GameplayRules.Money(total)} 金币", lines, ["/背包", "/商店", "/状态"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> AddGoodAsync(long userId, string store, string itemName, long price,
+        StoreCurrency currency, int stock, int quota, CancellationToken cancellationToken = default)
+        => MutateAsync(userId, async (db, _, ct) =>
+        {
+            string? key = StoreCatalog.ResolveAlias(store);
+            StoreSpec? spec = key is null ? null : StoreCatalog.Find(key);
+            if (spec is null || string.Equals(spec.Key, StoreCatalog.DailyKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return ActionResult.Fail("没有这家商店", "没有加任何商品",
+                    "用 商店1–7 或店名（后勤部 / 武器商会 / 杂货铺 / 福利店 / 锻造商店 / 赛马商店 / 共斗商店）；每日商店不支持加货",
+                    "/商店");
+            }
+            if (price < 0 || (price == 0 && currency != StoreCurrency.Free))
+            {
+                return ActionResult.Fail("价格不合法", "没有加任何商品",
+                    "付费商品的标价必须大于 0；要免费就把货币写成「免费」", "/商店加货");
+            }
+            if (stock < -1 || quota < 0)
+            {
+                return ActionResult.Fail("库存或限购不合法", "没有加任何商品",
+                    "库存写 -1 表示无限，限购写 0 表示不限购", "/商店加货");
+            }
+
+            FunGame.Core.Entity.Item? item = FunGameService.AllItems
+                .FirstOrDefault(x => string.Equals(x.Name, itemName, StringComparison.Ordinal));
+            if (item is null && long.TryParse(itemName, out long catalogId))
+            {
+                item = FunGameService.AllItems.FirstOrDefault(x => x.Id == catalogId);
+            }
+            if (item is null)
+            {
+                return ActionResult.Fail($"内容包里没有「{itemName}」", "没有加任何商品",
+                    "名字要与 /查物品 一致；也可以直接写物品 ID", "/查物品");
+            }
+
+            // 先确保这家店已有货架（首次访问时从目录播种），新商品排在最后，不打乱已有 @编号。
+            List<StoreGood> goods = await EnsureStoreAsync(db, spec.Key, userId, ct);
+            int slot = goods.Count == 0 ? 1 : goods.Max(x => x.Slot) + 1;
+
+            db.StoreGoods.Add(new StoreGood
+            {
+                StoreKey = spec.Key, Slot = slot, OwnerUserId = 0,
+                Name = item.Name, ItemCatalogId = item.Id.ToString(CultureInfo.InvariantCulture),
+                PriceCurrency = StoreCatalog.LedgerCurrency(currency),
+                Price = price, Stock = stock, Quota = quota,
+                SoldCount = 0, UsersBuyCountJson = "{}"
+            });
+
+            string priceText = currency == StoreCurrency.Free
+                ? "免费"
+                : $"{GameplayRules.Money(price)} {StoreCatalog.CurrencyName(currency)}";
+            return ActionResult.Success("🏪 已上架",
+                $"{item.Name} → {spec.Name} · {priceText}",
+                [
+                    $"- 库存：{(stock < 0 ? "无限" : stock.ToString(CultureInfo.InvariantCulture))}"
+                        + $"　限购：{(quota == 0 ? "不限" : quota.ToString(CultureInfo.InvariantCulture))}",
+                    $"- 位置：第 {slot} 号（/商店详情 {slot} 可核对）",
+                    "- 玩家下单后按内容包发放实物；这条只加不删，撤货要改库"
+                ], ["/商店", "/商店加货"]);
         }, cancellationToken);
 
     public Task<ActionResult> BuyAsync(long userId, string? storeKey, int index, int quantity,

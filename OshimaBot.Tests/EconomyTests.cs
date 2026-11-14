@@ -426,6 +426,56 @@ public sealed class EconomyTests
         Assert.All(coop, x => Assert.Equal("共斗积分", x.Currency));
     }
 
+    /// <summary>
+    /// 商店加货（旧版 SystemStoreAddGoods）：商品本来就是库里的行，加货只是追加一行，
+    /// 排在最后所以不会打乱已有 @编号；加完必须能直接买到。
+    /// </summary>
+    [Fact]
+    public async Task StoreAdd_AppendsGoodThatCanBeBought()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+
+        IReadOnlyList<StoreEntry> before = await economy.GetStoreAsync(Seller, StoreCatalog.WeaponsKey);
+        FunGame.Core.Entity.Item item = FunGameService.AllItems
+            .First(x => x.ItemType == FunGame.Core.Library.Constant.ItemType.Weapon);
+
+        ActionResult added = await economy.AddGoodAsync(
+            Seller, "武器商会", item.Name, 800, StoreCurrency.Credits, stock: 5, quota: 2);
+        Assert.True(added.Ok, added.Title);
+
+        IReadOnlyList<StoreEntry> after = await economy.GetStoreAsync(Seller, StoreCatalog.WeaponsKey);
+        Assert.Equal(before.Count + 1, after.Count);
+        StoreEntry last = after[^1];                                  // 追加在末尾，旧编号不变
+        Assert.Equal(item.Name, last.Name);
+        Assert.Equal(800, last.Price);
+        Assert.Equal(5, last.Stock);
+        Assert.Equal(2, last.Quota);
+        Assert.Equal(before.Select(x => x.Name), after.Take(before.Count).Select(x => x.Name));
+
+        double creditsBefore = (await players.GetSnapshotAsync(Seller))!.Credits;
+        Assert.True((await economy.BuyAsync(Seller, StoreCatalog.WeaponsKey, after.Count, 1)).Ok);
+        Assert.Equal(creditsBefore - 800, (await players.GetSnapshotAsync(Seller))!.Credits, 3);
+        Assert.Contains(await players.GetBagAsync(Seller), x => x.Name == item.Name);
+
+        // StoreEntry.Stock 给的是**剩余**库存：5 件卖 1 件 → 4；已购记 1
+        StoreEntry restocked = (await economy.GetStoreAsync(Seller, StoreCatalog.WeaponsKey))[^1];
+        Assert.Equal(4, restocked.Stock);
+        Assert.Equal(1, restocked.Bought);
+
+        // 非法输入
+        Assert.False((await economy.AddGoodAsync(Seller, "不存在的店", item.Name, 100,
+            StoreCurrency.Credits, -1, 0)).Ok);
+        Assert.False((await economy.AddGoodAsync(Seller, "武器商会", "并不存在的物品", 100,
+            StoreCurrency.Credits, -1, 0)).Ok);
+        Assert.False((await economy.AddGoodAsync(Seller, "武器商会", item.Name, 0,
+            StoreCurrency.Credits, -1, 0)).Ok);            // 付费商品标价 0
+        Assert.False((await economy.AddGoodAsync(Seller, "武器商会", item.Name, 100,
+            StoreCurrency.Credits, -2, 0)).Ok);            // 库存小于 -1
+    }
+
     [Fact]
     public async Task Ranking_HasHorseCoopAndForgeBoards()
     {

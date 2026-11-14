@@ -29,6 +29,7 @@ public static class CommandCatalog
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
         "register", "status", "backup", "snapshots", "restore", "grant-item", "grant-currency", "grant-magic",
+        "store-add",
         "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
@@ -216,6 +217,13 @@ public static class CommandCatalog
             description: $"给玩家发指定品质的魔法卡（管理员，单次 ≤ {AdminService.MaxGrantPerCall} 张）",
             group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
             handler: context => GrantMagicAsync(deps, context)),
+
+        "store-add" => new DelegateCommand(
+            key: "store-add", name: "商店加货", aliases: ["加货", "上架商品", "商店上架"],
+            usage: "/商店加货 <商店1-7|店名> <物品名|ID> <价格> [库存] [限购] [金币|钻石|免费]",
+            description: "往固定商店加一件商品（管理员；库存 -1 无限、限购 0 不限）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: context => StoreAddAsync(deps, context)),
 
         "look" => new DelegateCommand(
             key: "look", name: "观察", aliases: ["场景", "look"], usage: "/观察",
@@ -1667,6 +1675,42 @@ public static class CommandCatalog
         1 => "✅ 可领取",
         2 => "已领取",
         _ => "进行中"
+    };
+
+    private static async Task<BotReply> StoreAddAsync(CommandDependencies deps, CommandContext context)
+    {
+        (string[] head, string? _) = SplitGrantArgs(context);   // 复用切分，防止物品名里带「给」
+        if (head.Length < 3)
+        {
+            return CommandReplies.Error("参数不完整", "没有加任何商品",
+                "用法：/商店加货 商店2 龙鳞碎片 800 50 3 金币（库存 -1 无限、限购 0 不限）", "/商店加货");
+        }
+        if (!long.TryParse(head[2], out long price) || price < 0)
+        {
+            return CommandReplies.Error("价格看不懂", "没有加任何商品",
+                $"「{head[2]}」不是有效标价；要免费就写 0 并把货币写成「免费」", "/商店加货");
+        }
+
+        int stock = head.Length > 3 ? ParseSignedInt(head[3], -1) : -1;
+        int quota = head.Length > 4 ? ParseSignedInt(head[4], 0) : 0;
+        StoreCurrency currency = head.Length > 5 ? ParseStoreCurrency(head[5]) : StoreCurrency.Credits;
+
+        return CommandReplies.FromResult(await deps.Economy.AddGoodAsync(
+            context.UserId, head[0], head[1], price, currency, stock, quota, context.CancellationToken));
+    }
+
+    private static int ParseSignedInt(string token, int fallback)
+        => int.TryParse(token, out int value) ? value : fallback;
+
+    private static StoreCurrency ParseStoreCurrency(string token) => token switch
+    {
+        "金币" or "金" or "credits" => StoreCurrency.Credits,
+        "钻石" or "钻" or "diamonds" => StoreCurrency.Diamonds,
+        "锻造积分" or "锻" or "forge" => StoreCurrency.ForgePoints,
+        "赛马积分" or "赛马" or "horse" => StoreCurrency.HorseRacingPoints,
+        "共斗积分" or "共斗" or "coop" => StoreCurrency.CooperativePoints,
+        "免费" or "free" => StoreCurrency.Free,
+        _ => StoreCurrency.Credits
     };
 
     /// <summary>
