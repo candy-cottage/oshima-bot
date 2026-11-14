@@ -1,0 +1,11 @@
+{
+  "SchemaVersion": 1,
+  "Seed": 20261114,
+  "OpeningDigest": "1e23da00ccdec8e4d4fb3e37a47f3ba88ceec93a886003bed829fd925bd514f8",
+  "OpeningHead": "=== 空投 ===\n[种子] 本局模拟使用随机种子 20261114（同种子可复现开局与配装；局内决策可能有差异）。\n社区送温暖了，现在随机发放空投！！",
+  "KillsMin": 14,
+  "KillsMax": 24,
+  "RoundsMin": 200,
+  "RoundsMax": 1200,
+  "Note": "整局无法逐字复现（局内决策在引擎侧不可复现，见 REMAINING §六）：开局摘要自动冻结，整局只锁量级带宽，带宽手改并写理由。"
+}

@@ -13,6 +13,8 @@ using Xunit;
 namespace OshimaBot.Tests;
 
 /// <summary>S9：模拟统计 / 日志数据库化，验证重启恢复与默认值。</summary>
+/// <para>会临时替换进程级统计仓储，所以挂在串行集合里。</para>
+[Collection(SimulationStateCollection.Name)]
 public sealed class SimulationPersistenceTests
 {
     [Fact]

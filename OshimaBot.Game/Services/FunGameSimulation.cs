@@ -219,7 +219,10 @@ namespace OshimaBot.Game.Services
 
                     // 开始空投
                     Msg = "";
-                    WriteLine($"[种子] 本局模拟使用随机种子 {Seed}（同种子可复现整局）。");
+                    // 别写成「同种子可复现整局」：2026-11-15 实测局内决策不可复现
+                    // （AIController 并行评估的同分 tie-break 会落到 ConcurrentBag 枚举序），
+                    // 能保证的是同一份开局——选人、配装、起始状态。措辞别超过实际能力。
+                    WriteLine($"[种子] 本局模拟使用随机种子 {Seed}（同种子可复现开局与配装；局内决策可能有差异）。");
                     int mQuality = 0;
                     int wQuality = 0;
                     int aQuality = 0;

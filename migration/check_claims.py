@@ -10,7 +10,8 @@
    会让夹具锁住一个改了也不生效的数字（`TrainCostCredits` / `BossCostCredits` 就是这么漏掉的）；
 5. `DIVERGENCES.md` 里提到的 `FIX-xxx` 必须有对应的 .json，且「待建」只能标给还没建的；
 6. 冻结种子回归样本（`Fixtures/Seeded/regression.json`）必须存在、指纹与内容自洽、
-   且真的被测试读（`SeededRegressionTests`）。CI 不编译 C#，冻结样本的真伪只能在这里守。
+   且真的被测试读（`SeededRegressionTests`）。CI 不编译 C#，冻结样本的真伪只能在这里守；
+7. 模拟的开局摘要（`Fixtures/Seeded/simulation.json`）必须是完整 SHA-256，且区间字段没写反。
 
 这是「代码与描述一致性」的机械部分。语义部分（「旧版 6 槽、新版 3 槽」这类事实断言）
 机器判断不了，只能人工复核；但至少不会再出现「引用的测试早就改名了」「入口早就删了」。
@@ -35,6 +36,8 @@ EXTERNAL = HERE / "matrix_external.tsv"
 PROBE = TESTS_DIR / "LegacyFixture.cs"
 SEEDED_FIXTURE = TESTS_DIR / "Fixtures" / "Seeded" / "regression.json"
 SEEDED_TESTS = TESTS_DIR / "SeededRegressionTests.cs"
+SIMULATION_FIXTURE = TESTS_DIR / "Fixtures" / "Seeded" / "simulation.json"
+SIMULATION_TESTS = TESTS_DIR / "SimulationSeedTests.cs"
 PRODUCTION = [ROOT / "OshimaBot", ROOT / "OshimaBot.Game"]
 
 # 冻结样本至少覆盖：抽卡 4 项、签到 2 项、探索 2 项、秘境、市场 2 项、兑换、分解、
@@ -175,6 +178,42 @@ def seeded_fixture() -> list[str]:
     return problems
 
 
+def simulation_fixture() -> list[str]:
+    """模拟的冻结样本：开局摘要像样、区间没写反、并且真的被测试读。
+
+    整局逐字复现做不到（局内决策在引擎侧），所以这里只冻开局摘要 + 结构性区间；
+    门禁能查的是「文件还在、摘要格式对、区间不是空转」，语义部分靠测试本身。
+    """
+    if not SIMULATION_FIXTURE.exists():
+        return [f"缺少模拟冻结样本 {SIMULATION_FIXTURE.relative_to(ROOT)}"]
+
+    try:
+        data = json.loads(SIMULATION_FIXTURE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        return [f"{SIMULATION_FIXTURE.name} 不是合法 JSON：{error}"]
+
+    problems: list[str] = []
+    digest = str(data.get("OpeningDigest") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        problems.append(f"{SIMULATION_FIXTURE.name} 的 OpeningDigest 不是 64 位小写十六进制"
+                        "；重新冻结：OSHIMA_UPDATE_SEEDS=1 dotnet test --filter SimulationSeed")
+
+    for low, high in (("KillsMin", "KillsMax"), ("RoundsMin", "RoundsMax")):
+        if not isinstance(data.get(low), int) or not isinstance(data.get(high), int):
+            problems.append(f"{SIMULATION_FIXTURE.name} 缺少 {low}/{high}")
+        elif data[low] > data[high]:
+            problems.append(f"{SIMULATION_FIXTURE.name} 的 {low} > {high}（区间写反了）")
+
+    if not SIMULATION_TESTS.exists():
+        problems.append("缺少 SimulationSeedTests.cs，模拟冻结样本没人比对")
+    else:
+        text = SIMULATION_TESTS.read_text(encoding="utf-8")
+        if "OSHIMA_UPDATE_SEEDS" not in text:
+            problems.append("SimulationSeedTests.cs 里没有重新冻结的开关说明（OSHIMA_UPDATE_SEEDS）")
+
+    return problems
+
+
 def rows():
     header, *body = MATRIX.read_text(encoding="utf-8").splitlines()
     columns = header.split("\t")
@@ -224,6 +263,7 @@ def main() -> int:
     errors.extend(dead_probe_constants())
     errors.extend(dangling_fixtures())
     errors.extend(seeded_fixture())
+    errors.extend(simulation_fixture())
 
     if errors:
         print(f"引用核对失败，共 {len(errors)} 项：")
