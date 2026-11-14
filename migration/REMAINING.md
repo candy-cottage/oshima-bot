@@ -157,6 +157,9 @@
 | 关掉周期空投（`EnablePeriodicDrop=false`） | 仍然不同（36 / 33 / 44） |
 | 首个分歧位置 | 第 60 回合附近，**局内决策层** |
 
+**2026-11-15 已定位根因**：全体技能的目标按每局重掷的 `Guid` 排序，逐目标的随机判定跟着顺序走
+（细节见 `docs/2026-11-15/AIController-可复现性排查.md`）。修复建议在下面第 1 条，1-2 行。
+
 Core 不在本仓、改不了（也不该为了测试去改引擎），所以这里换形态而不是等修：
 
 **能冻的冻死。** 开局（选人 + 首次空投 + 前几个回合的结算）是纯种子驱动的，
@@ -175,25 +178,30 @@ Core 不在本仓、改不了（也不该为了测试去改引擎），所以这
 结构性坏掉（伤害/技能全失效 → 没人死 → 回合数飙升）会红；
 「暴击倍率 1.5 → 1.6」这种微调不会红，那需要先把决策随机流钉死。
 
-### 给 Core 的三条建议（本仓不做，供上游参考）
+### 给 Core 的四条建议（本仓不做，供上游参考）
 
-按「改动最小 + 收益最大」排序，前两条做完，整局逐字复现大概率就成立了：
+> 详细排查过程、日志证据与代码引用见 `docs/2026-11-15/AIController-可复现性排查.md`（`docs/` 按约定不入库）。
+> **根因已定位**：全局技能的目标列表用每局重掷的 `Guid` 排序，逐目标的随机判定跟着顺序走。
 
-1. **`AIController` 的候选收集别落回枚举序**（`Model/Controller/AIController.cs:190-250`）。
-   现在用 `Task.Run` 并行评估每个移动格、塞进 `ConcurrentBag`，最后按
-   「分数 → 行动类型 → 移动格 Id → 技能 Id → 物品 Id → 目标数」排序。
-   没有地图时大量 `TargetMoveGrid.Id` 相同（默认值），同分候选就落回 bag 的枚举顺序。
-   建议给每个候选再加一条稳定键（例如「移动格坐标 X,Y」或提交序号），并在
-   `Task.WaitAll` 之后先 `OrderBy` 再取值。
-2. **`Region.Weather` 的随机源**（`Entity/Explore/Region.cs:36`）。
-   内容初始化时用 `Random.Shared` 掷天气，跨进程不可控，且让内容初始化不可复现。
-   建议改成接收 `IRandomSource` 或由调用方注入种子——现在天气只用于显示，
-   所以这一步不急，但它确实让「同一天不同进程的地区数据」有差异。
-3. **让内容构造能接受显式随机源**（`OshimaBot.Content/Units/RegionUnit.cs:14-19`、
-   `RegionCharacter.cs:17-24`、`Characters/CustomCharacter.cs:15-24`）。
-   这些构造函数用 `Random.Next` 掷 ATK/HP/MP/SPD/HR/MR，此时 `GamingQueue` 还是 null，
-   于是走 `Random.Shared`：**探索遇敌的属性每个进程都不同**，同种子打同一只怪属性不一样。
-   这条与我们自己的内容包有关，等 §六 的隔离做完可以顺手改。
+按「改动量 ÷ 收益」排序：
+
+1. **`AIController.SelectTargets` 别用 Guid 当排序键**（`Controller/AIController.cs:622`、`:625`）。
+   全体技能 `targets.OrderBy(c => c.Guid)`，而 `Guid` 由 `InitCharacters` 每局 `Guid.NewGuid()`
+   重掷（`Model/Queue/GamingQueue.cs:519`）→ 同一批目标、同样伤害，顺序每局不同；
+   25% 眩晕这类逐目标判定按顺序消耗随机数，落点就变，整局从此分岔。
+   换成稳定键（`Id` + 名字，或入场序号）即可，1-2 行，不动数值。注释里那句
+   「以 Guid 兜底，保证排序结果确定」是错的：Guid 只在同局内稳定。
+2. **让 Guid 可复现**（`GamingQueue.cs:517-521`）：由种子 + 入场序号派生 Guid。
+   收益不止 AOE 排序——`Character.GetHashCode()` 就是 `Guid.GetHashCode()`，
+   `Dictionary<Character, …>` / `HashSet<Character>` 的枚举顺序也会跟着稳定。
+   这条做完，第 1 条可以从容做，也能顺带堵住同类隐患。
+3. **`candidateDecisions` 的 tie-breaker 补「选了哪几个目标」**
+   （`AIController.cs:239-246`）。现有键只能对齐「选了几个」；同分同数量的两份候选
+   仍会落到 `ConcurrentBag` 的枚举序。只有多格（有地图）并行评估时会触发，优先级低于前两条。
+4. **内容构造与 `Region.Weather` 的 `Random.Shared`**（`OshimaBot.Content/Units/RegionUnit.cs:14-19`、
+   `RegionCharacter.cs:17-24`、`Characters/CustomCharacter.cs:15-24`、`Entity/Explore/Region.cs:36`）。
+   内容初始化时用进程级随机掷属性，**探索遇敌的属性每个进程都不同**；天气只用于显示，不急。
+   这条落在我们自己的内容包里，等 1、2 做完再动。
 
 ---
 
