@@ -391,6 +391,41 @@ public sealed class EconomyTests
         Assert.Equal(570 * 5 * 4, expGain);
     }
 
+    /// <summary>
+    /// 三家积分商店的商品、价格与限购照抄旧版配置。这几个表是「等价」但没有数值夹具的地方，
+    /// 挪一位或改个价都没人发现，所以在这里逐项钉住。
+    /// </summary>
+    [Fact]
+    public async Task PointShops_KeepLegacyGoodsAndPrices()
+    {
+        using EconomyDatabase db = new();
+        IEconomyService economy = db.Get<IEconomyService>();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(Seller);
+
+        IReadOnlyList<StoreEntry> forge = await economy.GetStoreAsync(Seller, StoreCatalog.ForgeKey);
+        Assert.Equal(
+            ["大师锻造券", "时霜药剂", "晶化记忆孢子", "神经宝石", "深渊火钻", "时凝液"],
+            forge.Select(x => x.Name));
+        Assert.Equal([400L, 10, 10, 6, 2, 8], forge.Select(x => x.Price));
+        Assert.All(forge, x => Assert.Equal("锻造积分", x.Currency));
+        Assert.All(forge, x => Assert.Equal(0, x.Quota));           // 不限购
+
+        IReadOnlyList<StoreEntry> horse = await economy.GetStoreAsync(Seller, StoreCatalog.HorseRacingKey);
+        StoreEntry diamond = Assert.Single(horse);
+        Assert.Equal("钻石", diamond.Name);
+        Assert.Equal(5, diamond.Price);                              // 5 积分换 1 钻石
+        Assert.Equal(300, diamond.Quota);                            // 每人限购 300
+        Assert.Equal("赛马积分", diamond.Currency);
+
+        IReadOnlyList<StoreEntry> coop = await economy.GetStoreAsync(Seller, StoreCatalog.CooperativeKey);
+        Assert.Equal(
+            ["奖券", "十连奖券", "流光之印", "混沌之核", "升华之印", "原初之印", "永恒之印"],
+            coop.Select(x => x.Name));
+        Assert.Equal([3L, 25, 8, 16, 4, 16, 12], coop.Select(x => x.Price));
+        Assert.All(coop, x => Assert.Equal("共斗积分", x.Currency));
+    }
+
     [Fact]
     public async Task Ranking_HasHorseCoopAndForgeBoards()
     {

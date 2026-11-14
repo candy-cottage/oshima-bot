@@ -21,6 +21,9 @@ jobs:
           python-version: "3.12"
       - name: Validate migration matrix
         run: python migration/gen_matrix.py --check
+      # 矩阵里引用的测试方法、入口指令必须真的存在，否则文档会变成空头支票。
+      - name: Validate evidence references
+        run: python migration/check_claims.py
       - name: Fail when the rendered matrix is stale
         run: |
           python migration/gen_matrix.py
