@@ -27,7 +27,6 @@
     },
     "legacy": {
       "costCredits": 0,
-      "defaultMinutes": 10,
       "maxMinutes": 2880,
       "expPerMinute": 2,
       "expByMinutes": [
@@ -35,19 +34,19 @@
         200,
         5760,
         5760
-      ]
+      ],
+      "note": "旧版 StartTraining 只收角色序号、**没有时长参数**：开了就一直攒，练级结算时按 now-start 实际经过的分钟数算经验，每分钟 2 点、单次上限 2880 分钟（GetTrainingInfo），不收费。新版本项目改成「开局先选时长」（默认 10、上限 2880），到点才能收——这是交互差异，不是数值差异。"
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1270",
     "method": "RainBOTService 开启练级分支 + FunGameService.GetTrainingInfo",
-    "note": "旧版 FunGameService.GetTrainingInfo：每分钟 2 经验、每日上限 2880 分钟、不收金币；新版已逐项对齐（按会话时长结算）"
+    "note": "旧版 FunGameService.GetTrainingInfo：每分钟 2 经验、每日上限 2880 分钟、不收金币；新版已逐项对齐（按会话时长结算） 旧版无 defaultMinutes 概念（随时可结算）。"
   },
   "legacyMatchPolicy": {
     "mode": "exact",
     "fields": [
       "costCredits",
-      "defaultMinutes",
       "maxMinutes",
       "expPerMinute",
       "expByMinutes"

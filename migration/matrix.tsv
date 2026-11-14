@@ -6,7 +6,7 @@ CHR-001	角色	我角色	`RainBOTService.cs:1190`	/我的角色	PlayerService.Ge
 CHR-002	角色	我的角色	`RainBOTService.cs:1206`	/我的角色	PlayerService.GetCharactersAsync	L1	等价	旧版「我的角色」按序号看单个角色的技能/装备明细；新版 /我的角色 给编号即为详情（属性四行、六个装备槽含空槽、技能列表），不带编号是列表（GameplayTests.CharacterDetail_ListsStatsSixSlotsAndSkills）	
 CHR-003	角色	设置主战	`RainBOTService.cs:1254`	/设主战	PlayerService.SetMainAsync	L1	简化替代	旧版按角色序号，新版按 @编号；后者依赖列表顺序，需保证稳定映射	
 CHR-004	角色	我的主战	`RainBOTService.cs:796`	/我的角色	PlayerService.GetCharactersAsync	L1	简化替代	无独立查询入口，主战以标记形式出现在角色列表	
-CHR-005	角色 / 战斗	开启练级	`RainBOTService.cs:1270`	/练级	PlayerService.TrainStartAsync	L2	等价	不收金币；收益按会话实际时长 ×2/分钟，单次上限 2880 分钟（旧版 GetTrainingInfo）	FIX-CHR-TRAIN
+CHR-005	角色 / 战斗	开启练级	`RainBOTService.cs:1270`	/练级	PlayerService.TrainStartAsync	L2	简化替代	经验公式一致：每分钟 2 点、单次上限 2880 分钟、不收费（旧版 GetTrainingInfo）。**交互不同**：旧版「开启练级」只给角色序号、开了就一直攒，随时 /练级结算；新版要先选时长（默认 10 分钟、上限 2880），到点才能收。（FIX-CHR-TRAIN 只锁经验公式，不锁时长参数）	FIX-CHR-TRAIN
 CHR-006	角色 / 战斗	练级结算	`RainBOTService.cs:1293`	/收取练级	PlayerService.TrainClaimAsync	L2	简化替代	旧版结算同时回血与复活，新版只结算经验，不改变生命状态	
 CHR-007	角色 / 战斗	练级信息	`RainBOTService.cs:1286`	/练级	PlayerService.GetSnapshotAsync	L1	简化替代	新版无剩余时间/预计收益预览	
 CHR-008	角色	我的状态	`RainBOTService.cs:804`	/状态	PlayerService.GetSnapshotAsync	L1	简化替代	角色有生命/魔法数值，但没有**持久战损**与复活次数：每场战斗按模板重建战斗单位并 Recovery 满状态进场，战斗内的掉血不写回存档，所以「生命」永远等于上限（旧版有战损 + 复活次数）	
@@ -59,7 +59,7 @@ BAT-001	战斗	决斗	`RainBOTService.cs:1720`	/决斗	EconomyService.DuelAsync 
 BAT-002	战斗	完整决斗	`RainBOTService.cs:1702`	/完整决斗	EconomyService.DuelWithAsync + CommandCatalog.Report	L2	等价	同一场 PvP，摘要 + 逐回合战报（BattleFlowTests.DuelWith_*）	—
 BAT-003	战斗	小队决斗	`RainBOTService.cs:1738`	/小队决斗	EconomyService.TeamDuelWithAsync	L2	等价	双方小队真打（RunTeam），未编成退回主战；不收费用、不发奖励（BattleFlowTests.TeamDuel_*）；小队上限 4 人与旧版一致	—
 BAT-004	战斗	查询boss	`RainBOTService.cs:1756`	/查询Boss	CommandCatalog.BossInfo	L1	等价	Boss 列表与详情（BossPoolTests / EconomyTests.Boss_SharedTargetAllowsRepeatAndAccumulatesLedger）	—
-BAT-005	战斗	讨伐boss	`RainBOTService.cs:1790`	/Boss	EconomyService.BossAsync	L2	等价	10 只全服共享池（进程内静态，重启重置，旧版同样是静态字典）、战损写回、可反复挑战同一只、击杀补池；单人 / 小队共用同一结算；入场费 0、击杀只发钻石 = 等级、战绩 +25（FIX-BAT-BOSS）	FIX-BAT-BOSS
+BAT-005	战斗	讨伐boss	`RainBOTService.cs:1790`	/Boss	EconomyService.BossAsync	L2	等价	10 只全服共享池（进程内静态，重启重置，旧版同样是静态字典）、战损写回、可反复挑战同一只、击杀补池；单人 / 小队共用同一结算；入场费 0、击杀只发钻石 = 等级、战绩 +25（**战绩是新增系统**，旧版没有；见 DIV-001）（FIX-BAT-BOSS）	FIX-BAT-BOSS
 BAT-006	战斗	小队讨伐boss	`RainBOTService.cs:1775`	/小队讨伐Boss	EconomyService.BossTeamAsync	L2	等价	小队打同一个全服共享目标，结算与单人完全共用（BattleFlowTests.BossTeam_RequiresSquadAndReturnsBattleLog）	—
 BAT-007	战斗	排行榜	`RainBOTService.cs:3459`	/排行榜	EconomyService.GetRankingAsync	L2	简化替代	旧版无参「排行榜」是角色养成榜（按累计经验，前 20）；新版默认 /排行榜 是金币榜，养成口径对应 /排行榜 等级（按角色等级、再按经验）——默认榜不同，榜单长度已对齐 20	
 BAT-008	战斗	金币排行榜	—	/排行榜 金币	EconomyService.GetRankingAsync	L2	等价	金币榜直接读钱包（CorePlayers.Credits），前 20 名，与旧版 UserCreditsRanking 口径一致；托管资产不进钱包，因此天然不计入（EconomyTests.Ranking_HasHorseCoopAndForgeBoards）	

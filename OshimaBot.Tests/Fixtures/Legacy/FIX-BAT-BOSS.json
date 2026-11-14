@@ -28,16 +28,15 @@
         30,
         60
       ],
-      "winPoints": 25,
       "sharedPool": true,
       "poolSize": 10,
-      "note": "旧版 FightBoss 无入场费、无金币奖励；击杀只做 Inventory.Materials += boss.Level；Boss 是 static 字典里的 10 只共享实体，战损写回、击杀补池，可反复挑战同一只。新版 BossPool 与之同构（进程内，重启重置，旧版同样是静态字典）。"
+      "note": "旧版 FightBoss 无入场费、无金币奖励；击杀只做 Inventory.Materials += boss.Level；Boss 是 static 字典里的 10 只共享实体（战损写回、击杀补池、可反复挑战）。**战绩积分是新增系统**：旧版没有战绩/积分榜，+25 与未击杀按伤害折算都是本项目自定的。"
     }
   },
   "source": {
     "file": "OshimaWebAPI/Services/RainBOTService.cs:1790",
     "method": "RainBOTService 讨伐boss分支 + FunGameService.GenerateBoss / EnhanceBoss",
-    "note": "旧版 FunGameService.GenerateBoss / EnhanceBoss：10 只池、等级 15/30/60、技能与魔法按 cutRate 折算、Red 装 + 金色卡包 + 消耗品、随机被动/绝招与 DynamicsEffect；`FightBoss` 单人、`FightBossTeam` 小队共用结算。新版 BossPool 逐项对齐：共享血量累计、击杀补池、入场费 0、击杀只发钻石=等级。（2026-11-14 修正：此前文档写成「每人每日一次抽象挑战、不共享血量」，与代码不符。）"
+    "note": "旧版 FunGameService.GenerateBoss / EnhanceBoss：10 只池、等级 15/30/60、技能与魔法按 cutRate 折算、Red 装 + 金色卡包 + 消耗品、随机被动/绝招与 DynamicsEffect；`FightBoss` 单人、`FightBossTeam` 小队共用结算。新版 BossPool 逐项对齐：共享血量累计、击杀补池、入场费 0、击杀只发钻石=等级。（2026-11-14 修正：此前文档写成「每人每日一次抽象挑战、不共享血量」，与代码不符。） 战绩 +25 为新增（旧版无战绩系统）。"
   },
   "legacyMatchPolicy": {
     "mode": "exact",
@@ -46,7 +45,6 @@
       "rewardCredits",
       "killMaterialEqualsLevel",
       "bossLevels",
-      "winPoints",
       "sharedPool",
       "poolSize"
     ]

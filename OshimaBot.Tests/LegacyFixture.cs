@@ -333,12 +333,18 @@ public static class LegacyFixtureProbes
 
     private static JsonObject Store()
     {
-        // 旧版 7 个固定商店的价格表 + 每日商店的件数与刷新时刻
+        // 旧版 7 个固定商店：商品名、价格、库存、限购全都锁，缺一项就等于没对拍
+        // （价格对但库存/限购错，玩家看到的货架还是不一样）。
         JsonObject stores = [];
         foreach (StoreSpec spec in StoreCatalog.Stores)
         {
-            stores[spec.Key] = new JsonArray(spec.Goods
-                .Select(g => (JsonNode?)JsonValue.Create(g.Price)).ToArray());
+            stores[spec.Key] = new JsonObject
+            {
+                ["names"] = new JsonArray(spec.Goods.Select(g => (JsonNode?)JsonValue.Create(g.Name)).ToArray()),
+                ["prices"] = new JsonArray(spec.Goods.Select(g => (JsonNode?)JsonValue.Create(g.Price)).ToArray()),
+                ["stock"] = new JsonArray(spec.Goods.Select(g => (JsonNode?)JsonValue.Create(g.Stock)).ToArray()),
+                ["quota"] = new JsonArray(spec.Goods.Select(g => (JsonNode?)JsonValue.Create(g.Quota)).ToArray())
+            };
         }
         return new JsonObject
         {

@@ -334,7 +334,7 @@ public static class CommandCatalog
 
         "salvage" => new DelegateCommand(
             key: "salvage", name: "分解", aliases: ["salvage"], usage: "/分解 @1 [x2]",
-            description: "分解未锁定物品换取金币", group: CommandGroups.Player,
+            description: "分解未锁定物品换取钻石", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.SalvageAsync(
                 context.UserId, RefIndex(context), Quantity(context, 1, 1), context.CancellationToken))),
 
@@ -435,13 +435,13 @@ public static class CommandCatalog
 
         "break" => new DelegateCommand(
             key: "break", name: "突破", aliases: ["break", "突破上限"], usage: "/突破 @1",
-            description: "满级后消耗金币提升等级上限", group: CommandGroups.Player, audit: true,
+            description: "满级后消耗钻石与印记提升等级上限", group: CommandGroups.Player, audit: true,
             handler: async context => CommandReplies.FromResult(await deps.Players.BreakAsync(
                 context.UserId, RefIndex(context), context.CancellationToken))),
 
         "train" => new DelegateCommand(
             key: "train", name: "练级", aliases: ["训练", "train"], usage: "/练级 @1 [分钟]",
-            description: "花费金币开始离线练级", group: CommandGroups.Player,
+            description: "开始离线练级：不收费，每分钟 2 点经验，单次上限 2880 分钟", group: CommandGroups.Player,
             handler: async context => CommandReplies.FromResult(await deps.Players.TrainStartAsync(
                 context.UserId, RefIndex(context),
                 Quantity(context, 1, GameplayRules.TrainDefaultMinutes), context.CancellationToken))),
