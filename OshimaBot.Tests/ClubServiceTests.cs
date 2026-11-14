@@ -93,13 +93,16 @@ public sealed class ClubServiceTests
         await clubs.CreateAsync(Master, "ABC", isPublic: true);
         long clubId = (await clubs.MineAsync(Master))!.Id;
         Assert.True((await clubs.JoinAsync(Member, clubId)).Ok);
+        Assert.Equal(2, (await clubs.MineAsync(Master))!.Members);
 
         ActionResult masterQuit = await clubs.QuitAsync(Master);
         Assert.False(masterQuit.Ok);
         Assert.Contains("社长", masterQuit.Title);
+        Assert.Equal(2, (await clubs.MineAsync(Master))!.Members);   // 被拒了，人数不该变
 
         Assert.True((await clubs.QuitAsync(Member)).Ok);
         Assert.Null(await clubs.MineAsync(Member));
+        Assert.Equal(1, (await clubs.MineAsync(Master))!.Members);   // 「腾出位置」要看得到
     }
 
     [Fact]

@@ -164,6 +164,11 @@ public sealed class OfferFlowTests
         ActionResult accepted = await economy.AcceptOfferAsync(Rival, (int)offerId);
         Assert.False(accepted.Ok);
         Assert.Contains("不在背包里", accepted.Title);
+
+        // 失败必须是整笔作废，而不是「扣了我方物品、对方那件又没拿到」：
+        // 报价仍在待接受列表里，托管物品没被吃掉。
+        Assert.Contains(await economy.GetOffersAsync(Me), x => x.Id == offerId);
+        Assert.Contains(await economy.GetOffersAsync(Rival), x => x.Id == offerId);
     }
 
     private sealed class OfferDatabase : IDisposable

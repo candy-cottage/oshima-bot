@@ -97,6 +97,7 @@ public sealed class RoomServiceTests
         ActionResult full = await rooms.JoinAsync(103, GroupA, code, "secret");
         Assert.False(full.Ok);
         Assert.Contains("已满", full.Title);
+        Assert.Equal(4, rooms.Info(GroupA, code, Host)!.Members.Count);   // 被拒的人不能占位
 
         ActionResult unknown = await rooms.JoinAsync(104, GroupA, "ZZZZZZZ", null);
         Assert.False(unknown.Ok);
@@ -212,9 +213,24 @@ public sealed class RoomServiceTests
         BattleReport report = await rooms.StartAsync(Host, GroupA);
 
         Assert.True(report.Result.Ok, report.Result.Title);
-        string content = string.Join(" ", report.Result.Lines);
+        string content = string.Join("\n", report.Result.Lines);
         Assert.Contains("红队", content);
         Assert.Contains("蓝队", content);
+
+        // 「分队」要真的分成两队，而不是把两个名字都印在一行：
+        // 两行各取「：」之后的名字，合起来必须恰好是 2 个不同的人。
+        string red = report.Result.Lines.First(x => x.Contains("红队："));
+        string blue = report.Result.Lines.First(x => x.Contains("蓝队："));
+        string[] redNames = red[(red.IndexOf('：') + 1)..]
+            .Split('、', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string[] blueNames = blue[(blue.IndexOf('：') + 1)..]
+            .Split('、', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Single(redNames);
+        Assert.Single(blueNames);
+        Assert.NotEqual(redNames[0], blueNames[0]);
+
+        Assert.NotEmpty(report.Log);                       // 真打了一局，不只是分队
+        Assert.Contains("回合", content);
     }
 
     [Theory]
