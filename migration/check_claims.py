@@ -8,7 +8,9 @@
 3. `DIV-0xx` —— 由 `gen_matrix.py --check` 负责，这里不重复；
 4. 夹具探针引用的常量必须是**活常量**——除声明外还有引用。恒为 0 又没人读的「费用常量」
    会让夹具锁住一个改了也不生效的数字（`TrainCostCredits` / `BossCostCredits` 就是这么漏掉的）；
-5. `DIVERGENCES.md` 里提到的 `FIX-xxx` 必须有对应的 .json，且「待建」只能标给还没建的。
+5. `DIVERGENCES.md` 里提到的 `FIX-xxx` 必须有对应的 .json，且「待建」只能标给还没建的；
+6. 冻结种子回归样本（`Fixtures/Seeded/regression.json`）必须存在、指纹与内容自洽、
+   且真的被测试读（`SeededRegressionTests`）。CI 不编译 C#，冻结样本的真伪只能在这里守。
 
 这是「代码与描述一致性」的机械部分。语义部分（「旧版 6 槽、新版 3 槽」这类事实断言）
 机器判断不了，只能人工复核；但至少不会再出现「引用的测试早就改名了」「入口早就删了」。
@@ -16,6 +18,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -29,7 +33,13 @@ DIVERGENCES = HERE / "DIVERGENCES.md"
 FIXTURES = TESTS_DIR / "Fixtures" / "Legacy"
 EXTERNAL = HERE / "matrix_external.tsv"
 PROBE = TESTS_DIR / "LegacyFixture.cs"
+SEEDED_FIXTURE = TESTS_DIR / "Fixtures" / "Seeded" / "regression.json"
+SEEDED_TESTS = TESTS_DIR / "SeededRegressionTests.cs"
 PRODUCTION = [ROOT / "OshimaBot", ROOT / "OshimaBot.Game"]
+
+# 冻结样本至少覆盖：抽卡 4 项、签到 2 项、探索 2 项、秘境、市场 2 项、兑换、分解、
+# 锻造 2 项、赛马、三张消耗表、运势、商店日切点、十连端到端。
+MIN_SEEDED_PROBES = 20
 
 TEST_REF = re.compile(r"\b(\w+Tests)\.([\w*]+)")
 COMMAND_REF = re.compile(r"/([^\s|·（）()`,]+)")
@@ -127,6 +137,44 @@ def dangling_fixtures() -> list[str]:
     return problems
 
 
+def seeded_fixture() -> list[str]:
+    """冻结种子回归样本：文件在、指纹自洽、探针够多、并且真的被测试读。
+
+    指纹算法必须和 C# 侧 `SeedScenario.Canonicalize` + `SeededRegressionTests.Digest` 一致：
+    按 Ordinal 排序的 `id\\t值` 用 `\\n` 连接，再取 SHA-256 小写十六进制。
+    """
+    if not SEEDED_FIXTURE.exists():
+        return [f"缺少冻结种子样本 {SEEDED_FIXTURE.relative_to(ROOT)}（同种子回归要它才算数）"]
+
+    problems: list[str] = []
+    try:
+        data = json.loads(SEEDED_FIXTURE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        return [f"{SEEDED_FIXTURE.name} 不是合法 JSON：{error}"]
+
+    probes = data.get("Probes") or {}
+    if len(probes) < MIN_SEEDED_PROBES:
+        problems.append(f"{SEEDED_FIXTURE.name} 只有 {len(probes)} 条探针，少于预期的 {MIN_SEEDED_PROBES} 条")
+
+    body = "\n".join(f"{key}\t{probes[key]}" for key in sorted(probes))
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    if digest != data.get("Digest"):
+        problems.append(
+            f"{SEEDED_FIXTURE.name} 的 digest 与内容不符（被手工改过，或改了没重新生成）"
+            "；重新生成：OSHIMA_UPDATE_SEEDS=1 dotnet test --filter SeededRegression")
+
+    if not SEEDED_TESTS.exists():
+        problems.append("缺少 SeededRegressionTests.cs，冻结样本没人比对")
+    else:
+        text = SEEDED_TESTS.read_text(encoding="utf-8")
+        if "OSHIMA_UPDATE_SEEDS" not in text:
+            problems.append("SeededRegressionTests.cs 里没有重新生成的开关说明（OSHIMA_UPDATE_SEEDS）")
+        if "SeedScenario" not in text:
+            problems.append("SeededRegressionTests.cs 没有引用 SeedScenario（样本与场景脱钩了）")
+
+    return problems
+
+
 def rows():
     header, *body = MATRIX.read_text(encoding="utf-8").splitlines()
     columns = header.split("\t")
@@ -175,6 +223,7 @@ def main() -> int:
 
     errors.extend(dead_probe_constants())
     errors.extend(dangling_fixtures())
+    errors.extend(seeded_fixture())
 
     if errors:
         print(f"引用核对失败，共 {len(errors)} 项：")
