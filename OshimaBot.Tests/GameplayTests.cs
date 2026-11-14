@@ -232,6 +232,7 @@ public sealed class GameplayTests
     {
         using GameplayDatabase db = new();
         IPlayerService players = db.Get<IPlayerService>();
+        double creditsBefore = (await players.GetSnapshotAsync(UserId))!.Credits;
 
         Assert.True((await players.TrainStartAsync(UserId, 1, 1)).Ok);
         Assert.False((await players.TrainClaimAsync(UserId)).Ok); // 尚未结束
@@ -248,6 +249,10 @@ public sealed class GameplayTests
         }
 
         Assert.True((await players.TrainClaimAsync(UserId)).Ok);
+
+        // 练级不收费（旧版 StartTraining 没有扣费分支）。原先靠一个恒为 0 的常量"证明"，
+        // 但那个常量没人读、改了也不会有任何效果——只能从余额侧验证。
+        Assert.Equal(creditsBefore, (await players.GetSnapshotAsync(UserId))!.Credits, 3);
 
         // Core 模型：经验记在角色身上，够了自动升级（不再有旅人经验中转）。
         IReadOnlyList<CharacterEntry> characters = await players.GetCharactersAsync(UserId);

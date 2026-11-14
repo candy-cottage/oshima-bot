@@ -98,17 +98,17 @@ public static class ActivityCatalog
             {
                 // 周六 04:00 → 周一 04:00；周四看就是「本周六」，周日看就是「已开始」。
                 int offset = ((int)DayOfWeek.Saturday - (int)local.DayOfWeek + 7) % 7;
-                DateTime start = local.Date.AddDays(offset).AddHours(4);
+                DateTime start = local.Date.AddDays(offset).AddHours(GameplayRules.DailyRefreshHour);
                 return (GameplayRules.ToUtc(start), GameplayRules.ToUtc(start.AddDays(2)));
             }
             case ActivityWindow.WinterFestival:
             {
-                DateTime start = new(local.Year, 12, 20, 4, 0, 0);
-                DateTime end = new(local.Year + 1, 1, 5, 4, 0, 0);
+                DateTime start = new(local.Year, 12, 20, GameplayRules.DailyRefreshHour, 0, 0);
+                DateTime end = new(local.Year + 1, 1, 5, GameplayRules.DailyRefreshHour, 0, 0);
                 if (local.Month == 1 && local.Day <= 5)
                 {
-                    start = new DateTime(local.Year - 1, 12, 20, 4, 0, 0);
-                    end = new DateTime(local.Year, 1, 5, 4, 0, 0);
+                    start = new DateTime(local.Year - 1, 12, 20, GameplayRules.DailyRefreshHour, 0, 0);
+                    end = new DateTime(local.Year, 1, 5, GameplayRules.DailyRefreshHour, 0, 0);
                 }
                 return (GameplayRules.ToUtc(start), GameplayRules.ToUtc(end));
             }

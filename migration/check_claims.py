@@ -5,7 +5,9 @@
 1. `SomeTests.Method` / `SomeTests.Prefix*` —— 测试类与方法要真的存在；
 2. 「当前入口」列里的 `/命令` —— 必须是 CommandCatalog 里注册过的 key / name / alias
    （固定商店走 `StoreCommand(...)` 批量注册，要单独认）；
-3. `DIV-0xx` —— 由 `gen_matrix.py --check` 负责，这里不重复。
+3. `DIV-0xx` —— 由 `gen_matrix.py --check` 负责，这里不重复；
+4. 夹具探针引用的常量必须是**活常量**——除声明外还有引用。恒为 0 又没人读的「费用常量」
+   会让夹具锁住一个改了也不生效的数字（`TrainCostCredits` / `BossCostCredits` 就是这么漏掉的）。
 
 这是「代码与描述一致性」的机械部分。语义部分（「旧版 6 槽、新版 3 槽」这类事实断言）
 机器判断不了，只能人工复核；但至少不会再出现「引用的测试早就改名了」「入口早就删了」。
@@ -23,6 +25,8 @@ TESTS_DIR = ROOT / "OshimaBot.Tests"
 CATALOG = ROOT / "OshimaBot" / "Commands" / "CommandCatalog.cs"
 MATRIX = HERE / "matrix.tsv"
 EXTERNAL = HERE / "matrix_external.tsv"
+PROBE = TESTS_DIR / "LegacyFixture.cs"
+PRODUCTION = [ROOT / "OshimaBot", ROOT / "OshimaBot.Game"]
 
 TEST_REF = re.compile(r"\b(\w+Tests)\.([\w*]+)")
 COMMAND_REF = re.compile(r"/([^\s|·（）()`,]+)")
@@ -63,6 +67,46 @@ def load_commands() -> set[str]:
         aliases.update(re.findall(r'"([^"]+)"', match.group(2)))
 
     return keys | names | aliases
+
+
+def production_sources() -> dict[Path, str]:
+    files: dict[Path, str] = {}
+    for base in PRODUCTION:
+        for path in base.rglob("*.cs"):
+            if any(part in {"obj", "bin"} for part in path.parts):
+                continue
+            files[path] = path.read_text(encoding="utf-8")
+    return files
+
+
+def dead_probe_constants() -> list[str]:
+    """探针读到的常量里，除声明外没有任何引用的一律算死常量。
+
+    判据：`Holder.Name` 在业务代码里 0 次，且 `Name` 在 Holder 自己的文件里不超过 1 次
+    （1 次就是那行声明）。允许「只在定义文件的其它函数里用」——ForgeRules.Needy 属于这种，
+    它被 Plan 用，而 Plan 本身被 ForgeService 调。
+    """
+    probe = PROBE.read_text(encoding="utf-8")
+    sources = production_sources()
+
+    holders: dict[str, Path] = {}
+    for path, text in sources.items():
+        for match in re.finditer(r"(?:static\s+)?(?:sealed\s+)?class\s+(\w+)", text):
+            holders.setdefault(match.group(1), path)
+
+    problems: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for holder, name in re.findall(r"\b(\w+)\.(\w+)\b", probe):
+        if holder not in holders or (holder, name) in seen:
+            continue
+        seen.add((holder, name))
+        if not re.search(rf"\b{name}\b", holders[holder].read_text(encoding="utf-8")):
+            continue                      # 不是该类的成员（可能是局部变量/类型名），跳过
+        qualified = sum(text.count(f"{holder}.{name}") for text in sources.values())
+        in_def = len(re.findall(rf"\b{name}\b", holders[holder].read_text(encoding="utf-8")))
+        if qualified == 0 and in_def <= 1:
+            problems.append(f"{holder}.{name} 只声明、无人引用（夹具锁了个不生效的值）")
+    return problems
 
 
 def rows():
@@ -110,6 +154,8 @@ def main() -> int:
                     continue
                 if command not in commands:
                     errors.append(f"{rid}: 入口 /{command} 不在 CommandCatalog 里")
+
+    errors.extend(dead_probe_constants())
 
     if errors:
         print(f"引用核对失败，共 {len(errors)} 项：")

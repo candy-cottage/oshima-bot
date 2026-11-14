@@ -139,6 +139,27 @@ public sealed class ItemFlowTests
         Assert.Equal(2, (await ItemsAsync(db)).Count);
     }
 
+    /// <summary>
+    /// 任一张是锁定的就整体拒绝（旧版 <c>ConflateMagicCardPack</c> 的前置检查）。
+    /// 夹具 FIX-ITM-MAGICCARD 声明了 rejectsLocked，但之前只有「重复编号」和「用完」两个用例。
+    /// </summary>
+    [Fact]
+    public async Task CraftMagicCardPack_RejectsLockedMaterial()
+    {
+        using ItemFlowDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.GetSnapshotAsync(UserId);
+        Item locked = Card("火之矢卡", MagicSkill(0));
+        locked.IsLock = true;
+        await SeedAsync(db, locked, Card("冰霜卡", MagicSkill(1)), Card("风刃卡", MagicSkill(2)));
+
+        ActionResult result = await players.CraftMagicCardPackAsync(UserId, 1, 2, 3);
+
+        Assert.False(result.Ok);
+        Assert.Contains("锁定", result.Title);
+        Assert.Equal(3, (await ItemsAsync(db)).Count);      // 一张都没被消耗
+    }
+
     [Fact]
     public async Task UseMagicCard_LevelsUpMagicAlreadyInsidePack()
     {

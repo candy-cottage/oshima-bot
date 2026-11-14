@@ -22,9 +22,11 @@ public static class GameplayRules
     // FunGameConstant.DrawCardReduce = 1000（金币/次）、DrawCardReduce_Material = 5（钻石/次）；
     // 十连在旧版是按 10 倍直接乘，没有折扣。
     public const int GachaCostCredits = 1000;
-    public const int GachaTenCostCredits = 10000;
     public const int GachaCost = 5;
-    public const int GachaTenCost = 50;
+    // 十连价从单抽推导：GachaAsync 实际扣的是 unitCost × 次数，
+    // 若另写一份字面量，改单抽价就会出现「描述写 45、实扣 50」。
+    public const int GachaTenCostCredits = GachaCostCredits * 10;
+    public const int GachaTenCost = GachaCost * 10;
     public const int MaxGachaPerCall = 10;
 
     /// <summary>
@@ -55,7 +57,7 @@ public static class GameplayRules
     public const int SignInMaterialMax = 15;
 
     // ---- 旧版对齐：分解返还（FunGameConstant.DecomposedMaterials，按品质固定值）----
-    public const int TrainCostCredits = 0;
+    // 练级不收费：旧版 StartTraining 没有扣费分支，这里也不该有「费用常量」假装在收。
     public const int TrainDefaultMinutes = 10;
     public const int TrainMaxMinutes = 2880;      // 旧版 dailyTrainingMinutes
     public const int TrainExpPerMinute = 2;       // 旧版 experiencePerMinute
@@ -105,13 +107,20 @@ public static class GameplayRules
     /// 商店日 key：旧版每日商店按本地 <c>Today.AddHours(4)</c> 刷新，
     /// 所以凌晨 4 点前仍算前一天。返回 <c>yyyy-MM-dd</c>。
     /// </summary>
+    /// <summary>
+    /// 每日边界（本地 4:00）：商店刷新、社团周、活动窗口、每日任务全用它。
+    /// <para>只在这一处定义。原先 `StoreCatalog.DailyRefreshHour` 也写着 4，但没人读——
+    /// 夹具锁了个改了也不生效的数字，`check_claims.py` 的死常量检查把它抓出来了。</para>
+    /// </summary>
+    public const int DailyRefreshHour = 4;
+
     public static string StoreDay(DateTime utcNow)
     {
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), GameTimeZone);
-        DateTime boundary = local.Hour >= 4
-            ? local.Date.AddHours(4)
-            : local.Date.AddDays(-1).AddHours(4);
+        DateTime boundary = local.Hour >= DailyRefreshHour
+            ? local.Date.AddHours(DailyRefreshHour)
+            : local.Date.AddDays(-1).AddHours(DailyRefreshHour);
         return DateOnly.FromDateTime(boundary).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
@@ -132,9 +141,9 @@ public static class GameplayRules
     public static DateTime StoreDayStartUtc(DateTime utcNow)
     {
         DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), GameTimeZone);
-        DateTime boundary = local.Hour >= 4
-            ? local.Date.AddHours(4)
-            : local.Date.AddDays(-1).AddHours(4);
+        DateTime boundary = local.Hour >= DailyRefreshHour
+            ? local.Date.AddHours(DailyRefreshHour)
+            : local.Date.AddDays(-1).AddHours(DailyRefreshHour);
         return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(boundary, DateTimeKind.Unspecified), GameTimeZone);
     }
 
@@ -338,7 +347,10 @@ public static class GameplayRules
         AnyItem
     }
 
-    public static GachaKind RollGachaKind(IRandomSource random) => (GachaKind)random.Next(8);
+    /// <summary>产出类型数量：取枚举成员数，别写死 8（旧版是 <c>Next(8)</c>，加一类就该自动跟上）。</summary>
+    public static int GachaKindCount => Enum.GetValues<GachaKind>().Length;
+
+    public static GachaKind RollGachaKind(IRandomSource random) => (GachaKind)random.Next(GachaKindCount);
 
     /// <summary>旧版抽到已拥有的角色时，折算成 50 材料。</summary>
     public const int GachaDuplicateCharacterMaterials = 50;
@@ -573,9 +585,8 @@ public static class GameplayRules
     public const int DuelWinPoints = 10;
     public const int DuelLosePoints = 2;
 
-    public const int BossCostCredits = 0;      // 旧版 FightBoss 无入场费
-    public const int BossRewardCredits = 0;    // 旧版击杀只给 Materials += Level，没有金币
-    public const int BossRewardDiamonds = 0;   // 实际奖励按 Boss 等级发放（15/30/60），此常量已不参与计算
+    // 讨伐不收费也不发金币：旧版 FightBoss 两边都没有分支，击杀只做 Materials += boss.Level。
+    // 这三个「=0 的常量」原先是死代码（无人读取），删掉以免夹具锁住一个没人用的数字。
     public const int BossWinPoints = 25;
     /// <summary>榜单显示条数。旧版 <c>GetRanking</c> 的 <c>showTop = 20</c>，对齐它。</summary>
     public const int RankingTop = 20;

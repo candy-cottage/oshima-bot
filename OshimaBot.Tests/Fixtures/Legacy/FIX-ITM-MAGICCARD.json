@@ -22,7 +22,7 @@
   "source": {
     "file": "OshimaWebAPI/Controllers/FunGameController.cs:3512",
     "method": "ConflateMagicCardPack + FunGameService.ConflateMagicCardPack",
-    "note": "固定吃 3 张：每张必须 ItemType.MagicCard 且 RemainUseTimes > 0，任一张 IsLock 就整体拒绝；成功后移除 3 张、生成一个装这 3 张的魔法卡包。"
+    "note": "固定吃 3 张：每张必须 ItemType.MagicCard 且 RemainUseTimes > 0，任一张 IsLock 就整体拒绝；成功后移除 3 张、生成一个装这 3 张的魔法卡包。【证明方式】「3 张」由方法签名 CraftMagicCardPackAsync(int, int, int) 强制；requiresUnused 由 CraftMagicCardPack_ConsumesThreeCards（用完再合必失败）覆盖，rejectsLocked 由 CraftMagicCardPack_RejectsLockedMaterial 覆盖。"
   },
   "legacyMatchPolicy": {
     "mode": "exact",

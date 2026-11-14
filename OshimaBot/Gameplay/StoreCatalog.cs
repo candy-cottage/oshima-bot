@@ -50,7 +50,7 @@ public static class StoreCatalog
     public const int DailyGoodsCount = 4;
 
     /// <summary>旧版 <c>CheckDailyStore</c>：按 <c>DateTime.Today.AddHours(4)</c> 刷新。</summary>
-    public const int DailyRefreshHour = 4;
+    // 每日刷新点不在这里定义：它在 GameplayRules.DailyRefreshHour，商店/社团周/活动共用一个。
 
     public static readonly IReadOnlyList<StoreSpec> Stores =
     [

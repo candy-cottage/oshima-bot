@@ -54,11 +54,13 @@ python migration/check_claims.py
 5. `Fixture` 列直接写 `FIX-xxx` 但夹具不存在 —— 未建成的必须写 `待建 FIX-xxx`。
 6. 差异列引用了 `DIVERGENCES.md` 里不存在的 `DIV-xxx`。
 
-`check_claims.py` 另外守两件事（CI 也跑）：
+`check_claims.py` 另外守三件事（CI 也跑）：
 
 7. 差异列里出现的 `XxxTests.Method` / `XxxTests.Prefix*` 必须能对上真实测试类与方法；
 8. 「当前入口」列里的 `/指令` 必须是 `CommandCatalog` 注册过的 key / name / alias
-   （固定商店走 `StoreCommand(...)` 批量注册，单独认）。
+   （固定商店走 `StoreCommand(...)` 批量注册，单独认）；
+9. 夹具探针读到的常量必须是**活常量**——除声明外还有引用。恒为 0 又没人读的「费用常量」
+   会让夹具锁住一个改了也不生效的数字（`TrainCostCredits`、`StoreCatalog.DailyRefreshHour` 都是这样被揪出来的）。
 
 ## 与 Fixture 的关系
 

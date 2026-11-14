@@ -269,7 +269,9 @@ public static class LegacyFixtureProbes
             : IntArray(input, "minutes");
         return new JsonObject
         {
-            ["costCredits"] = GameplayRules.TrainCostCredits,
+            // 旧版 StartTraining 没有扣费分支，新版同样不收费；这里锁的是「确实为 0」这个事实，
+            // 并由 GameplayTests.Train_DoesNotTouchCredits 从行为侧兜住（常量已删，不能再靠它自我校验）。
+            ["costCredits"] = 0,
             ["defaultMinutes"] = GameplayRules.TrainDefaultMinutes,
             ["maxMinutes"] = GameplayRules.TrainMaxMinutes,
             ["expPerMinute"] = GameplayRules.TrainExpPerMinute,
@@ -296,21 +298,27 @@ public static class LegacyFixtureProbes
             ["singleCost"] = GameplayRules.GachaCost,
             ["tenCost"] = GameplayRules.GachaTenCost,
             ["maxPerCall"] = GameplayRules.MaxGachaPerCall,
-            // 与 PlayerService.GachaAsync 的计费分支保持一致
+            // 与 PlayerService.GachaAsync 的计费分支逐行一致：先 clamp 次数，再单价 × 次数。
+            // 不写 `c == 10 ? 十连价 : ...` 那种分支——代码里根本没有这个分支，
+            // 那样写等于测试自己发明了一条实现。
             ["costByCount"] = new JsonArray(counts
-                .Select(c => (JsonNode?)JsonValue.Create(c == 10 ? GameplayRules.GachaTenCost : GameplayRules.GachaCost * c))
+                .Select(c => (JsonNode?)JsonValue.Create(
+                    GameplayRules.GachaCost * Math.Clamp(c, 1, GameplayRules.MaxGachaPerCall)))
                 .ToArray()),
             ["singleCostCredits"] = GameplayRules.GachaCostCredits,
             ["tenCostCredits"] = GameplayRules.GachaTenCostCredits,
-            // 命中率 20%（旧版 dice > 0.8）；用整数百分比避免浮点尾数
-            ["hitChancePercent"] = 20,
+            // 命中率由阈值推导（旧版 dice > 0.8 → 20%），别写死 20：
+            // 改 GachaHitThreshold 时这里必须跟着变，否则夹具会替代码撒谎。
+            ["hitChancePercent"] = (int)Math.Round((1 - GameplayRules.GachaHitThreshold) * 100),
             // 旧版无保底：十连可以全空
             ["pityQuality"] = null,
             // 旧版 Next(8) 均匀落到 8 类产出；重复角色折算 50 材料；橙品以上抽到即锁
-            ["kindCount"] = 8,
+            ["kindCount"] = GameplayRules.GachaKindCount,
             ["duplicateCharacterRefund"] = GameplayRules.GachaDuplicateCharacterMaterials,
-            ["autoLockFrom"] = GameplayRules.QualityName(
-                GameplayRules.QualityTierOf(FunGame.Core.Library.Constant.QualityType.Orange)),
+            // 锁定起始品质也从实现扫出来（别写死「橙」）：改阈值时夹具会跟着变。
+            ["autoLockFrom"] = GameplayRules.QualityName(GameplayRules.QualityTierOf(
+                Enum.GetValues<FunGame.Core.Library.Constant.QualityType>()
+                    .First(GameplayRules.AutoLockOnDraw))),
             ["qualityThresholds"] = new JsonArray(GameplayRules.GachaQualityWeights
                 .Select(w => (JsonNode?)JsonValue.Create(w.Percent)).ToArray())
         };
@@ -350,7 +358,7 @@ public static class LegacyFixtureProbes
         {
             ["stores"] = stores,
             ["dailyCount"] = StoreCatalog.DailyGoodsCount,
-            ["dailyRefreshHour"] = StoreCatalog.DailyRefreshHour
+            ["dailyRefreshHour"] = GameplayRules.DailyRefreshHour
         };
     }
 
@@ -374,12 +382,19 @@ public static class LegacyFixtureProbes
 
     private static JsonObject Boss() => new()
     {
-        ["costCredits"] = GameplayRules.BossCostCredits,
-        ["rewardCredits"] = GameplayRules.BossRewardCredits,
-        // 旧版击杀奖励 = Materials += boss.Level（Boss 池等级 15/30/60）
+        // 旧版 FightBoss 既不收入场费也不发金币（没有这两个分支），常量已删，这里锁事实：
+        // 由 BattleFlowTests.BossKill_PaysDiamondsEqualToLevelNotCredits 从余额侧验证。
+        ["costCredits"] = 0,
+        ["rewardCredits"] = 0,
+        // 旧版击杀奖励 = Materials += boss.Level
         ["killMaterialEqualsLevel"] = true,
-        ["bossLevels"] = new JsonArray(
-            JsonValue.Create(15), JsonValue.Create(30), JsonValue.Create(60)),
+        // 等级 = MaxLevel / cutRate，按 CutRates 推导（旧版 60/1、60/2、60/4 → 60/30/15），
+        // 不在测试里另抄一份数字：调平衡表时夹具会跟着动，而不是假装没变。
+        ["bossLevels"] = new JsonArray(BossPool.CutRates
+            .Select(cut => (JsonNode?)JsonValue.Create(
+                Math.Max(1, General.GameplayEquilibriumConstant.MaxLevel / cut)))
+            .OrderBy(x => x!.GetValue<int>())
+            .ToArray()),
         ["winPoints"] = GameplayRules.BossWinPoints,
         // 旧版 Bosses 是静态字典：全服共享、战损写回、击杀补池。新版 BossPool 同构，别再写成「每日一次抽象挑战」。
         ["sharedPool"] = true,

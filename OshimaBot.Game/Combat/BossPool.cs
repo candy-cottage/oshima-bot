@@ -37,6 +37,12 @@ public static class BossPool
 {
     public const int PoolSize = 10;
 
+    /// <summary>
+    /// 三只一轮的折算率（旧版 cutRate 1 / 2 / 4）：等级、技能、魔法、普攻等级都按它缩。
+    /// 公开出来是为了让探针能推导出 60 / 30 / 15，而不是在测试里另抄一份数字。
+    /// </summary>
+    public static readonly IReadOnlyList<int> CutRates = [1, 2, 4];
+
     private static readonly Lock Sync = new();
     private static readonly List<BossEntry> Entries = [];
     private static int _nextIndex = 1;
@@ -140,13 +146,9 @@ public static class BossPool
     private static BossEntry Create(int index)
     {
         // 与旧版一致：cutRate 1 / 2 / 4 → 等级 60 / 30 / 15，技能与魔法同理折算。
-        // 注意括号：写成 `index % 3 switch` 会被解析为 `index % (3 switch {...})`，让 cutRate 变成 index % 4。
-        int cutRate = (index % 3) switch
-        {
-            0 => 1,
-            1 => 2,
-            _ => 4
-        };
+        // 用列表下标而不是 switch：写成 `index % 3 switch` 会被解析成 `index % (3 switch {...})`，
+        // cutRate 会变成 index % 4（那次 bug 就是这么来的）。
+        int cutRate = CutRates[(index - 1) % CutRates.Count];
         var equilibrium = General.GameplayEquilibriumConstant;
         int level = Math.Max(1, equilibrium.MaxLevel / cutRate);
         int skillLevel = Math.Max(1, equilibrium.MaxSkillLevel / cutRate);
