@@ -7,7 +7,8 @@
    （固定商店走 `StoreCommand(...)` 批量注册，要单独认）；
 3. `DIV-0xx` —— 由 `gen_matrix.py --check` 负责，这里不重复；
 4. 夹具探针引用的常量必须是**活常量**——除声明外还有引用。恒为 0 又没人读的「费用常量」
-   会让夹具锁住一个改了也不生效的数字（`TrainCostCredits` / `BossCostCredits` 就是这么漏掉的）。
+   会让夹具锁住一个改了也不生效的数字（`TrainCostCredits` / `BossCostCredits` 就是这么漏掉的）；
+5. `DIVERGENCES.md` 里提到的 `FIX-xxx` 必须有对应的 .json，且「待建」只能标给还没建的。
 
 这是「代码与描述一致性」的机械部分。语义部分（「旧版 6 槽、新版 3 槽」这类事实断言）
 机器判断不了，只能人工复核；但至少不会再出现「引用的测试早就改名了」「入口早就删了」。
@@ -24,6 +25,8 @@ ROOT = HERE.parent
 TESTS_DIR = ROOT / "OshimaBot.Tests"
 CATALOG = ROOT / "OshimaBot" / "Commands" / "CommandCatalog.cs"
 MATRIX = HERE / "matrix.tsv"
+DIVERGENCES = HERE / "DIVERGENCES.md"
+FIXTURES = TESTS_DIR / "Fixtures" / "Legacy"
 EXTERNAL = HERE / "matrix_external.tsv"
 PROBE = TESTS_DIR / "LegacyFixture.cs"
 PRODUCTION = [ROOT / "OshimaBot", ROOT / "OshimaBot.Game"]
@@ -109,6 +112,21 @@ def dead_probe_constants() -> list[str]:
     return problems
 
 
+def dangling_fixtures() -> list[str]:
+    """差异登记里引用的夹具必须真的存在；已建成的不能再写「待建」。"""
+    if not DIVERGENCES.exists():
+        return []
+    existing = {p.stem for p in FIXTURES.glob("*.json")}
+    problems: list[str] = []
+    for number, line in enumerate(DIVERGENCES.read_text(encoding="utf-8").splitlines(), 1):
+        for name in re.findall(r"FIX-[A-Z0-9\-]+", line):
+            if name not in existing:
+                problems.append(f"DIVERGENCES.md:{number} 引用了不存在的夹具 {name}")
+            elif "待建" in line:
+                problems.append(f"DIVERGENCES.md:{number} 的 {name} 已建成，却还标着「待建」")
+    return problems
+
+
 def rows():
     header, *body = MATRIX.read_text(encoding="utf-8").splitlines()
     columns = header.split("\t")
@@ -156,6 +174,7 @@ def main() -> int:
                     errors.append(f"{rid}: 入口 /{command} 不在 CommandCatalog 里")
 
     errors.extend(dead_probe_constants())
+    errors.extend(dangling_fixtures())
 
     if errors:
         print(f"引用核对失败，共 {len(errors)} 项：")
