@@ -226,7 +226,7 @@
 
 | 行为 ID | 功能 | 当前入口 | 状态 | 说明 |
 |---|---|---|---|---|
-| SIM-001 | 战斗模拟（混战/团队/地图/调试） | `/FunGame模拟` 等 6 条 | 增强 | 统计与日志已入库；规则层冻结样本已就位（`SeededRegressionTests`，21 项规则探针 + 十连端到端共 22 条），**整局同种子仍不可复现**：AIController 并行评估同分候选会落到 ConcurrentBag 枚举序、Region 天气用 Random.Shared，见 `SimulationSeedReproducibilityTests`（Skip）与 REMAINING §六 |
+| SIM-001 | 战斗模拟（混战/团队/地图/调试） | `/FunGame模拟` 等 6 条 | 增强 | 统计与日志已入库；规则层冻结样本已就位（`SeededRegressionTests`，21 项规则探针 + 十连端到端共 22 条），**整局同种子仍不可复现**（原因未证实，`AIController` 并行评估的同分 tie-break 是唯一在查的方向），见 `SimulationSeedReproducibilityTests`（Skip）与 REMAINING §六 |
 | SIM-002 | 模拟统计与排行 | `/查数据` `/查个人评分` 等 6 条 | 增强 | 旧版同源数据，新版持久化 |
 | IDN-001 | 身份绑定 | `/绑定` + `POST /QQBot/bind` | 增强 | 旧版直接回显 OpenID，新版一次性码 |
 | SYS-001 | 服务器状态 | `/查询服务器启动时间` | 增强 | 旧版无 |

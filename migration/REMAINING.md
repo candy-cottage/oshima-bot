@@ -90,7 +90,7 @@
 | 5 | Oracle、基线、矩阵、CI、比较器可用 | ⚠️ 部分 | 基线 `gen_baseline.py` 可复现；**CI 只跑文档门禁**，编译与测试在本地（引擎在仓库外） |
 | 6 | 所有玩法公式只有一份实现 | ✅ | 本轮清掉 4 个死常量、十连价改为 `GachaCost * 10`、刷新点统一到 `DailyRefreshHour` |
 | 7 | 时间/随机可注入；内容目录版本可追踪 | ⚠️ 部分 | 注入 ✅；`catalogVersion` 只是夹具字段，内容包变了没有门禁拦 |
-| 8 | 固定种子模拟/决斗/Boss/秘境回归稳定 | ⚠️ 部分 | 规则层已冻结：`SeededRegressionTests` + `Fixtures/Seeded/regression.json`（22 条探针，同种子逐值比对，含十连端到端）；**整局模拟的同种子复现不成立**——见 §六，缺口在引擎侧（`AIController` tie-break / `Region` 天气） |
+| 8 | 固定种子模拟/决斗/Boss/秘境回归稳定 | ⚠️ 部分 | 规则层已冻结：`SeededRegressionTests` + `Fixtures/Seeded/regression.json`（22 条探针，同种子逐值比对，含十连端到端）；**整局模拟的同种子复现不成立**——见 §六，原因尚未证实（`AIController` 并行评估的同分 tie-break 是唯一在查的方向） |
 | 9 | SQLite 事务、Ledger、**幂等**和**并发**测试通过 | ✅ | 事务 ✅（失败即回滚）、Ledger ✅（买卖双方对冲）、幂等 ✅（`IdempotencyTests` 5 条，含 dispatcher 端到端）、并发 ✅（`ConcurrencyTests`，令牌本轮才真正生效） |
 | 10 | 管理命令具备权限、审计、上限和回滚 | ⚠️ 部分 | 权限 ✅ 审计 ✅ 单次上限 ✅（物品/魔法卡 100，货币不设限）；**回滚 ❌**（发出去的东西没有撤销命令）；改名审核仍无频率限制 |
 | 11 | README、差距分析、矩阵、计划、决策记录与代码一致 | ✅ | 本轮修掉 13 处过期描述；四个门禁固化 |
@@ -157,13 +157,21 @@
 | 关掉周期空投（`EnablePeriodicDrop=false`） | 仍然不同（36 / 33 / 44） |
 | 首个分歧位置 | 第 60 回合附近，局内决策层，不是收尾统计 |
 
-两处可疑，都在引擎侧：
+**原因尚未证实**，目前只排除了三样：周期空投（关掉照样分岔）、天气（见下）、收尾统计
+（分歧出现在第 60 回合，属局内决策）。唯一在查的方向是 `AIController`：它用 `Task.Run`
+并行评估每个移动格、候选塞进 `ConcurrentBag`，虽然补了 tie-breaker（分数 → 行动类型 → 移动格 Id
+→ 技能 Id → 物品 Id → 目标数），但没地图时大量格子 Id 相同，同分候选仍可能落回 bag 的枚举顺序。
 
-1. `AIController` 用 `Task.Run` 并行评估每个移动格，候选塞进 `ConcurrentBag`。虽然补了 tie-breaker
-   （分数 → 行动类型 → 移动格 Id → 技能 Id → 物品 Id → 目标数），但**没地图时大量格子 Id 相同**，
-   同分候选仍落到 bag 的枚举顺序上；
-2. `Region.Weather` 在内容初始化时用 `Random.Shared` 掷天气，天气参与伤害计算——
-   即使决策全确定，换进程/换机器也会变。
+> **更正（2026-11-15）**：本文件初稿写过「`Region.Weather` 用 `Random.Shared` 掷天气、天气参与伤害」，
+> 这是错的。`Region.Weather` 只在内容初始化时掷一次，全仓除显示（`/地区列表`、地区详情）外
+> **没有任何消费方**；内容里的 `GenerationPredicates`（`r => r.Weather == "永昼"`）从未被评估，
+> 既不影响伤害也不影响刷怪。天气既不能解释模拟分岔，也不是任何数值的输入。
+
+顺带查到的另一处 `Random.Shared`（与模拟无关，但影响**探索**的可复现性）：
+`RegionUnit` / `RegionCharacter` 的构造函数用 `Random.Next` 掷 ATK/HP/MP/SPD/HR/MR，
+即内容初始化时一次定死、每个进程不同——同一种子打同一地区的怪，属性会不一样。
+要修得让内容构造接受可注入随机源（`OshimaRegions.CreateAll()` 与 `FunGameService` 静态初始化都要改），
+本轮没动。
 
 因此 `SimulationSeedReproducibilityTests` 里留了两条 `Skip` 用例（混战 + 团队）作为门禁草稿：
 Core 修好后删掉 `Skip`，这两条就是「别再退化」的护栏。战斗整局暂时进不了冻结快照。
