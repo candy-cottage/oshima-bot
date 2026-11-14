@@ -10,7 +10,8 @@
 | `matrix_external.tsv` | 人工维护 | 矩阵外功能（旧版帮助没有条目：模拟、绑定、服务器状态等） |
 | `MIGRATION_MATRIX.md` | `gen_matrix.py` 生成 | 给人看的矩阵；不要手工改 |
 | `DIVERGENCES.md` | 人工维护 | 有意差异与范围排除决策表；矩阵用 `DIV-0xx` 引用 |
-| `SIMPLIFICATIONS.md` | `gen_simplifications.py` 生成 | 47 行「简化替代」的归类与逐行差异 |
+| `REMAINING.md` | 人工维护 | 对照计划 §10 的剩余缺口（管理命令、运维、工程项） |
+| `SIMPLIFICATIONS.md` | `gen_simplifications.py` 生成 | 「简化替代」的归类与逐行差异 |
 | `LEGACY_BASELINE.md` | `gen_baseline.py` 生成 | 基线指纹、关键文件、依赖版本 |
 | `legacy-baseline-files.tsv` | `gen_baseline.py` 生成 | 366 个文件的逐项哈希，用于复核指纹 |
 | `gen_matrix.py` | 脚本 | 渲染矩阵 + 校验（`--check` 只校验） |
