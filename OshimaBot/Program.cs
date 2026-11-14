@@ -98,6 +98,8 @@ builder.Services.AddSingleton<IQuestBoardService, QuestBoardService>();
 builder.Services.AddSingleton<IForgeService, ForgeService>();
 // 人物存档：旧版 RestoreSaved 是注释掉的空壳，这里做成真快照（钱包/角色/背包/小队/日常进度）。
 builder.Services.AddSingleton<ISnapshotService, SnapshotService>();
+// 管理员发放（旧版 生成 / 生成指定魔法卡）。只加不删，扣减交给封禁与回滚流程。
+builder.Services.AddSingleton<IAdminService, AdminService>();
 // v3.1：Core 语义存储（Credits/Materials 为 double、QualityType 0-6、6 装备槽、实体快照）。
 builder.Services.AddSingleton<CoreEntityStore>();
 builder.Services.AddSingleton(sp => new CommandDependencies(
@@ -115,6 +117,7 @@ builder.Services.AddSingleton(sp => new CommandDependencies(
     sp.GetRequiredService<IQuestBoardService>(),
     sp.GetRequiredService<IForgeService>(),
     sp.GetRequiredService<ISnapshotService>(),
+    sp.GetRequiredService<IAdminService>(),
     sp.GetRequiredService<ILoggerFactory>().CreateLogger("OshimaBot.Commands")));
 builder.Services.AddSingleton(sp => CommandCatalog.Build(sp.GetRequiredService<CommandDependencies>()));
 builder.Services.AddSingleton<CommandRouter>();

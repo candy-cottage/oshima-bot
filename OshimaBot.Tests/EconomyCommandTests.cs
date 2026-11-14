@@ -29,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(158, registry.All.Count);
+        Assert.Equal(161, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -137,6 +137,59 @@ public sealed class EconomyCommandTests
         Assert.Contains("P2", legacy);
     }
 
+    /// <summary>
+    /// 发放三件套的指令层：普通玩家必须被挡，管理员能用，且「x数量 / 给 目标」解析正确。
+    /// 服务层的边界（上限、账本、品质）由 AdminServiceTests 覆盖。
+    /// </summary>
+    [Fact]
+    public async Task Router_GrantCommandsRequireAdminAndParseArguments()
+    {
+        using EconomyCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        IPlayerService players = db.Provider.GetRequiredService<IPlayerService>();
+        await players.RegisterAsync(UserId);
+
+        Assert.Contains("权限不足", await RouteAsync(router, "/发放货币 金币 1000"));
+
+        ThirdPartyMessage cash = AdminMessage("/发放货币 金币 1000");
+        string granted = await RouteAsync(router, cash);
+        Assert.Contains("已发放", granted);
+        Assert.Equal(GameplayRules.StartingCredits + 1000, (await players.GetSnapshotAsync(UserId))!.Credits, 3);
+
+        FunGame.Core.Entity.Item entry = FunGameService.AllItems
+            .First(x => x.ItemType == FunGame.Core.Library.Constant.ItemType.Weapon);
+        await RouteAsync(router, AdminMessage($"/发放物品 {entry.Name} x3"));
+        Assert.Equal(3, Assert.Single(await players.GetBagAsync(UserId), x => x.Name == entry.Name).Quantity);
+
+        // 目标用「给 <UID>」指定；这里发给自己，验证参数切分不把「给」当成物品名
+        await RouteAsync(router, AdminMessage($"/发放物品 {entry.Name} x2 给 {UserId}"));
+        Assert.Equal(5, Assert.Single(await players.GetBagAsync(UserId), x => x.Name == entry.Name).Quantity);
+
+        FunGame.Core.Entity.Skill magic = FunGameService.AllSkills.First(x => x.IsMagic);
+        string card = await RouteAsync(router, AdminMessage($"/发放魔法卡 {magic.Id} 5"));
+        Assert.Contains("魔法卡已发放", card);
+        Assert.Contains(await players.GetBagAsync(UserId), x => x.Quality == 5);
+
+        // 品质写错要给出明确提示，而不是静默按普通发
+        Assert.Contains("品质看不懂", await RouteAsync(router, AdminMessage($"/发放魔法卡 {magic.Id} 传说级")));
+    }
+
+    private static async Task<string> RouteAsync(CommandRouter router, ThirdPartyMessage message)
+    {
+        BotReply? reply = await router.RouteAsync(message, new OtherData());
+        Assert.NotNull(reply);
+        return reply!.Markdown?.Content ?? reply.Text ?? "";
+    }
+
+    private static ThirdPartyMessage AdminMessage(string detail)
+    {
+        ThirdPartyMessage message = Message(detail);
+        message.Principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, BotRole.Admin.ToString())],
+            "test"));
+        return message;
+    }
+
     private static async Task<string> RouteAsync(CommandRouter router, string command)
     {
         BotReply? reply = await router.RouteAsync(Message(command), new OtherData());
@@ -180,6 +233,7 @@ public sealed class EconomyCommandTests
             services.AddSingleton<IExploreService, ExploreService>();
             services.AddSingleton<IQuestBoardService, QuestBoardService>();
             services.AddSingleton<IForgeService, ForgeService>();
+            services.AddSingleton<IAdminService, AdminService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -199,6 +253,7 @@ public sealed class EconomyCommandTests
                 Provider.GetRequiredService<IQuestBoardService>(),
                 Provider.GetRequiredService<IForgeService>(),
                 null!,
+                Provider.GetRequiredService<IAdminService>(),
                 NullLogger.Instance);
         }
 

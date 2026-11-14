@@ -28,7 +28,8 @@ public static class CommandCatalog
         "log", "log-full",
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
-        "register", "status", "backup", "snapshots", "restore", "look", "notice", "fortune", "signin",
+        "register", "status", "backup", "snapshots", "restore", "grant-item", "grant-currency", "grant-magic",
+        "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
         "lock", "unlock", "equip", "unequip",
@@ -178,6 +179,43 @@ public static class CommandCatalog
                 return CommandReplies.FromResult(
                     await deps.Snapshots.RestoreLatestAsync(context.UserId, context.CancellationToken));
             }),
+
+        // ---- 管理员发放（旧版「生成 N 个 X」与「生成指定<品质>魔法卡」）----
+        "grant-item" => new DelegateCommand(
+            key: "grant-item", name: "发放物品", aliases: ["生成物品", "发物品"],
+            usage: "/发放物品 <物品名|ID> [x数量] [给 <UID|昵称>]",
+            description: $"给玩家发内容包里的物品（管理员，单次 ≤ {AdminService.MaxGrantPerCall} 件）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: context => GrantItemAsync(deps, context)),
+
+        "grant-currency" => new DelegateCommand(
+            key: "grant-currency", name: "发放货币", aliases: ["生成金币", "生成钻石", "发货币"],
+            usage: "/发放货币 <金币|钻石> <数量> [给 <UID|昵称>]",
+            description: "给玩家发金币或钻石（管理员，不设上限）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                (string[] head, string? target) = SplitGrantArgs(context);
+                if (head.Length < 2)
+                {
+                    return CommandReplies.Error("参数不完整", "没有发放任何货币",
+                        "用法：/发放货币 金币 10000　/发放货币 钻石 500 给 123456", "/发放货币");
+                }
+                if (!double.TryParse(head[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double amount))
+                {
+                    return CommandReplies.Error("金额看不懂", "没有发放任何货币",
+                        $"「{head[1]}」不是数字；要整数或小数，别带逗号", "/发放货币");
+                }
+                return CommandReplies.FromResult(await deps.Admin.GrantCurrencyAsync(
+                    context.UserId, target, head[0], amount, context.CancellationToken));
+            }),
+
+        "grant-magic" => new DelegateCommand(
+            key: "grant-magic", name: "发放魔法卡", aliases: ["生成魔法卡"],
+            usage: "/发放魔法卡 <魔法名|ID> <品质> [三围 力 敏 智] [x数量] [给 <UID|昵称>]",
+            description: $"给玩家发指定品质的魔法卡（管理员，单次 ≤ {AdminService.MaxGrantPerCall} 张）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: context => GrantMagicAsync(deps, context)),
 
         "look" => new DelegateCommand(
             key: "look", name: "观察", aliases: ["场景", "look"], usage: "/观察",
@@ -1630,6 +1668,77 @@ public static class CommandCatalog
         2 => "已领取",
         _ => "进行中"
     };
+
+    /// <summary>
+    /// 把「给 &lt;目标&gt;」从参数里摘出来——三条发放命令共用。
+    /// 目标为空表示发给自己（管理员给自己调测试道具是常规操作）。
+    /// </summary>
+    private static (string[] Head, string? Target) SplitGrantArgs(CommandContext context)
+    {
+        List<string> args = [.. context.Args];
+        int at = args.IndexOf("给");
+        if (at < 0) return ([.. args], null);
+
+        string? target = at + 1 < args.Count ? args[at + 1] : null;
+        args.RemoveRange(at, args.Count - at);
+        return ([.. args], target);
+    }
+
+    private static int ParseGrantQuantity(string? token, int fallback)
+    {
+        string value = (token ?? "").Trim();
+        if (value.Length > 1 && (value[0] == 'x' || value[0] == 'X')) value = value[1..];
+        return int.TryParse(value, out int parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    private static async Task<BotReply> GrantItemAsync(CommandDependencies deps, CommandContext context)
+    {
+        (string[] head, string? target) = SplitGrantArgs(context);
+        if (head.Length == 0)
+        {
+            return CommandReplies.Error("没写要发什么", "没有发放任何物品",
+                "用法：/发放物品 龙鳞碎片 x10 给 123456", "/发放物品");
+        }
+        return CommandReplies.FromResult(await deps.Admin.GrantItemAsync(
+            context.UserId, target, head[0],
+            head.Length > 1 ? ParseGrantQuantity(head[1], 1) : 1, context.CancellationToken));
+    }
+
+    private static async Task<BotReply> GrantMagicAsync(CommandDependencies deps, CommandContext context)
+    {
+        (string[] head, string? target) = SplitGrantArgs(context);
+        if (head.Length < 2)
+        {
+            return CommandReplies.Error("参数不完整", "没有发放任何魔法卡",
+                "用法：/发放魔法卡 火之矢 5 三围 10 5 0 x2 给 123456（品质：1 普通 … 7 不朽）", "/发放魔法卡");
+        }
+
+        string magic = head[0];
+        if (!AdminService.TryParseQualityTier(head[1], out int tier))
+        {
+            return CommandReplies.Error("品质看不懂", "没有发放任何魔法卡",
+                $"「{head[1]}」不是 1–7，也不是品质名（普通/优秀/稀有/史诗/传说/神话/不朽）", "/发放魔法卡");
+        }
+
+        int index = 2, str = 0, agi = 0, intelligence = 0, quantity = 1;
+        if (index < head.Length && head[index] == "三围")
+        {
+            if (index + 3 >= head.Length
+                || !int.TryParse(head[index + 1], out str)
+                || !int.TryParse(head[index + 2], out agi)
+                || !int.TryParse(head[index + 3], out intelligence))
+            {
+                return CommandReplies.Error("三围写错了", "没有发放任何魔法卡",
+                    "写法：三围 力量 敏捷 智力，例如 三围 10 5 0（全 0 表示随机分配）", "/发放魔法卡");
+            }
+            index += 4;
+        }
+        if (index < head.Length) quantity = ParseGrantQuantity(head[index], 1);
+
+        return CommandReplies.FromResult(await deps.Admin.GrantMagicCardAsync(
+            context.UserId, target, magic, tier, str, agi, intelligence, quantity,
+            context.CancellationToken));
+    }
 
     private static async Task<BotReply> TrainAsync(CommandDependencies deps, CommandContext context)
     {
