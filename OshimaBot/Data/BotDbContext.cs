@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata;
 using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
 
@@ -58,6 +60,39 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<ClubInvite> ClubInvites => Set<ClubInvite>();
     public DbSet<ClubTaskProgress> ClubTaskProgresses => Set<ClubTaskProgress>();
     public DbSet<ClubMarketListing> ClubMarketListings => Set<ClubMarketListing>();
+
+    /// <summary>
+    /// 乐观并发：<c>Version</c> 被配成并发令牌，但 EF **不会**自动递增它。
+    /// 不手动 +1 的话令牌永远是 0，两个并发写会双双成功——后写的覆盖先写的（丢更新），
+    /// 而 <c>MutateAsync</c> 里那个 <c>DbUpdateConcurrencyException</c> 分支永远不会触发。
+    /// <para>这里在保存前把所有 Modified 行的 Version +1；EF 用 OriginalValue 拼 WHERE，
+    /// 于是第二个事务影响 0 行、抛并发异常，由调用方转成「稍等一秒后重试」。</para>
+    /// </summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        BumpVersions();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        BumpVersions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void BumpVersions()
+    {
+        foreach (EntityEntry entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Modified) continue;
+            IProperty? version = entry.Metadata.FindProperty("Version");
+            if (version is null || version.ClrType != typeof(int)) continue;
+
+            PropertyEntry property = entry.Property("Version");
+            property.CurrentValue = (property.CurrentValue is int value ? value : 0) + 1;
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
