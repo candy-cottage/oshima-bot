@@ -30,6 +30,50 @@ public sealed class CommandFrameworkTests
         Assert.Null(registry.Resolve("   "));
     }
 
+    /// <summary>
+    /// 动词与参数之间可以没有空格（2026-11-16）：中文输入法下漏个空格太常见，
+    /// <c>/领奖1</c> 应该等于 <c>/领奖 1</c>，而不是「未识别指令」。
+    /// </summary>
+    [Fact]
+    public void Registry_AllowsVerbAttachedToArguments()
+    {
+        CommandRegistry registry = CreateRegistry(out _);
+
+        CommandMatch claim = registry.Resolve("/领奖1")!;
+        Assert.Equal("quest-claim", claim.Command.Key);
+        Assert.Equal("1", Assert.Single(claim.Args));
+
+        Assert.Equal("1", Assert.Single(registry.Resolve("领奖 1")!.Args));
+        Assert.Equal("@1", Assert.Single(registry.Resolve("领奖@1")!.Args));   // @ 编号紧贴也认
+        Assert.Equal("1", Assert.Single(registry.Resolve("领奖\u30001")!.Args)); // 中文输入法的全角空格
+
+        CommandMatch gacha = registry.Resolve("抽卡10")!;                      // 数字参数
+        Assert.Equal("gacha", gacha.Command.Key);
+        Assert.Equal("10", Assert.Single(gacha.Args));
+
+        Assert.Equal("char", registry.Resolve("查角色1")!.Command.Key);        // 旧版整段前缀写法，行为不变
+        Assert.Equal("team-stats", registry.Resolve("查团队数据3")!.Command.Key);
+
+        // 认不出来的词不能被前半截吞掉
+        Assert.Null(registry.Resolve("今天天气如何"));
+    }
+
+    /// <summary>紧贴写法要挑**最长**的动词：否则「商店详情1」会被「商店」抢走，变成「商店 + 详情1」。</summary>
+    [Fact]
+    public void Registry_AttachedFormPrefersTheLongestVerb()
+    {
+        CommandRegistry registry = CreateRegistry(out _);
+
+        CommandMatch detail = registry.Resolve("商店详情1")!;
+        Assert.Equal("shop-detail", detail.Command.Key);
+        Assert.Equal("1", Assert.Single(detail.Args));
+
+        // 商店1..商店7 是固定商店命令名，精确匹配优先；带空格才是「商店 + 页码/编号」
+        Assert.Equal("shop-logistics", registry.Resolve("商店1")!.Command.Key);
+        Assert.Equal("shop", registry.Resolve("商店 1")!.Command.Key);
+        Assert.Equal("1", Assert.Single(registry.Resolve("商店 1")!.Args));
+    }
+
     [Fact]
     public void Registry_StripsPageTokensWithoutTouchingNumericArguments()
     {

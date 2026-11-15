@@ -285,6 +285,24 @@ public sealed class GameplayCommandTests
         Assert.Contains("还没完成", await RouteAsync(router, "/任务结算"));
     }
 
+    /// <summary>动词与参数紧贴也能走到处理器（<c>/领奖1</c> = <c>/领奖 1</c>）。</summary>
+    [Fact]
+    public async Task Router_AcceptsVerbAttachedToArguments()
+    {
+        // 不动用真时钟：领奖只看任务状态，但探索类断言在同一夹具里要稳定，统一用固定时刻。
+        using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 14, 19, 0, 0, DateTimeKind.Utc)));
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");      // 先建档
+
+        string attached = await RouteAsync(router, "/领奖1");
+        string spaced = await RouteAsync(router, "/领奖 1");
+
+        // 任务 1 没解锁是业务错误，但**必须有回应**——不能是「未识别指令」那种没反应
+        Assert.Contains("尚未完成", attached);
+        Assert.DoesNotContain("未识别", attached);
+        Assert.Equal(spaced, attached);
+    }
+
     [Fact]
     public async Task Router_GrantLogAndRevokeAreReachable()
     {
