@@ -319,7 +319,7 @@ public sealed class GameplayCommandTests
 
         Assert.Contains("qqbot-cmd-input", text);                                  // 提示里是链接
         Assert.Contains(Uri.EscapeDataString("/设主战 @"), text);                   // 点一下填到「@」，编号留给玩家
-        Assert.Contains("/设主战 @编号", Unescape(text));                          // 显示的仍是完整用法
+        Assert.Contains("/设主战 @编号", MarkdownText.Decode(text));                          // 显示的仍是完整用法
 
         Assert.NotNull(list.Keyboard);
         List<string> data = [.. list.Keyboard!.Content!.Rows
@@ -351,12 +351,6 @@ public sealed class GameplayCommandTests
         Assert.Contains("/背包", data);
         Assert.Contains("/我的角色", data);                                        // 回列表
     }
-
-    /// <summary>把 markdown 里的 cmd 标签反解出来，方便直接断言显示文本。</summary>
-    private static string Unescape(string markdown)
-        => System.Text.RegularExpressions.Regex.Replace(markdown,
-            @"text=""([^""]*)"" show=""([^""]*)""",
-            match => Uri.UnescapeDataString(match.Groups[2].Value));
 
     [Fact]
     public async Task Router_GrantLogAndRevokeAreReachable()
@@ -421,7 +415,7 @@ public sealed class GameplayCommandTests
 
         // 小队探索：没编成时给引导，缺编号给用法
         Assert.Contains("没有小队编成", await RouteAsync(router, "/小队探索 1"));
-        Assert.Contains("/小队探索 1", await RouteAsync(router, "/小队探索"));
+        Assert.Contains("/小队探索 1", MarkdownText.Decode(await RouteAsync(router, "/小队探索")));
         Assert.Contains("还没结束", await RouteAsync(router, "/探索结算"));
         Assert.Contains("还需", await RouteAsync(router, "/探索信息"));
     }

@@ -30,22 +30,56 @@ public static class CommandReplies
         {
             foreach (string line in lines) builder.AppendLine(line);
         }
+
+        // 结尾指令分两类：
+        // - 没有参数的通用指令（/状态 /背包 /帮助）→ 按钮，点一下就发；
+        // - 带参数的（/设主战 1、/撤销发放 3）→ 保留可点链接，它带着这一条的上下文。
+        // 调用方自己排了键盘时（帮助、各类分页）不再追加按钮，避免超过 5 行上限。
+        List<string> links = [];
+        List<string> generic = [];
         if (actions is not null)
         {
+            foreach (string action in actions)
+            {
+                if (keyboard is null && IsGenericCommand(action)) generic.Add(action);
+                else links.Add(action);
+            }
+        }
+        if (generic.Count > 0) keyboard = BuildButtonRow(generic);
+
+        if (links.Count > 0)
+        {
             builder.AppendLine();
-            foreach (string action in actions) builder.AppendLine(QQCmdTag.CmdInput(action));
+            foreach (string action in links) builder.AppendLine(QQCmdTag.CmdInput(action));
         }
         return BotReply.FromMarkdown(builder.ToString().TrimEnd(), keyboard);
+    }
+
+    /// <summary>「没有参数、点一下就发」的指令：/状态、/背包。带空格的视为带参数。</summary>
+    internal static bool IsGenericCommand(string action)
+        => action.Length > 1 && action[0] == '/' && !action.Contains(' ');
+
+    /// <summary>把一串通用指令排成按钮（每行 5 个）。</summary>
+    internal static KeyboardMessage BuildButtonRow(IReadOnlyList<string> commands)
+    {
+        KeyboardBuilder builder = new();
+        for (int offset = 0; offset < commands.Count; offset += KeyboardBuilder.MaxButtonsPerRow)
+        {
+            builder.AddButtons(KeyboardBuilder.MaxButtonsPerRow,
+                [.. commands.Skip(offset).Take(KeyboardBuilder.MaxButtonsPerRow)
+                    .Select(item => KeyboardBuilder.CmdButton(item.TrimStart('/'), item))]);
+        }
+        return builder.Build();
     }
 
     /// <summary>错误回复固定三段：发生了什么 / 没有发生什么 / 下一步怎么做。</summary>
     public static BotReply Error(string what, string notHappened, string next, string? action = null)
         => Compose("⚠️ 指令未能完成", null,
         [
-            QQMarkdown.Escape(what),
+            QQCmdTag.LinkCommands(QQMarkdown.Escape(what)),
             "",
             $"**没有发生**：{QQMarkdown.Escape(notHappened)}",
-            $"**下一步**：{QQMarkdown.Escape(next)}"
+            $"**下一步**：{QQCmdTag.LinkCommands(QQMarkdown.Escape(next))}"
         ],
         action is null ? null : [action]);
 
@@ -251,19 +285,20 @@ public static class CommandReplies
                 lines.Add(QQMarkdown.Bold($"【{command.Group}】"));
                 lastGroup = command.Group;
             }
-            lines.Add($"- {QQMarkdown.Bold(command.Usage)}　{command.Description}");
+            // 用法整条做成链接：显示「/我的角色 [@编号|页码]」，点一下填入「/我的角色 」。
+            lines.Add($"- {QQCmdTag.CmdInput("/" + command.Name + " ", command.Usage)}　{command.Description}");
         }
 
-        List<string> actions = ["/战斗帮助", "/取消"];
-        if (total > 1) actions.Insert(0, $"/帮助 p{(current < total ? current + 1 : 1)}");
+        List<string> actions = [];
+        if (total > 1) actions.Add($"/帮助 p{(current < total ? current + 1 : 1)}");
 
         KeyboardBuilder keyboardBuilder = new KeyboardBuilder()
             .AddButtons(5,
-                KeyboardBuilder.CmdButton("帮助", "/帮助"),
                 KeyboardBuilder.CmdButton("战斗帮助", "/战斗帮助"),
-                KeyboardBuilder.CmdButton("开始时间", "/查询服务器启动时间"),
-                KeyboardBuilder.CmdButton("查角色", "/查角色 1"),
-                KeyboardBuilder.CmdButton("模拟", "/FunGame模拟"));
+                KeyboardBuilder.CmdButton("状态", "/状态"),
+                KeyboardBuilder.CmdButton("背包", "/背包"),
+                KeyboardBuilder.CmdButton("抽卡", "/抽卡"),
+                KeyboardBuilder.CmdButton("取消", "/取消"));
         if (total > 1) keyboardBuilder.AddPagination("/帮助", current, total);
 
         return Compose("📖 OshimaBot 指令", $"第 {current}/{total} 页 · 共 {commands.Count} 条指令 · / 可省略",

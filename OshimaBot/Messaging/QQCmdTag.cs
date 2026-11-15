@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace OshimaBot.Messaging;
 
 /// <summary>
@@ -25,6 +27,45 @@ public static class QQCmdTag
     /// <summary>点击后直接发送 text（仅单聊场景支持）。</summary>
     public static string CmdEnter(string text)
         => $"<qqbot-cmd-enter text=\"{Encode(text)}\"/>";
+
+    /// <summary>
+    /// 把正文里的 <c>/指令</c> 变成可点标签：**显示保持原样**，点一下把「指令 + 空格」填进输入框，
+    /// 参数（@编号 / 数量）留给人自己补。帮助正文、错误提示这类「教你怎么用」的文字都走这里。
+    /// <para>只认「/ + 字母或汉字」开头的词：<c>属性 / 六个装备槽</c> 这种分隔符、
+    /// <c>1/1</c> 这种分数、<c>https://…</c> 这种网址都不会被误伤。</para>
+    /// </summary>
+    public static string LinkCommands(string text)
+    {
+        if (string.IsNullOrEmpty(text) || !text.Contains('/')) return text;
+
+        StringBuilder builder = new(text.Length + 32);
+        int index = 0;
+        while (index < text.Length)
+        {
+            char current = text[index];
+            if (current != '/' || !IsCommandStart(text, index))
+            {
+                builder.Append(current);
+                index++;
+                continue;
+            }
+
+            int end = index + 1;
+            while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_')) end++;
+            string command = text[index..end];
+            builder.Append(CmdInput(command + " ", command));
+            index = end;
+        }
+        return builder.ToString();
+    }
+
+    private static bool IsCommandStart(string text, int index)
+    {
+        if (index + 1 >= text.Length || !char.IsLetter(text[index + 1])) return false;
+        if (index == 0) return true;
+        char previous = text[index - 1];
+        return previous != '/' && previous != ':' && !char.IsLetterOrDigit(previous);
+    }
 
     public static string AtUser(string openId)
         => $"<qqbot-at-user id=\"{EscapeAttribute(openId)}\" />";

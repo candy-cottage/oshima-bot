@@ -87,7 +87,8 @@ public static class CommandCatalog
             key: "battle-help", name: "战斗帮助", aliases: ["角色帮助", "物品帮助", "battlehelp"],
             usage: "/战斗帮助", description: "战斗与资料查询说明", group: CommandGroups.System,
             handler: _ => Task.FromResult(CommandReplies.Compose("⚔️ 战斗与资料指令", "旧版指令仍可直接使用",
-            [
+            new[]
+            {
                 "- /查角色 <编号或名称>　满级角色资料",
                 "- /查技能 <编号或名称>　1/2 级与满级技能",
                 "- /查物品 <编号或名称>　物品属性",
@@ -98,7 +99,7 @@ public static class CommandCatalog
                 "- /查数据 · /查团队数据　累计统计",
                 "- /查个人胜率 · /查团队胜率 · /查个人评分 · /查团队评分",
                 "- /上次的日志 · /上次的完整日志"
-            ], ["/帮助", "/查角色 1", "/FunGame模拟"]))),
+            }.Select(QQCmdTag.LinkCommands), ["/帮助", "/状态", "/FunGame模拟"]))),
 
         "cancel" => new DelegateCommand(
             key: "cancel", name: "取消", aliases: ["重置状态", "cancel", "reset"], usage: "/取消",

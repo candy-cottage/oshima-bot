@@ -124,8 +124,8 @@ public sealed class CommandFrameworkTests
 
         // 帮助与注册表同源：翻完所有页应覆盖每一条 Usage。
         int pages = (registry.All.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
-        string allHelp = string.Concat(Enumerable.Range(1, pages)
-            .Select(page => CommandReplies.Help(registry, page).Markdown!.Content));
+        string allHelp = MarkdownText.Decode(string.Concat(Enumerable.Range(1, pages)
+            .Select(page => CommandReplies.Help(registry, page).Markdown!.Content)));
         foreach (ICommand command in registry.All)
         {
             // Usage 经 Markdown 转义（< > 等），名称本身是安全锚点。
@@ -154,6 +154,66 @@ public sealed class CommandFrameworkTests
         Assert.Contains("qqbot-cmd-input", content);
     }
 
+    /// <summary>帮助正文里的用法就是链接：显示「/我的角色 [@编号|页码]」，点一下填「/我的角色 」。</summary>
+    [Fact]
+    public void Help_TurnsEveryUsageIntoALink()
+    {
+        (_, CommandRegistry registry, _, _) = CreateRouter();
+
+        BotReply first = CommandReplies.Help(registry, 1);
+        Assert.Contains("/帮助 ", MarkdownText.Inserts(first.Markdown!.Content!));
+
+        // 翻完所有页，每条指令都要有一个「点一下填入」的标签
+        int pages = (registry.All.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
+        List<string> inserts = [.. Enumerable.Range(1, pages)
+            .SelectMany(page => MarkdownText.Inserts(CommandReplies.Help(registry, page).Markdown!.Content!))];
+
+        foreach (ICommand command in registry.All)
+        {
+            Assert.Contains("/" + command.Name + " ", inserts);
+        }
+    }
+
+    /// <summary>战斗帮助这类正文：命令是链接，底部通用入口是按钮。</summary>
+    [Fact]
+    public async Task BattleHelp_LinksCommandsInTheBody()
+    {
+        (CommandRouter router, _, _, _) = CreateRouter();
+
+        BotReply reply = (await router.RouteAsync(Message("/战斗帮助"), new OtherData()))!;
+        string decoded = MarkdownText.Decode(reply.Markdown!.Content!);
+
+        Assert.Contains("/查角色", decoded);            // 正文里的指令成了链接（显示仍是原文）
+        Assert.Contains("<编号或名称>", decoded);        // 参数说明保持纯文本
+        Assert.Contains(MarkdownText.Inserts(reply.Markdown!.Content!), item => item == "/查角色 ");
+
+        Assert.Contains("/帮助", MarkdownText.Buttons(reply));   // 底部改按钮
+        Assert.Contains("/状态", MarkdownText.Buttons(reply));
+    }
+
+    /// <summary>
+    /// 结尾指令的两种归宿：没有参数的做按钮，带参数的留链接（它带着这一条的上下文）。
+    /// </summary>
+    [Fact]
+    public void Compose_SplitsGenericActionsIntoButtons()
+    {
+        BotReply reply = CommandReplies.Compose("🧪 测试", null, ["- 正文"], ["/状态", "/设主战 1"]);
+
+        Assert.Contains("/状态", MarkdownText.Buttons(reply));
+        Assert.DoesNotContain("/设主战 1", MarkdownText.Buttons(reply));
+        Assert.Contains("/设主战 1", MarkdownText.Inserts(reply.Markdown!.Content!));
+    }
+
+    /// <summary>正文链接化不能误伤：分隔符、分数、网址都不该变成标签。</summary>
+    [Fact]
+    public void LinkCommands_LeavesNonCommandsAlone()
+    {
+        Assert.Equal("属性 / 六个装备槽 / 技能", MarkdownText.Decode(QQCmdTag.LinkCommands("属性 / 六个装备槽 / 技能")));
+        Assert.Equal("签到 1/1 已领取", MarkdownText.Decode(QQCmdTag.LinkCommands("签到 1/1 已领取")));
+        Assert.Equal("见 https://bot.q.qq.com/wiki", MarkdownText.Decode(QQCmdTag.LinkCommands("见 https://bot.q.qq.com/wiki")));
+        Assert.Equal("用 /练级 提升角色", MarkdownText.Decode(QQCmdTag.LinkCommands("用 /练级 提升角色")));
+    }
+
     [Fact]
     public async Task Router_UptimeUsesFourSegmentMarkdown()
     {
@@ -163,7 +223,7 @@ public sealed class CommandFrameworkTests
 
         Assert.Contains("服务器状态", reply!.Markdown!.Content!);
         Assert.Contains("UTC", reply.Markdown!.Content!);
-        Assert.Contains("qqbot-cmd-input", reply.Markdown!.Content!);
+        Assert.Contains("/帮助", MarkdownText.Buttons(reply));
     }
 
     [Fact]
