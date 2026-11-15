@@ -11,7 +11,9 @@
 5. `DIVERGENCES.md` 里提到的 `FIX-xxx` 必须有对应的 .json，且「待建」只能标给还没建的；
 6. 冻结种子回归样本（`Fixtures/Seeded/regression.json`）必须存在、指纹与内容自洽、
    且真的被测试读（`SeededRegressionTests`）。CI 不编译 C#，冻结样本的真伪只能在这里守；
-7. 模拟的开局摘要（`Fixtures/Seeded/simulation.json`）必须是完整 SHA-256，且区间字段没写反。
+7. 模拟的开局摘要（`Fixtures/Seeded/simulation.json`）必须是完整 SHA-256，且区间字段没写反；
+8. 内容目录戳（`migration/content-catalog.json`）必须与 `GameplayRules.CatalogVersion` 一致，
+   且不是「内容还没初始化就冻下来的空指纹」（数量全 0 或 `e3b0c442…` 就是那种情况）。
 
 这是「代码与描述一致性」的机械部分。语义部分（「旧版 6 槽、新版 3 槽」这类事实断言）
 机器判断不了，只能人工复核；但至少不会再出现「引用的测试早就改名了」「入口早就删了」。
@@ -38,6 +40,8 @@ SEEDED_FIXTURE = TESTS_DIR / "Fixtures" / "Seeded" / "regression.json"
 SEEDED_TESTS = TESTS_DIR / "SeededRegressionTests.cs"
 SIMULATION_FIXTURE = TESTS_DIR / "Fixtures" / "Seeded" / "simulation.json"
 SIMULATION_TESTS = TESTS_DIR / "SimulationSeedTests.cs"
+CONTENT_CATALOG = HERE / "content-catalog.json"
+GAMEPLAY_RULES = ROOT / "OshimaBot" / "Gameplay" / "GameplayRules.cs"
 PRODUCTION = [ROOT / "OshimaBot", ROOT / "OshimaBot.Game"]
 
 # 冻结样本至少覆盖：抽卡 4 项、签到 2 项、探索 2 项、秘境、市场 2 项、兑换、分解、
@@ -214,6 +218,44 @@ def simulation_fixture() -> list[str]:
     return problems
 
 
+def content_catalog() -> list[str]:
+    """内容目录戳：版本与代码一致、指纹没空转。
+
+    指纹本身由 C# 侧（`ContentCatalogTests`）校验——python 跑不了引擎，只能守住
+    「文件在、格式对、版本没漂、不是空目录冻出来的」这几条，正好补上 CI 不编译的窟窿。
+    """
+    if not CONTENT_CATALOG.exists():
+        return [f"缺少内容目录戳 {CONTENT_CATALOG.relative_to(ROOT)}"]
+
+    try:
+        data = json.loads(CONTENT_CATALOG.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        return [f"{CONTENT_CATALOG.name} 不是合法 JSON：{error}"]
+
+    problems: list[str] = []
+    fingerprint = str(data.get("Fingerprint") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        problems.append(f"{CONTENT_CATALOG.name} 的 Fingerprint 不是 64 位小写十六进制")
+    elif fingerprint.startswith("e3b0c44298fc1c14"):
+        problems.append(
+            f"{CONTENT_CATALOG.name} 冻的是**空内容**的指纹（SHA-256 空串），"
+            "说明生成时没调 FunGameRuntime.EnsureInitialized()；重跑：OSHIMA_UPDATE_CONTENT=1 dotnet test --filter ContentCatalog")
+
+    for field in ("Items", "Skills", "Characters", "Regions"):
+        if not isinstance(data.get(field), int) or data[field] <= 0:
+            problems.append(f"{CONTENT_CATALOG.name} 的 {field} 应为正整数，实际 {data.get(field)!r}")
+
+    version = str(data.get("Version") or "")
+    text = GAMEPLAY_RULES.read_text(encoding="utf-8")
+    match = re.search(r'CatalogVersion\s*=>\s*"([^"]+)"', text)
+    code_version = match.group(1) if match else "(找不到)"
+    if version != code_version:
+        problems.append(
+            f"{CONTENT_CATALOG.name} 的 Version={version!r} 与 GameplayRules.CatalogVersion={code_version!r} 不一致")
+
+    return problems
+
+
 def rows():
     header, *body = MATRIX.read_text(encoding="utf-8").splitlines()
     columns = header.split("\t")
@@ -264,6 +306,7 @@ def main() -> int:
     errors.extend(dangling_fixtures())
     errors.extend(seeded_fixture())
     errors.extend(simulation_fixture())
+    errors.extend(content_catalog())
 
     if errors:
         print(f"引用核对失败，共 {len(errors)} 项：")

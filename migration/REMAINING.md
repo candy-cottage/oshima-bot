@@ -1,6 +1,6 @@
 # 剩余功能清单（对照迁移计划 §10 完成定义）
 
-> 生成时间：2026-11-15 18:10　·　基准：`matrix.tsv`（163 行）+ `matrix_external.tsv`（17 行）+ 计划 §10
+> 生成时间：2026-11-15 21:40　·　基准：`matrix.tsv`（163 行）+ `matrix_external.tsv`（18 行）+ 计划 §10
 
 ## 结论
 
@@ -91,7 +91,7 @@
 | 4 | 全部 Fixture 完成旧值验证或差异登记 | ✅ | 20 个 `.json`；旧值逐条回旧源码/`dokyo.json` 核过 |
 | 5 | Oracle、基线、矩阵、CI、比较器可用 | ⚠️ 部分 | 基线 `gen_baseline.py` 可复现；**CI 只跑文档门禁**，编译与测试在本地（引擎在仓库外） |
 | 6 | 所有玩法公式只有一份实现 | ✅ | 本轮清掉 4 个死常量、十连价改为 `GachaCost * 10`、刷新点统一到 `DailyRefreshHour` |
-| 7 | 时间/随机可注入；内容目录版本可追踪 | ⚠️ 部分 | 注入 ✅；`catalogVersion` 只是夹具字段，内容包变了没有门禁拦 |
+| 7 | 时间/随机可注入；内容目录版本可追踪 | ✅ | 注入 ✅；内容目录现在有指纹：`ContentCatalog.Fingerprint`（物品/技能/角色/地区的 Id+名字+品质，排序后 SHA-256）、启动时与 `AppConfigs` 上一份比对并留痕（变了打 Warning，见 `DatabaseInitializer.TrackContentCatalogAsync`）、`/查询服务器启动时间` 显示版本+规模+短指纹、`ContentCatalogTests` 冻在 `migration/content-catalog.json`、`check_claims.py` 守版本一致与「空指纹」 |
 | 8 | 固定种子模拟/决斗/Boss/秘境回归稳定 | ⚠️ 部分 | 规则层：`SeededRegressionTests` + `Fixtures/Seeded/regression.json`（22 条探针逐值比对，含十连端到端）。模拟层：`SimulationSeedTests` + `Fixtures/Seeded/simulation.json`——**开局逐字冻结**（选人 + 首次空投 + 前几回合），整局因引擎侧决策不可复现，只锁「击杀数 / 回合数」区间。整局逐字冻不了，见 §六 |
 | 9 | SQLite 事务、Ledger、**幂等**和**并发**测试通过 | ✅ | 事务 ✅（失败即回滚）、Ledger ✅（买卖双方对冲）、幂等 ✅（`IdempotencyTests` 5 条，含 dispatcher 端到端）、并发 ✅（`ConcurrencyTests`，令牌本轮才真正生效） |
 | 10 | 管理命令具备权限、审计、上限和回滚 | ✅ | 权限 ✅ 审计 ✅ 单次上限 ✅（物品/魔法卡 100，货币不设限）；回滚 ✅（`/撤销发放`：按发放记录号收回物品/魔法卡/货币，部分回收写明差额，同一笔只能撤一次）；改名审核已有频率限制（`RenameThrottle`） |
@@ -216,4 +216,6 @@ Core 不在本仓、改不了（也不该为了测试去改引擎），所以这
    角色名与社团名共用一个预算），四条用例覆盖冷却、配额、跨目标共享、批准不进冷却。
 8. ~~发放撤销~~ —— 2026-11-15 已完成：`AdminGrants` 表 + `/发放记录` + `/撤销发放`。
    顺带补了一条「迁移真的能跑」的用例（测试库一直走 `EnsureCreated`，迁移写错本地全绿）。
-   下一步建议做第 3 项（内容版本门禁）：换了内容包目前没有任何东西会拦。
+9. ~~内容版本门禁~~ —— 2026-11-15 已完成：`ContentCatalog` 指纹 + 启动比对留痕 + `/查询服务器启动时间` 展示
+   + `migration/content-catalog.json` 冻结 + 两条门禁（C# 测试比对指纹、python 守版本与空指纹）。
+   下一步只剩两件受环境限制的事：真实还原演练（要停服）、CI 编译（引擎在仓库外）。

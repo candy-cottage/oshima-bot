@@ -1,6 +1,9 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data.Entities;
+using OshimaBot.Game.Services;
+using OshimaBot.Gameplay;
 using OshimaBot.Models;
 using OshimaBot.Security;
 using OshimaBot.Services;
@@ -42,7 +45,68 @@ public sealed class DatabaseInitializer(
         if (statistics is not null) await statistics.LoadAsync(cancellationToken);
 
         await SeedBootstrapApiKeyAsync(db, cancellationToken);
+        await TrackContentCatalogAsync(db, cancellationToken);
     }
+
+    /// <summary>
+    /// 内容目录留痕（计划 §10 第 7 条）：把当前内容指纹与库里上一份比对。
+    /// <para>换了内容包是正常发版，不该拦停；但**必须留一条能查到的记录**——
+    /// 玩家背包里存的是 <c>CatalogId</c>，内容删改后这些引用会静默失效，出问题时总要能回答
+    /// 「是不是换过内容」。所以这里差异只打日志（Warning），并从这一版起更新记录。</para>
+    /// </summary>
+    private async Task TrackContentCatalogAsync(BotDbContext db, CancellationToken cancellationToken)
+    {
+        const string key = "content.catalog";
+        string version = GameplayRules.CatalogVersion;
+        string fingerprint = ContentCatalog.Fingerprint;
+        ContentCatalogSummary summary = ContentCatalog.Summary;
+
+        AppConfig? row = await db.AppConfigs.FirstOrDefaultAsync(x => x.Key == key, cancellationToken);
+        ContentCatalogStamp current = new(version, fingerprint, summary.ToString(), DateTime.UtcNow);
+
+        if (row is null)
+        {
+            db.AppConfigs.Add(new AppConfig
+            {
+                Key = key,
+                ValueJson = JsonSerializer.Serialize(current),
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+            logger.LogInformation("内容目录首次记录：{Version} {Fingerprint}（{Summary}）",
+                version, ContentCatalog.ShortFingerprint, summary);
+            return;
+        }
+
+        ContentCatalogStamp? previous = null;
+        try
+        {
+            previous = JsonSerializer.Deserialize<ContentCatalogStamp>(row.ValueJson);
+        }
+        catch (JsonException)
+        {
+            // 老格式或坏数据：按「没记录过」处理，不要因为一行配置起不来。
+        }
+
+        if (previous is not null && string.Equals(previous.Fingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string oldFingerprint = previous?.Fingerprint ?? "";
+        string oldShort = oldFingerprint.Length > 12 ? oldFingerprint[..12] : oldFingerprint;
+        logger.LogWarning(
+            "内容目录已变更：{OldVersion}/{OldFingerprint}（{OldSummary}）→ {NewVersion}/{NewFingerprint}（{NewSummary}）。" +
+            "若这次改过物品/技能/角色的 Id 或名字，请检查存量背包与角色快照的 CatalogId 是否还有效。",
+            previous?.Version ?? "(未记录)", oldShort.Length == 0 ? "(无)" : oldShort,
+            previous?.Summary ?? "(未知)",
+            version, ContentCatalog.ShortFingerprint, summary);
+
+        row.ValueJson = JsonSerializer.Serialize(current);
+        row.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>写在 <c>AppConfigs</c> 里的内容目录戳。</summary>
+    private sealed record ContentCatalogStamp(string Version, string Fingerprint, string Summary, DateTime SeenAtUtc);
 
     /// <summary>
     /// 兼容旧配置的过渡：若 Server:ApiKey 非空，首次启动时把 SHA-256 摘要写入 api_keys。

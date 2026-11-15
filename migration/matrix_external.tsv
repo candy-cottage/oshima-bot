@@ -16,3 +16,4 @@ ADM-007	管理员发放货币	`/发放货币 <金币|钻石> <数量> [给 <目�
 ADM-008	管理员发放记录	`/发放记录 [p页码] [给 <目标>]`	增强	旧版没有发放记录：物品/魔法卡发出去不留痕。现在每条发放落 `AdminGrants` 一行（谁/给谁/什么/多少/何时），撤销靠记录号定位；`AdminGrantTests.ListGrants_*`
 ADM-009	管理员撤销发放	`/撤销发放 <记录号> [理由]`	增强	§10 第 10 条的「回滚」。按记录号收回物品/魔法卡（同批卡按 CatalogId 匹配）或货币，部分回收会写明差额；同一笔只能撤一次，记录不删只标记；`AdminGrantTests.Revoke*`
 OPS-001	数据库备份	`/备份数据库`	增强	旧版靠手工拷贝 MySQL 目录。新版用 VACUUM INTO 打一致性快照（WAL 下复制文件不安全），保留最近 10 份；还原步骤见 ops/README.md
+OPS-002	内容目录指纹	`/查询服务器启动时间`	增强	旧版没有「内容版本」概念。现在内容（物品/技能/角色/地区）折成 SHA-256 指纹：启动时与 `AppConfigs` 上一份比对、变了打 Warning 留痕，状态页显示版本+规模+短指纹；`ContentCatalogTests` 冻在 `migration/content-catalog.json`，`check_claims.py` 守版本一致

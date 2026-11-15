@@ -128,7 +128,11 @@ public static class CommandCatalog
             usage: "/查询服务器启动时间", description: "查看服务启动时间（UTC）", group: CommandGroups.System,
             handler: _ => Task.FromResult(CommandReplies.Compose("🖥️ 服务器状态",
                 $"启动于 {FunGameRuntime.StartedAt:yyyy-MM-dd HH:mm:ss} UTC",
-                [$"- 核心：{FunGameInfo.FunGame_Version}", "- 接入：WebSocket 单模式"], ["/帮助"]))),
+                [
+                    $"- 核心：{FunGameInfo.FunGame_Version}",
+                    "- 接入：WebSocket 单模式",
+                    $"- 内容：{GameplayRules.CatalogVersion}（{ContentCatalog.Summary}，指纹 {ContentCatalog.ShortFingerprint}）"
+                ], ["/帮助"]))),
 
         "legacy-help" => new DelegateCommand(
             key: "legacy-help", name: "玩法帮助", aliases: ["存档帮助", "社团帮助", "活动帮助", "商店帮助", "legacy"],
