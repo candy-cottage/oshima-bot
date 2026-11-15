@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
+using OshimaBot.Data.Entities;
+using OshimaBot.Game.Services;
 using OshimaBot.Models;
 using Xunit;
 
@@ -66,6 +68,42 @@ public sealed class DatabaseMigrationTests
 
         await readiness.Ready.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains("GatewaySessions", TableNames(connection));
+    }
+
+    /// <summary>
+    /// 内容目录戳必须真的落盘。原来只 <c>Add</c> 不 <c>SaveChanges</c>，于是每次启动都报
+    /// 「内容目录首次记录」——内容变更检测看着在工作，实际永远走「第一次」那条分支。
+    /// 跑两遍：一次记下、一次读到，最后库里只该有一行。
+    /// </summary>
+    [Fact]
+    public async Task Initializer_PersistsTheContentCatalogStamp()
+    {
+        using SqliteConnection connection = new("Data Source=:memory:");
+        connection.Open();
+
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddDbContext<BotDbContext>(options => options.UseSqlite(connection));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        for (int run = 0; run < 2; run++)
+        {
+            DatabaseInitializer initializer = new(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = true }),
+                Options.Create(new ServerOptions { ApiKey = "" }),
+                new DatabaseReadiness(),
+                NullLogger<DatabaseInitializer>.Instance);
+            await initializer.InitializeAsync(CancellationToken.None);
+        }
+
+        using IServiceScope scope = provider.CreateScope();
+        BotDbContext db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        List<AppConfig> rows = await db.AppConfigs.AsNoTracking()
+            .Where(x => x.Key == "content.catalog").ToListAsync();
+
+        AppConfig row = Assert.Single(rows);                       // 两次启动只有一行（不是又插了一行）
+        Assert.Contains(ContentCatalog.ShortFingerprint, row.ValueJson);
     }
 
     private static List<string> TableNames(SqliteConnection connection)

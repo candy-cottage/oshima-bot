@@ -90,6 +90,10 @@ public sealed class DatabaseInitializer(
                 ValueJson = JsonSerializer.Serialize(current),
                 UpdatedAtUtc = DateTime.UtcNow
             });
+            // 必须显式保存：本方法不是唯一写库的人，SeedBootstrapApiKeyAsync 已经 Save 过一次，
+            // 这里只 Add 不 Save 的话记录永远落不了盘 —— 表现就是每次启动都报「首次记录」，
+            // 内容变更检测等于没有（2026-11-16 实测踩到）。
+            await db.SaveChangesAsync(cancellationToken);
             logger.LogInformation("内容目录首次记录：{Version} {Fingerprint}（{Summary}）",
                 version, ContentCatalog.ShortFingerprint, summary);
             return;
@@ -121,6 +125,7 @@ public sealed class DatabaseInitializer(
 
         row.ValueJson = JsonSerializer.Serialize(current);
         row.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>写在 <c>AppConfigs</c> 里的内容目录戳。</summary>
