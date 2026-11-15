@@ -304,11 +304,11 @@ public sealed class GameplayCommandTests
     }
 
     /// <summary>
-    /// 角色列表不再把「/设主战 @编号」这种占位符丢给玩家自己敲：
-    /// 每行末尾挂「查看」标签，底部给按钮（键帽直接带编号与动作）。
+    /// 角色列表：**提示行照旧保留**，但里面的指令做成可点的链接（点一下填「/设主战 @」，编号自己补）；
+    /// 底部只有 /状态 /背包 这类通用入口才做成按钮。
     /// </summary>
     [Fact]
-    public async Task Router_CharacterListOffersClickableActions()
+    public async Task Router_CharacterListTurnsHintsIntoLinks()
     {
         using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
         CommandRouter router = db.CreateRouter();
@@ -317,38 +317,46 @@ public sealed class GameplayCommandTests
         BotReply list = await RouteReplyAsync(router, "/我的角色");
         string text = list.Markdown!.Content!;
 
-        Assert.Contains("qqbot-cmd-input", text);                   // 每行末尾的「查看」标签
-        Assert.DoesNotContain("/设主战 @编号", text);                // 旧的占位符提示不该再出现
+        Assert.Contains("qqbot-cmd-input", text);                                  // 提示里是链接
+        Assert.Contains(Uri.EscapeDataString("/设主战 @"), text);                   // 点一下填到「@」，编号留给玩家
+        Assert.Contains("/设主战 @编号", Unescape(text));                          // 显示的仍是完整用法
 
         Assert.NotNull(list.Keyboard);
         List<string> data = [.. list.Keyboard!.Content!.Rows
             .SelectMany(row => row.Buttons)
             .Select(button => button.Action?.Data ?? "")];
-        Assert.Contains("/设主战 1", data);                          // 按钮直接带编号
-        Assert.Contains("/升级 1", data);
-        Assert.Contains("/突破 1", data);
-        Assert.Contains("/练级 1", data);
-        Assert.Contains("/状态", data);                              // 原来的快速链接改成按钮
+        Assert.Contains("/状态", data);                                            // 通用入口是按钮
         Assert.Contains("/背包", data);
+        Assert.DoesNotContain(data, item => item.StartsWith("/设主战", StringComparison.Ordinal));  // 不再按角色铺按钮
     }
 
-    /// <summary>角色详情是操作入口，五个动作都给按钮，别再让玩家照着 @编号 手打。</summary>
+    /// <summary>详情页知道编号，链接直接写全：点一下就是「/设主战 1」，只剩「发送」要按。</summary>
     [Fact]
-    public async Task Router_CharacterDetailOffersActionButtons()
+    public async Task Router_CharacterDetailLinksCarryTheIndex()
     {
         using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
         CommandRouter router = db.CreateRouter();
         await RouteAsync(router, "/我的角色");
 
         BotReply detail = await RouteReplyAsync(router, "/我的角色 @1");
+        string text = detail.Markdown!.Content!;
+
+        Assert.Contains(Uri.EscapeDataString("/设主战 1"), text);
+        Assert.Contains(Uri.EscapeDataString("/练级 1 "), text);
+
         Assert.NotNull(detail.Keyboard);
         List<string> data = [.. detail.Keyboard!.Content!.Rows
             .SelectMany(row => row.Buttons)
             .Select(button => button.Action?.Data ?? "")];
-        Assert.Contains("/设主战 1", data);
-        Assert.Contains("/练级 1", data);
-        Assert.Contains("/我的角色", data);                          // 返回列表
+        Assert.Contains("/背包", data);
+        Assert.Contains("/我的角色", data);                                        // 回列表
     }
+
+    /// <summary>把 markdown 里的 cmd 标签反解出来，方便直接断言显示文本。</summary>
+    private static string Unescape(string markdown)
+        => System.Text.RegularExpressions.Regex.Replace(markdown,
+            @"text=""([^""]*)"" show=""([^""]*)""",
+            match => Uri.UnescapeDataString(match.Groups[2].Value));
 
     [Fact]
     public async Task Router_GrantLogAndRevokeAreReachable()

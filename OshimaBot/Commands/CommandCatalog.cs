@@ -17,8 +17,15 @@ namespace OshimaBot.Commands;
 /// </summary>
 public static class CommandCatalog
 {
-    /// <summary>角色列表里给多少名角色配按钮：键盘 5 行，留 1 行快捷入口、1 行翻页。</summary>
-    private const int CharacterButtonRows = 3;
+    /// <summary>
+    /// 提示行里的指令：**显示**仍是「/设主战 @编号」这样的完整用法，**点击**却只填入「/设主战 @」——
+    /// 前面的字不用手打，编号仍然由玩家自己填。这就是「提示带链接」，而不是把说明换成按钮。
+    /// </summary>
+    private static string Tip(string command, string suffix = "")
+        => QQCmdTag.CmdInput($"{command} @", $"{command} @编号{suffix}");
+
+    /// <summary>同上，但命令本身带前置参数（例如「/社团设置 任命 @」）。</summary>
+    private static string TipRaw(string insert, string show) => QQCmdTag.CmdInput(insert, show);
 
     public static readonly IReadOnlyList<string> Keys =
     [
@@ -1753,7 +1760,7 @@ public static class CommandCatalog
             context.UserId, context.CancellationToken);
         List<string> lines = quests.Select(quest =>
             $"- @{quest.Index} {quest.Name}　{quest.Progress}/{quest.Target}　{QuestStatus(quest.Status)}").ToList();
-        lines.Add($"- 完成后 /领奖 @编号（金币 +{GameplayRules.QuestRewardCredits} / 钻石 +{GameplayRules.QuestRewardDiamonds}）");
+        lines.Add($"- 完成后 {Tip("/领奖")}（金币 +{GameplayRules.QuestRewardCredits} / 钻石 +{GameplayRules.QuestRewardDiamonds}）");
         return CommandReplies.ListPage("📋 每日任务", deps.Players.TodayLabel, lines, context.Page,
             "/每日任务", ["/签到", "/抽卡", "/FunGame模拟", "/状态"]);
     }
@@ -1926,7 +1933,7 @@ public static class CommandCatalog
             $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · {item.Name} ×{item.Quantity}"
             + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 背包空空如也，先 /抽卡 或 /签到");
-        lines.Add("- /使用 @编号 · /分解 @编号 · /品质分解 <0-6> · /锁定 @编号");
+        lines.Add($"- {Tip("/使用")} · {Tip("/分解")} · /品质分解 <0-6> · {Tip("/锁定")}");
         lines.Add("- /库存搜索 <关键词> · /兑换金币 <钻石> · /合成魔法卡 @1 @2 @3");
         return CommandReplies.ListPage("🎒 背包", $"{items.Count} 格", lines, context.Page,
             "/背包", ["/抽卡", "/状态"]);
@@ -1950,7 +1957,7 @@ public static class CommandCatalog
         {
             lines.Add($"- 背包里没有名称或描述包含「{keyword}」的物品");
         }
-        lines.Add("- 编号与 /背包 一致：/使用 @编号 · /分解 @编号 · /锁定 @编号");
+        lines.Add($"- 编号与 /背包 一致：{Tip("/使用")} · {Tip("/分解")} · {Tip("/锁定")}");
         return CommandReplies.ListPage("🔍 库存搜索", $"「{keyword}」· 命中 {hits.Count} 格",
             lines, context.Page, $"/库存搜索 {keyword}", ["/背包", "/状态"]);
     }
@@ -1990,59 +1997,37 @@ public static class CommandCatalog
                     ? "**技能**：（无）"
                     : $"**技能**：{string.Join("、", detail.Skills)}"
             ];
-            // 角色详情是最该给按钮的地方：设主战 / 升级 / 突破 / 练级都要带编号，
-            // 让玩家自己敲「@编号」纯属浪费一次点击。
-            KeyboardBuilder detailButtons = new KeyboardBuilder().AddButtons(5,
-                KeyboardBuilder.CmdButton("设主战", $"/设主战 {index}"),
-                KeyboardBuilder.CmdButton("升级", $"/升级 {index}"),
-                KeyboardBuilder.CmdButton("突破", $"/突破 {index}"),
-                KeyboardBuilder.CmdButton("练级", $"/练级 {index}"),
-                KeyboardBuilder.CmdButton("返回列表", "/我的角色"));
-            // 不再同时给「蓝色指令链接」：按钮已经把五个动作都摆出来了，
-            // 两套入口并排只会让卡片变长、让人不知道该点哪个。
-            return CommandReplies.Detail($"👤 {detail.Name}", string.Join("\n", body), null,
-                keyboard: detailButtons.Build());
+            // 详情页知道编号，所以链接直接写全（点一下就是「/设主战 1」，不用再补数字）。
+            string tips = string.Join(" · ",
+                QQCmdTag.CmdInput($"/设主战 {index}"),
+                QQCmdTag.CmdInput($"/升级 {index}"),
+                QQCmdTag.CmdInput($"/突破 {index}"),
+                TipRaw($"/练级 {index} ", $"/练级 {index} [分钟]"));
+            KeyboardBuilder generic = new KeyboardBuilder().AddButtons(4,
+                KeyboardBuilder.CmdButton("背包", "/背包"),
+                KeyboardBuilder.CmdButton("状态", "/状态"),
+                KeyboardBuilder.CmdButton("角色列表", "/我的角色"),
+                KeyboardBuilder.CmdButton("帮助", "/帮助"));
+            return CommandReplies.Compose($"👤 {detail.Name}", null,
+                ["```", string.Join("\n", body), "```", tips], null, generic.Build());
         }
 
         IReadOnlyList<CharacterEntry> characters = await deps.Players.GetCharactersAsync(
             context.UserId, context.CancellationToken);
 
-        // 每行末尾挂一个「查看」标签（qqbot-cmd-input，点一下就把指令填进输入框）：
-        // 之前那行「/设主战 @编号 · /升级 @编号 …」是把占位符丢给玩家自己敲编号，
-        // 等于让玩家记住 @ 后面的数字再手打四个字。
         List<string> lines = characters.Select(character =>
             $"- @{character.Index} {character.Name}　Lv.{character.Level} / 上限 {GameplayRules.NextBreakLevel(character.BreakLevel).ToString() ?? "满级"}"
             + $"　突破 {GameplayRules.BreakProgress(character.BreakLevel)}　装备 {character.EquipmentCount} 件"
-            + (character.IsMain ? " ⭐主战" : "")
-            + $"　{QQCmdTag.CmdInput($"/我的角色 {character.Index}", "查看")}").ToList();
+            + (character.IsMain ? " ⭐主战" : "")).ToList();
         if (lines.Count == 0) lines.Add("- 还没有角色，输入 /注册 领取初始角色");
 
-        // 按钮按角色分行，每行五个动作；键盘最多 5 行，还要给「状态/背包」和翻页留位，所以最多 3 名。
-        KeyboardBuilder keyboard = new();
-        int covered = 0;
-        foreach (CharacterEntry character in characters.Take(CharacterButtonRows))
-        {
-            keyboard.AddButtons(5,
-                KeyboardBuilder.CmdButton($"查看{character.Index}", $"/我的角色 {character.Index}"),
-                KeyboardBuilder.CmdButton($"主战{character.Index}", $"/设主战 {character.Index}"),
-                KeyboardBuilder.CmdButton($"升级{character.Index}", $"/升级 {character.Index}"),
-                KeyboardBuilder.CmdButton($"突破{character.Index}", $"/突破 {character.Index}"),
-                KeyboardBuilder.CmdButton($"练级{character.Index}", $"/练级 {character.Index}"));
-            covered++;
-        }
-        keyboard.AddButtons(4,
-            KeyboardBuilder.CmdButton("状态", "/状态"),
-            KeyboardBuilder.CmdButton("背包", "/背包"),
-            KeyboardBuilder.CmdButton("抽卡", "/抽卡"),
-            KeyboardBuilder.CmdButton("帮助", "/帮助"));
-        if (characters.Count > covered)
-        {
-            lines.Add($"- 按钮只覆盖前 {covered} 名；其余角色点行末「查看」进详情后再操作");
-        }
+        // 说明照旧保留，只是把里面的指令做成可点的链接（显示 @编号，点一下填到 @）。
+        lines.Add($"- 看单个角色：{Tip("/我的角色")}（属性 / 六个装备槽 / 技能）");
+        lines.Add($"- {Tip("/设主战")} · {Tip("/升级")} · {Tip("/突破")} · {Tip("/练级", " [分钟]")}");
 
-        // extraActions 传 null：底部的「状态 / 背包」现在就是键盘上的按钮，不必再各写一行。
+        // 底部的通用入口（状态/背包/抽卡/帮助）由 ListPage 统一做成「点一下就发」的按钮。
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
-            "/我的角色", null, keyboard);
+            "/我的角色", ["/状态", "/背包", "/抽卡", "/帮助"]);
     }
 
     // ---- 社团指令辅助 ----
@@ -2515,7 +2500,7 @@ public static class CommandCatalog
         List<string> lines = [.. members.Select((member, i) =>
             $"- @{i + 1} {member.Display}　{RoleName(member.Role)}"
             + $"　入团 {member.JoinedOn}　捐献 {GameplayRules.Money(member.Contribution)}")];
-        lines.Add("- 社长/管理：/社团踢出 @编号 · /社团转让 @编号 · /社团设置 任命 @编号");
+        lines.Add($"- 社长/管理：{Tip("/社团踢出")} · {Tip("/社团转让")} · {TipRaw("/社团设置 任命 @", "/社团设置 任命 @编号")}");
         return CommandReplies.ListPage("👥 社团成员", $"{members.Count}/{ClubService.MaxMembers} 人",
             lines, context.Page, "/查看社团成员", ["/我的社团", "/查看社团管理"]);
     }
@@ -2547,7 +2532,7 @@ public static class CommandCatalog
         }
         List<string> lines = [.. rows.Select(row =>
             $"- @{row.Index} {row.Display}　申请于 {row.AppliedOn}")];
-        lines.Add("- /社团批准 @编号 · /社团拒绝 @编号");
+        lines.Add($"- {Tip("/社团批准")} · {Tip("/社团拒绝")}");
         return CommandReplies.Compose("📋 申请人列表", $"共 {rows.Count} 人", lines,
             ["/社团批准 @1", "/社团拒绝 @1"]);
     }
@@ -2821,7 +2806,7 @@ public static class CommandCatalog
                 : $"{FormatByCurrency(good.Price, good.Currency)} {good.Currency}";
             return $"- @{good.Index} {good.Name}　{price}　库存 {stock}{quota}";
         })];
-        lines.Add($"- /购买 @编号 [x数量]　·　{GameplayRules.StoreWindowMinutes} 分钟内有效，超时要重新打开");
+        lines.Add($"- {Tip("/购买", " [x数量]")}　·　{GameplayRules.StoreWindowMinutes} 分钟内有效，超时要重新打开");
         lines.Add("- /商店详情 编号 看单件详情");
         string title = storeKey is null ? "🏪 每日商店（每 4:00 刷新）"
             : $"🏪 {StoreCatalog.Find(storeKey)?.Name ?? "商店"}";
@@ -2837,7 +2822,7 @@ public static class CommandCatalog
             $"- @{listing.Index} {GameplayRules.QualityName(listing.Quality)} · {listing.ItemName}"
             + $"　{GameplayRules.Money(listing.Price)} 金币　卖家 {listing.SellerHandle}{(listing.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 市场暂时空着，用 /上架 @编号 <价格> 挂出第一件物品");
-        lines.Add("- /上架 @编号 <价格> · /购买市场 @编号 · /下架 @编号");
+        lines.Add($"- {TipRaw("/上架 @", "/上架 @编号 <价格>")} · {Tip("/购买市场")} · {Tip("/下架")}");
         return CommandReplies.ListPage("🏷️ 旅人市场", $"{listings.Count} 件在售", lines,
             context.Page, "/市场", ["/背包", "/状态"]);
     }
@@ -2850,7 +2835,7 @@ public static class CommandCatalog
             $"- @{offer.Index} {offer.ItemName}　{GameplayRules.Money(offer.Price)} 金币"
             + $"　发起 {offer.SellerHandle}{(offer.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 暂无报价单，用 /报价 @编号 <价格> 发布");
-        lines.Add("- /报价 @编号 <价格> · /接受报价 @编号 · /撤回报价 @编号");
+        lines.Add($"- {TipRaw("/报价 @", "/报价 @编号 <价格>")} · {Tip("/接受报价")} · {Tip("/撤回报价")}");
         return CommandReplies.ListPage("📝 公开报价", $"{offers.Count} 份报价", lines,
             context.Page, "/报价列表", ["/市场", "/背包"]);
     }

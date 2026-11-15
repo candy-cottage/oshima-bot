@@ -109,12 +109,22 @@ public static class CommandReplies
         List<string> actions = [];
         if (shown > 1) actions.Add($"{command} p{shown - 1}");
         if (shown < total) actions.Add($"{command} p{shown + 1}");
-        if (extraActions is not null) actions.AddRange(extraActions);
 
-        KeyboardMessage? keyboard = total > 1
-            ? new KeyboardBuilder().AddPagination(command, shown, total).Build()
-            : null;
-        return Compose(title, pageStatus, body, actions, keyboard);
+        // 「/上次的日志」这类通用跳转同样做成按钮：它们没有参数，点一下就发。
+        KeyboardBuilder builder = new();
+        if (extraActions is not null)
+        {
+            List<string> commands = [.. extraActions];
+            for (int offset = 0; offset < commands.Count; offset += KeyboardBuilder.MaxButtonsPerRow)
+            {
+                builder.AddButtons(KeyboardBuilder.MaxButtonsPerRow,
+                    [.. commands.Skip(offset).Take(KeyboardBuilder.MaxButtonsPerRow)
+                        .Select(item => KeyboardBuilder.CmdButton(item.TrimStart('/'), item))]);
+            }
+        }
+        if (total > 1) builder.AddPagination(command, shown, total);
+
+        return Compose(title, pageStatus, body, actions, builder.IsEmpty ? null : builder.Build());
     }
 
     /// <summary>把超长块按行切到 maxLength 以内；单行超长时硬切，保证一定有进展。</summary>
@@ -199,8 +209,26 @@ public static class CommandReplies
         List<string> actions = [];
         if (currentPage > 1) actions.Add($"{command} p{currentPage - 1}");
         if (currentPage < total) actions.Add($"{command} p{currentPage + 1}");
-        if (extraActions is not null) actions.AddRange(extraActions);
+
         KeyboardBuilder builder = keyboard ?? new KeyboardBuilder();
+        if (extraActions is not null && keyboard is null)
+        {
+            // 底部这些「点一下就发」的通用入口（/状态 /背包 /签到 …）做成按钮，
+            // 不再各占一行文字 —— 它们没有参数，做成按钮比一行行链接更省地方。
+            List<string> commands = [.. extraActions];
+            for (int offset = 0; offset < commands.Count; offset += KeyboardBuilder.MaxButtonsPerRow)
+            {
+                KeyboardBuilder row = builder;
+                row.AddButtons(KeyboardBuilder.MaxButtonsPerRow,
+                    [.. commands.Skip(offset).Take(KeyboardBuilder.MaxButtonsPerRow)
+                        .Select(item => KeyboardBuilder.CmdButton(item.TrimStart('/'), item))]);
+            }
+        }
+        else if (extraActions is not null)
+        {
+            // 调用方自己排了键盘（例如整块都是按钮），文字提示照旧保留。
+            actions.AddRange(extraActions);
+        }
         if (total > 1) builder.AddPagination(command, currentPage, total);
         return Compose(title, $"{status} · 第 {currentPage}/{total} 页",
             chunks.Count == 0 ? ["- （空）"] : chunks[currentPage - 1], actions,
