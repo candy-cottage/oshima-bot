@@ -76,14 +76,14 @@ del /f /q "%OUT%\rounds_archive.zip" >nul 2>nul
 >>"%DEPLOY%" echo   ASPNETCORE_ENVIRONMENT=Production
 >>"%DEPLOY%" echo   QQBot__Enabled=true
 >>"%DEPLOY%" echo   QQBot__Mode=WebSocket
->>"%DEPLOY%" echo   QQBot__Environment=Production
 >>"%DEPLOY%" echo   QQBot__AppId=YOUR_APP_ID
 >>"%DEPLOY%" echo   QQBot__Secret=YOUR_BOT_SECRET
 >>"%DEPLOY%" echo   Server__ApiKey=YOUR_THIRD_PARTY_KEY
 >>"%DEPLOY%" echo   Database__ConnectionString=Data Source=oshimobot.db
 >>"%DEPLOY%" echo.
 >>"%DEPLOY%" echo   Notes
->>"%DEPLOY%" echo   - QQBot__Environment selects the official or sandbox API domain.
+>>"%DEPLOY%" echo   - The API domain is unified (https://api.bot.qq.com since 2026-08-10);
+>>"%DEPLOY%" echo     the old sgroup hosts and the sandbox host are gone.
 >>"%DEPLOY%" echo   - GatewayUrl left blank uses GET /gateway/bot auto discovery.
 >>"%DEPLOY%" echo   - Server__ApiKey is a one-time bootstrap key. After the first
 >>"%DEPLOY%" echo     start remove the plain value; auth then reads api_keys only.

@@ -120,11 +120,44 @@ public sealed class GatewayInfrastructureTests
         Assert.Equal(9, info.Shards);
         Assert.Equal(1, info.MaxConcurrency);
         Assert.Equal(999, info.Remaining);
-        Assert.Equal("/gateway/bot", Assert.Single(handler.Requests).RequestUri!.AbsolutePath);
+        Assert.Equal("/gateway", Assert.Single(handler.Requests).RequestUri!.AbsolutePath);
         Assert.Equal("QQBot", Assert.Single(handler.Requests).Headers.Authorization!.Scheme);
 
         await api.GetGatewayAsync();
         Assert.Single(handler.Requests);
+    }
+
+    /// <summary>新路径不通时回退到旧路径（域名统一那次改动可能顺手收掉 /gateway/bot，也可能收掉 /gateway 的兼容）。</summary>
+    [Fact]
+    public async Task GatewayApiClient_FallsBackToTheLegacyPath()
+    {
+        StubHttpHandler handler = new(request => request.RequestUri!.AbsolutePath == "/gateway/bot"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(GatewayJson, Encoding.UTF8, "application/json")
+            }
+            : new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("""{"err_code":404,"message":"not found"}""", Encoding.UTF8, "application/json")
+            });
+        GatewayApiClient api = CreateApiClient(handler, new QQBotOptions { Enabled = true, AppId = "1", Secret = "s" });
+
+        GatewayInfo info = await api.GetGatewayAsync();
+        Assert.Equal("wss://api.bot.qq.com/websocket/", info.Url);
+        Assert.Equal(["/gateway", "/gateway/bot"], handler.Requests.Select(r => r.RequestUri!.AbsolutePath));
+    }
+
+    /// <summary>两条都不通时要报错，而不是静默返回空网关（否则会表现为「连不上但没日志」）。</summary>
+    [Fact]
+    public async Task GatewayApiClient_ReportsBothFailures()
+    {
+        StubHttpHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        GatewayApiClient api = CreateApiClient(handler, new QQBotOptions { Enabled = true, AppId = "1", Secret = "s" });
+
+        HttpRequestException error = await Assert.ThrowsAsync<HttpRequestException>(() => api.GetGatewayAsync());
+        Assert.Contains("/gateway", error.Message);
+        Assert.Contains("/gateway/bot", error.Message);
+        Assert.Contains("401", error.Message);
     }
 
     [Fact]

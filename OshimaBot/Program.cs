@@ -164,8 +164,8 @@ if (app.Environment.IsDevelopment())
 QQBotOptions botOptions = app.Services.GetRequiredService<IOptions<QQBotOptions>>().Value;
 IGatewayStatus gatewayStatus = app.Services.GetRequiredService<IGatewayStatus>();
 app.Logger.LogInformation(
-    "OshimaBot 启动：Mode={Mode}, Environment={Environment}, Webhook={WebhookEnabled}, Intents={Intents}",
-    botOptions.Mode, botOptions.Environment, botOptions.EnableWebhook, botOptions.Intents);
+    "OshimaBot 启动：Mode={Mode}, ApiBase={ApiBase}, Webhook={WebhookEnabled}, Intents={Intents}",
+    botOptions.Mode, botOptions.ResolvedApiBaseAddress, botOptions.EnableWebhook, botOptions.Intents);
 
 app.MapGet("/", () => Results.Ok(new
 {
@@ -185,7 +185,7 @@ app.MapGet("/health", () =>
     {
         status = "ok",
         mode = botOptions.Mode.ToString(),
-        environment = botOptions.Environment.ToString(),
+        apiBaseAddress = botOptions.ResolvedApiBaseAddress,
         webhookEnabled = botOptions.EnableWebhook,
         gateway = new
         {

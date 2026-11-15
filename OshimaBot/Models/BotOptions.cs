@@ -7,16 +7,24 @@ namespace OshimaBot.Models
         Webhook
     }
 
-    /// <summary>QQ 开放平台运行环境（决定 API 域名）。</summary>
-    public enum QQBotEnvironment
-    {
-        Sandbox,
-        Production
-    }
-
+    /// <summary>
+    /// QQ 机器人接口配置。
+    /// <para>2026-08-10 起官方把接口域名统一为 <see cref="DefaultApiBaseAddress"/>：
+    /// 旧的 <c>api.sgroup.qq.com</c> 与沙箱域名 <c>sandbox.api.sgroup.qq.com</c> 均已下线，
+    /// **沙箱应用也走同一个域名**（靠应用自身的沙箱身份区分，不再有独立入口）。
+    /// 所以这里取消了 Environment 开关——留着它只会让人以为还有两套地址。</para>
+    /// <para>旧配置文件里的 <c>QQBot:Environment</c> 会被配置绑定器忽略（未知键不报错），
+    /// 不必先清理也能启动，但建议顺手删掉。</para>
+    /// </summary>
     public sealed class QQBotOptions
     {
         public const string SectionName = "QQBot";
+
+        /// <summary>统一接口域名（2026-08-10 起）。旧域名已下线，不要再用。</summary>
+        public const string DefaultApiBaseAddress = "https://api.bot.qq.com";
+
+        /// <summary>取 access_token 的地址；统一域名下路径与旧域名一致。</summary>
+        public const string DefaultTokenAddress = DefaultApiBaseAddress + "/app/getAppAccessToken";
 
         /// <summary>GROUP_AND_C2C_EVENT (1&lt;&lt;25) | INTERACTION (1&lt;&lt;26)。官方示例的 513 属于频道事件，不适用于本项目。</summary>
         public const int DefaultIntents = (1 << 25) | (1 << 26);
@@ -26,18 +34,17 @@ namespace OshimaBot.Models
         /// <summary>开发与部署均使用 WebSocket；Webhook 仅作可选兜底。</summary>
         public QQBotMode Mode { get; set; } = QQBotMode.WebSocket;
 
-        public QQBotEnvironment Environment { get; set; } = QQBotEnvironment.Sandbox;
-
         /// <summary>默认关闭。开启后 POST /QQBot 才接受平台回调，并执行入站验签。</summary>
         public bool EnableWebhook { get; set; }
 
         public string AppId { get; set; } = "";
         public string Secret { get; set; } = "";
 
-        /// <summary>留空时按 Environment 自动选择正式/沙箱域名。</summary>
+        /// <summary>留空时用 <see cref="DefaultApiBaseAddress"/>；只在走代理/自建网关时才需要填。</summary>
         public string ApiBaseAddress { get; set; } = "";
 
-        public string TokenAddress { get; set; } = "https://bots.qq.com/app/getAppAccessToken";
+        /// <summary>取 access_token 的地址；留空用官方统一地址。</summary>
+        public string TokenAddress { get; set; } = DefaultTokenAddress;
         public int RequestTimeoutSeconds { get; set; } = 30;
         public int Intents { get; set; } = DefaultIntents;
 
@@ -47,19 +54,17 @@ namespace OshimaBot.Models
         /// <summary>心跳周期由 op 10 Hello 下发，此处仅作为网关请求超时兜底。</summary>
         public int GatewayRequestTimeoutSeconds { get; set; } = 15;
 
-        /// <summary>留空时通过 GET /gateway/bot 自动获取；可用于沙箱代理或显式指定网关。</summary>
+        /// <summary>留空时通过 <c>GET /gateway</c> 自动获取；只在要走固定网关（代理/自建）时才填。</summary>
         public string GatewayUrl { get; set; } = "";
 
-        /// <summary>单连接起步，分片编号固定 0；分片总数取自 /gateway/bot 的 shards。</summary>
+        /// <summary>单连接起步，分片编号固定 0；分片总数取自网关接口的 shards（缺省按 1）。</summary>
         public int ShardId { get; set; }
 
         /// <summary>断线重连的指数退避上限（秒）。</summary>
         public int GatewayMaxReconnectDelaySeconds { get; set; } = 30;
 
         public string ResolvedApiBaseAddress => string.IsNullOrWhiteSpace(ApiBaseAddress)
-            ? Environment == QQBotEnvironment.Sandbox
-                ? "https://sandbox.api.sgroup.qq.com"
-                : "https://api.sgroup.qq.com"
+            ? DefaultApiBaseAddress
             : ApiBaseAddress.TrimEnd('/');
 
         public bool IsConfigured => Enabled

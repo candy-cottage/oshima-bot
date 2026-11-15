@@ -164,13 +164,13 @@ public sealed class QQBotOptionsTests
     }
 
     [Fact]
-    public void ApiBaseAddress_ResolvesByEnvironment()
+    public void ApiBaseAddress_UsesTheUnifiedHost()
     {
-        Assert.Equal("https://sandbox.api.sgroup.qq.com", new QQBotOptions().ResolvedApiBaseAddress);
-        Assert.Equal("https://api.sgroup.qq.com", new QQBotOptions
-        {
-            Environment = QQBotEnvironment.Production
-        }.ResolvedApiBaseAddress);
+        // 2026-08-10 起只有一个域名；旧的 api.sgroup.qq.com 与沙箱域名都已下线。
+        Assert.Equal("https://api.bot.qq.com", new QQBotOptions().ResolvedApiBaseAddress);
+        Assert.Equal("https://api.bot.qq.com/app/getAppAccessToken", new QQBotOptions().TokenAddress);
+
+        // 代理/自建网关可以覆盖，末尾斜杠要削掉（否则拼出 //gateway）
         Assert.Equal("https://example.test", new QQBotOptions
         {
             ApiBaseAddress = "https://example.test/"
