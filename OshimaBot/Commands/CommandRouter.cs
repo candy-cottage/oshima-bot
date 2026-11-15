@@ -43,6 +43,7 @@ public sealed class CommandRouter(
             Verb = match.Command.Name,
             Args = match.Args,
             Page = match.Page,
+            PageRequested = match.PageRequested,
             Registry = registry,
             Dependencies = dependencies,
             Data = data,

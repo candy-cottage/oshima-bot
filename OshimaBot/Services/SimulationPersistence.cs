@@ -47,6 +47,7 @@ public sealed class EfSimulationStatisticsStore(
     public Dictionary<CoreCharacter, CharacterStatistics> TeamCharacterStatistics { get; } = [];
     public IReadOnlyList<string> LastRecord { get; set; } = [];
     public IReadOnlyList<string> LastFullRecord { get; set; } = [];
+    public int? LastSeed { get; set; }
 
     /// <summary>
     /// 由 FunGameRuntime 初始化时调用：只补齐缺失角色，不清空已加载的数据。
@@ -103,6 +104,9 @@ public sealed class EfSimulationStatisticsStore(
             {
                 LastRecord = DeserializeMessages(last.ResultJson);
                 LastFullRecord = DeserializeMessages(last.RoundsJson);
+                LastSeed = int.TryParse(last.Seed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seed)
+                    ? seed
+                    : null;
             }
         }
         logger.LogInformation("模拟统计已从数据库恢复：{Rows} 条统计行，最近日志 {Lines} 行",
@@ -169,6 +173,7 @@ public sealed class EfSimulationStatisticsStore(
         {
             LastRecord = [.. record.Messages];
             LastFullRecord = [.. record.FullMessages];
+            LastSeed = record.Seed;
         }
         return run.Id;
     }

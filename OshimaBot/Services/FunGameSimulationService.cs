@@ -121,6 +121,9 @@ namespace OshimaBot.Services
         public Task<T> ReadAsync<T>(Func<T> reader, CancellationToken cancellationToken = default)
             => Task.FromResult(statistics.Read(_ => reader()));
 
+        /// <summary>最近一局的种子；翻页时用它保证标题与正文是同一局。</summary>
+        public int? LastSeed => statistics.Read(store => store.LastSeed);
+
         public Task<IReadOnlyList<string>> GetLastAsync(bool full, CancellationToken cancellationToken = default)
             => Task.FromResult(statistics.Read(store =>
             {

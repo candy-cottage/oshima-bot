@@ -80,7 +80,8 @@ public sealed class CommandRegistry
 
         if (command is null) return null;
 
-        return new CommandMatch(command, StripPageTokens(arguments), ExtractPage(arguments));
+        return new CommandMatch(command, StripPageTokens(arguments), ExtractPage(arguments),
+            arguments.Any(IsPageToken));
     }
 
     private static string Normalize(string? raw)

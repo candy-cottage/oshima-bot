@@ -83,6 +83,9 @@ public sealed class KeyboardBuilder
         };
     }
 
+    /// <summary>一个按钮都没有时不要发 keyboard（空 keyboard 会让客户端显示一条空白栏）。</summary>
+    public bool IsEmpty => _keyboard.Content is null || _keyboard.Content.Rows.Count == 0;
+
     public KeyboardBuilder AddButtons(int perRow, params KeyboardButton[] buttons)
     {
         _keyboard.AppendButtons(perRow, buttons);

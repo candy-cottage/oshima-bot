@@ -303,6 +303,53 @@ public sealed class GameplayCommandTests
         Assert.Equal(spaced, attached);
     }
 
+    /// <summary>
+    /// 角色列表不再把「/设主战 @编号」这种占位符丢给玩家自己敲：
+    /// 每行末尾挂「查看」标签，底部给按钮（键帽直接带编号与动作）。
+    /// </summary>
+    [Fact]
+    public async Task Router_CharacterListOffersClickableActions()
+    {
+        using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");                       // 建档
+
+        BotReply list = await RouteReplyAsync(router, "/我的角色");
+        string text = list.Markdown!.Content!;
+
+        Assert.Contains("qqbot-cmd-input", text);                   // 每行末尾的「查看」标签
+        Assert.DoesNotContain("/设主战 @编号", text);                // 旧的占位符提示不该再出现
+
+        Assert.NotNull(list.Keyboard);
+        List<string> data = [.. list.Keyboard!.Content!.Rows
+            .SelectMany(row => row.Buttons)
+            .Select(button => button.Action?.Data ?? "")];
+        Assert.Contains("/设主战 1", data);                          // 按钮直接带编号
+        Assert.Contains("/升级 1", data);
+        Assert.Contains("/突破 1", data);
+        Assert.Contains("/练级 1", data);
+        Assert.Contains("/状态", data);                              // 原来的快速链接改成按钮
+        Assert.Contains("/背包", data);
+    }
+
+    /// <summary>角色详情是操作入口，五个动作都给按钮，别再让玩家照着 @编号 手打。</summary>
+    [Fact]
+    public async Task Router_CharacterDetailOffersActionButtons()
+    {
+        using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 16, 3, 0, 0, DateTimeKind.Utc)));
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");
+
+        BotReply detail = await RouteReplyAsync(router, "/我的角色 @1");
+        Assert.NotNull(detail.Keyboard);
+        List<string> data = [.. detail.Keyboard!.Content!.Rows
+            .SelectMany(row => row.Buttons)
+            .Select(button => button.Action?.Data ?? "")];
+        Assert.Contains("/设主战 1", data);
+        Assert.Contains("/练级 1", data);
+        Assert.Contains("/我的角色", data);                          // 返回列表
+    }
+
     [Fact]
     public async Task Router_GrantLogAndRevokeAreReachable()
     {
@@ -516,10 +563,13 @@ public sealed class GameplayCommandTests
         };
 
     private static async Task<string> RouteAsync(CommandRouter router, string command)
+        => (await RouteReplyAsync(router, command)).Markdown?.Content ?? "";
+
+    private static async Task<BotReply> RouteReplyAsync(CommandRouter router, string command)
     {
         BotReply? reply = await router.RouteAsync(Message(command), new OtherData());
         Assert.NotNull(reply);
-        return reply!.Markdown?.Content ?? reply.Text ?? "";
+        return reply!;
     }
 
     /// <summary>以管理员身份发命令（<c>requiredRole: BotRole.Admin</c> 的命令要用它）。</summary>

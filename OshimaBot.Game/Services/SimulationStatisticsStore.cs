@@ -13,6 +13,12 @@ public interface ISimulationStatisticsStore
     IReadOnlyList<string> LastRecord { get; set; }
     IReadOnlyList<string> LastFullRecord { get; set; }
 
+    /// <summary>
+    /// 最近一局的种子。翻页要用它与消息配对：「种子 20261114 · 第 2/5 页」得是同一局，
+    /// 否则标题上的种子和正文对不上。持久化实现在启动恢复时从 simulation_runs 读回。
+    /// </summary>
+    int? LastSeed { get; set; }
+
     /// <summary>按当前内容目录重建统计行（进程启动或目录热重载时调用）。</summary>
     void Reset(IEnumerable<Character> characters);
 
@@ -34,6 +40,7 @@ public sealed class InMemorySimulationStatisticsStore : ISimulationStatisticsSto
     public Dictionary<Character, CharacterStatistics> TeamCharacterStatistics { get; } = [];
     public IReadOnlyList<string> LastRecord { get; set; } = [];
     public IReadOnlyList<string> LastFullRecord { get; set; } = [];
+    public int? LastSeed { get; set; }
 
     public void Reset(IEnumerable<Character> characters)
     {

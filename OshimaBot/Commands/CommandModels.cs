@@ -88,7 +88,12 @@ public sealed class DelegateCommand(
     public Task<BotReply> ExecuteAsync(CommandContext context) => handler(context);
 }
 
-public sealed record CommandMatch(ICommand Command, IReadOnlyList<string> Args, int Page);
+/// <param name="PageRequested">
+/// 用户是否显式给了 pN。区分「默认第 1 页」与「我要看第 1 页」——
+/// 模拟类命令靠它判断「这是翻页」还是「这是要跑一局新的」。
+/// </param>
+public sealed record CommandMatch(
+    ICommand Command, IReadOnlyList<string> Args, int Page, bool PageRequested = false);
 
 public sealed class CommandContext
 {
@@ -97,6 +102,9 @@ public sealed class CommandContext
     public required string Verb { get; init; }
     public required IReadOnlyList<string> Args { get; init; }
     public required int Page { get; init; }
+
+    /// <summary>用户是否显式给了 pN（见 <see cref="CommandMatch.PageRequested"/>）。</summary>
+    public bool PageRequested { get; init; }
     public required CommandRegistry Registry { get; init; }
     public required CommandDependencies Dependencies { get; init; }
     public required OtherData Data { get; init; }

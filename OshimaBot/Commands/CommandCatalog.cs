@@ -17,6 +17,9 @@ namespace OshimaBot.Commands;
 /// </summary>
 public static class CommandCatalog
 {
+    /// <summary>角色列表里给多少名角色配按钮：键盘 5 行，留 1 行快捷入口、1 行翻页。</summary>
+    private const int CharacterButtonRows = 3;
+
     public static readonly IReadOnlyList<string> Keys =
     [
         "help", "battle-help", "cancel", "bind", "uptime", "legacy-help",
@@ -1505,15 +1508,17 @@ public static class CommandCatalog
         // ---- 日志与模拟 ----
         "log" => new DelegateCommand(
             key: "log", name: "上次的日志", aliases: ["日志", "log"], usage: "/上次的日志 [p2]",
-            description: "最近一次模拟日志", group: CommandGroups.Simulation,
-            handler: async context => CommandReplies.CodePage("📜 上次的模拟日志",
-                await deps.Simulations.GetLastAsync(false, context.CancellationToken), context.Page, "/上次的日志")),
+            description: "最近一次模拟的击杀回合（不含空投清单）", group: CommandGroups.Simulation,
+            handler: async context => SimulationReplies.Rounds(
+                await deps.Simulations.GetLastAsync(false, context.CancellationToken),
+                context.Page, $"/{context.Verb}", deps.Simulations.LastSeed)),
 
         "log-full" => new DelegateCommand(
             key: "log-full", name: "上次的完整日志", aliases: ["完整日志", "logfull"], usage: "/上次的完整日志 [p2]",
-            description: "最近一次完整模拟日志", group: CommandGroups.Simulation,
-            handler: async context => CommandReplies.CodePage("📜 上次的完整日志",
-                await deps.Simulations.GetLastAsync(true, context.CancellationToken), context.Page, "/上次的完整日志")),
+            description: "最近一次模拟的原始全量日志（含空投与角色数据）", group: CommandGroups.Simulation,
+            handler: async context => SimulationReplies.Everything(
+                await deps.Simulations.GetLastAsync(true, context.CancellationToken),
+                context.Page, $"/{context.Verb}", deps.Simulations.LastSeed)),
 
         "sim-debug" => new DelegateCommand(
             key: "sim-debug", name: "团队调试模拟", aliases: ["团队调试", "simdebug"], usage: "/团队调试模拟 [p2]",
@@ -1551,8 +1556,9 @@ public static class CommandCatalog
             }),
 
         "sim" => new DelegateCommand(
-            key: "sim", name: "FunGame模拟", aliases: ["模拟", "sim"], usage: "/FunGame模拟 [p2]",
-            description: "无复活混战模拟", group: CommandGroups.Simulation, prefixMatch: true, audit: true,
+            key: "sim", name: "FunGame模拟", aliases: ["模拟", "sim"], usage: "/FunGame模拟 [p2 翻看上一局]",
+            description: "无复活混战模拟；带 pN 只翻看上一局，不会重跑", group: CommandGroups.Simulation,
+            prefixMatch: true, audit: true,
             handler: context => RunSimulationAsync(deps, new SimulationRequest { MaxRespawnTimesMix = 0 }, context)),
 
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "未注册的指令键。")
@@ -1561,6 +1567,20 @@ public static class CommandCatalog
     private static async Task<BotReply> RunSimulationAsync(
         CommandDependencies deps, SimulationRequest request, CommandContext context)
     {
+        // 翻页 ≠ 重跑。以前 /FunGame模拟 p2 会**再跑一局**（新随机种子），
+        // 于是「第 2/20 页」是另一局的第 2 页：种子、阵容、胜负全变，翻页毫无意义。
+        // 现在带 pN 就只读上一次的结果，页码才是真的页码。
+        if (context.PageRequested)
+        {
+            IReadOnlyList<string> previous = await deps.Simulations.GetLastAsync(false, context.CancellationToken);
+            if (previous.Count == 0)
+            {
+                return CommandReplies.Error("还没有模拟结果", "没有启动新的模拟",
+                    $"直接发 /{context.Verb} 跑一局，再用 p2 翻页", $"/{context.Verb}");
+            }
+            return SimulationReplies.Brief(previous, context.Page, $"/{context.Verb}", deps.Simulations.LastSeed);
+        }
+
         // S9：把触发者写入 simulation_runs.user_id，便于按用户复盘；
         // userId=0 的匿名 / 第三方请求留空。
         request.UserId = context.UserId > 0 ? context.UserId : null;
@@ -1574,8 +1594,7 @@ public static class CommandCatalog
         {
             await deps.Players.RecordSimulationAsync(context.UserId, context.CancellationToken);
         }
-        return CommandReplies.CodePage($"🎲 模拟结果 · 种子 {result.Seed}", result.Messages,
-            context.Page, $"/{context.Verb}");
+        return SimulationReplies.Brief(result.Messages, 1, $"/{context.Verb}", result.Seed);
     }
 
     private static async Task<BotReply> StatsAsync(
@@ -1971,21 +1990,59 @@ public static class CommandCatalog
                     ? "**技能**：（无）"
                     : $"**技能**：{string.Join("、", detail.Skills)}"
             ];
+            // 角色详情是最该给按钮的地方：设主战 / 升级 / 突破 / 练级都要带编号，
+            // 让玩家自己敲「@编号」纯属浪费一次点击。
+            KeyboardBuilder detailButtons = new KeyboardBuilder().AddButtons(5,
+                KeyboardBuilder.CmdButton("设主战", $"/设主战 {index}"),
+                KeyboardBuilder.CmdButton("升级", $"/升级 {index}"),
+                KeyboardBuilder.CmdButton("突破", $"/突破 {index}"),
+                KeyboardBuilder.CmdButton("练级", $"/练级 {index}"),
+                KeyboardBuilder.CmdButton("返回列表", "/我的角色"));
+            // 不再同时给「蓝色指令链接」：按钮已经把五个动作都摆出来了，
+            // 两套入口并排只会让卡片变长、让人不知道该点哪个。
             return CommandReplies.Detail($"👤 {detail.Name}", string.Join("\n", body), null,
-                [$"/设主战 {index}", $"/升级 {index}", "/背包"]);
+                keyboard: detailButtons.Build());
         }
 
         IReadOnlyList<CharacterEntry> characters = await deps.Players.GetCharactersAsync(
             context.UserId, context.CancellationToken);
+
+        // 每行末尾挂一个「查看」标签（qqbot-cmd-input，点一下就把指令填进输入框）：
+        // 之前那行「/设主战 @编号 · /升级 @编号 …」是把占位符丢给玩家自己敲编号，
+        // 等于让玩家记住 @ 后面的数字再手打四个字。
         List<string> lines = characters.Select(character =>
             $"- @{character.Index} {character.Name}　Lv.{character.Level} / 上限 {GameplayRules.NextBreakLevel(character.BreakLevel).ToString() ?? "满级"}"
             + $"　突破 {GameplayRules.BreakProgress(character.BreakLevel)}　装备 {character.EquipmentCount} 件"
-            + (character.IsMain ? " ⭐主战" : "")).ToList();
+            + (character.IsMain ? " ⭐主战" : "")
+            + $"　{QQCmdTag.CmdInput($"/我的角色 {character.Index}", "查看")}").ToList();
         if (lines.Count == 0) lines.Add("- 还没有角色，输入 /注册 领取初始角色");
-        lines.Add("- 看单个角色：/我的角色 @编号（属性 / 六个装备槽 / 技能）");
-        lines.Add("- /设主战 @编号 · /升级 @编号 · /突破 @编号 · /练级 @编号 [分钟]");
+
+        // 按钮按角色分行，每行五个动作；键盘最多 5 行，还要给「状态/背包」和翻页留位，所以最多 3 名。
+        KeyboardBuilder keyboard = new();
+        int covered = 0;
+        foreach (CharacterEntry character in characters.Take(CharacterButtonRows))
+        {
+            keyboard.AddButtons(5,
+                KeyboardBuilder.CmdButton($"查看{character.Index}", $"/我的角色 {character.Index}"),
+                KeyboardBuilder.CmdButton($"主战{character.Index}", $"/设主战 {character.Index}"),
+                KeyboardBuilder.CmdButton($"升级{character.Index}", $"/升级 {character.Index}"),
+                KeyboardBuilder.CmdButton($"突破{character.Index}", $"/突破 {character.Index}"),
+                KeyboardBuilder.CmdButton($"练级{character.Index}", $"/练级 {character.Index}"));
+            covered++;
+        }
+        keyboard.AddButtons(4,
+            KeyboardBuilder.CmdButton("状态", "/状态"),
+            KeyboardBuilder.CmdButton("背包", "/背包"),
+            KeyboardBuilder.CmdButton("抽卡", "/抽卡"),
+            KeyboardBuilder.CmdButton("帮助", "/帮助"));
+        if (characters.Count > covered)
+        {
+            lines.Add($"- 按钮只覆盖前 {covered} 名；其余角色点行末「查看」进详情后再操作");
+        }
+
+        // extraActions 传 null：底部的「状态 / 背包」现在就是键盘上的按钮，不必再各写一行。
         return CommandReplies.ListPage("👤 我的角色", $"{characters.Count} 名", lines, context.Page,
-            "/我的角色", ["/状态", "/背包"]);
+            "/我的角色", null, keyboard);
     }
 
     // ---- 社团指令辅助 ----

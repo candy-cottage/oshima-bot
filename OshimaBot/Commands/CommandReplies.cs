@@ -49,9 +49,10 @@ public static class CommandReplies
         ],
         action is null ? null : [action]);
 
-    /// <summary>查询类结果：标题 + 状态 + 代码块正文 + 行动指令。</summary>
-    public static BotReply Detail(string title, string body, string? status = null, IEnumerable<string>? actions = null)
-        => Compose(title, status, ["```", body.Replace("```", "``", StringComparison.Ordinal), "```"], actions);
+    /// <summary>查询类结果：标题 + 状态 + 代码块正文 + 行动指令（可选键盘）。</summary>
+    public static BotReply Detail(string title, string body, string? status = null,
+        IEnumerable<string>? actions = null, KeyboardMessage? keyboard = null)
+        => Compose(title, status, ["```", body.Replace("```", "``", StringComparison.Ordinal), "```"], actions, keyboard);
 
     public static string Empty(string fallback) => fallback;
 
@@ -59,28 +60,87 @@ public static class CommandReplies
     public static BotReply TextOr(string result, string fallback)
         => string.IsNullOrWhiteSpace(result) ? BotReply.FromText(fallback) : BotReply.FromText(result);
 
-    /// <summary>把模拟日志按旧规则裁剪后分页，页数与翻页按钮同时给出。</summary>
-    public static BotReply CodePage(string title, IReadOnlyCollection<string> messages, int page, string command)
+    /// <summary>
+    /// 日志分页：按**块**切页（一块 = 一个回合 / 一次空投 / 一段角色数据），页边界永远落在块之间。
+    /// <para>按字符硬切会把一行战报劈成两页，翻页还要人脑拼接；按块切则每页都是完整事件。</para>
+    /// <para>只有单块本身就超过一页（例如角色数据段）时才在块内按行再切。</para>
+    /// </summary>
+    public static BotReply LogPages(
+        string title, IReadOnlyList<string> blocks, int page, string command,
+        string? status = null, IEnumerable<string>? extraActions = null)
     {
-        if (messages.Count == 0) return BotReply.FromText("暂无记录，请先运行一次模拟。");
+        if (blocks.Count == 0) return BotReply.FromText("暂无记录，请先运行一次模拟。");
 
-        List<string> selected = [.. messages];
-        if (selected.Count > 30)
-        {
-            selected = [.. selected[..15], $"……已省略 {messages.Count - 30} 段日志……", .. selected[^15..]];
-        }
+        const int budget = QQMarkdown.DefaultMaxLength - 600;   // 留标题/状态/行动指令/代码围栏
+        List<List<string>> pages = [];
+        List<string> current = [];
+        int length = 0;
 
-        StringBuilder body = new();
-        foreach (string message in selected)
+        foreach (string block in blocks)
         {
-            if (body.Length > 48_000)
+            if (block.Length > budget)
             {
-                body.AppendLine("……日志过长，后续内容已省略……");
-                break;
+                if (current.Count > 0) { pages.Add(current); current = []; length = 0; }
+                foreach (string piece in SplitBlock(block, budget)) pages.Add([piece]);
+                continue;
             }
-            body.AppendLine(message);
+            if (current.Count > 0 && length + block.Length + 2 > budget)
+            {
+                pages.Add(current);
+                current = [];
+                length = 0;
+            }
+            current.Add(block);
+            length += block.Length + 2;
         }
-        return Paginated(title, body.ToString(), page, command);
+        if (current.Count > 0) pages.Add(current);
+
+        int total = pages.Count;
+        int shown = Math.Clamp(page, 1, total);
+        string pageStatus = $"第 {shown}/{total} 页{(string.IsNullOrWhiteSpace(status) ? "" : " · " + status)}";
+
+        List<string> body = ["```"];
+        foreach (string block in pages[shown - 1])
+        {
+            body.Add(block.Replace("```", "``", StringComparison.Ordinal));
+        }
+        body.Add("```");
+
+        List<string> actions = [];
+        if (shown > 1) actions.Add($"{command} p{shown - 1}");
+        if (shown < total) actions.Add($"{command} p{shown + 1}");
+        if (extraActions is not null) actions.AddRange(extraActions);
+
+        KeyboardMessage? keyboard = total > 1
+            ? new KeyboardBuilder().AddPagination(command, shown, total).Build()
+            : null;
+        return Compose(title, pageStatus, body, actions, keyboard);
+    }
+
+    /// <summary>把超长块按行切到 maxLength 以内；单行超长时硬切，保证一定有进展。</summary>
+    private static IEnumerable<string> SplitBlock(string block, int maxLength)
+    {
+        StringBuilder piece = new();
+        foreach (string line in block.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            if (piece.Length > 0 && piece.Length + line.Length + 1 > maxLength)
+            {
+                yield return piece.ToString().TrimEnd();
+                piece.Clear();
+            }
+            if (line.Length > maxLength)
+            {
+                if (piece.Length > 0) { yield return piece.ToString().TrimEnd(); piece.Clear(); }
+                for (int offset = 0; offset < line.Length; offset += maxLength)
+                {
+                    yield return line.Substring(offset, Math.Min(maxLength, line.Length - offset));
+                }
+                continue;
+            }
+            if (piece.Length > 0) piece.Append('\n');
+            piece.Append(line);
+        }
+        if (piece.Length > 0) yield return piece.ToString().TrimEnd();
     }
 
     /// <summary>按 3000 字符切分，附 pN/M 与翻页指令/按钮。</summary>
@@ -116,7 +176,7 @@ public static class CommandReplies
     /// <summary>Markdown 列表分页（不包代码块，保留 - / @编号 的排版），附翻页指令与按钮。</summary>
     public static BotReply ListPage(
         string title, string status, IReadOnlyList<string> lines, int page, string command,
-        IEnumerable<string>? extraActions = null)
+        IEnumerable<string>? extraActions = null, KeyboardBuilder? keyboard = null)
     {
         List<List<string>> chunks = [];
         List<string> current = [];
@@ -140,11 +200,11 @@ public static class CommandReplies
         if (currentPage > 1) actions.Add($"{command} p{currentPage - 1}");
         if (currentPage < total) actions.Add($"{command} p{currentPage + 1}");
         if (extraActions is not null) actions.AddRange(extraActions);
-        KeyboardMessage? keyboard = total > 1
-            ? new KeyboardBuilder().AddPagination(command, currentPage, total).Build()
-            : null;
+        KeyboardBuilder builder = keyboard ?? new KeyboardBuilder();
+        if (total > 1) builder.AddPagination(command, currentPage, total);
         return Compose(title, $"{status} · 第 {currentPage}/{total} 页",
-            chunks.Count == 0 ? ["- （空）"] : chunks[currentPage - 1], actions, keyboard);
+            chunks.Count == 0 ? ["- （空）"] : chunks[currentPage - 1], actions,
+            builder.IsEmpty ? null : builder.Build());
     }
 
     /// <summary>帮助完全由注册表生成，保证「文档与实现同源」。</summary>
