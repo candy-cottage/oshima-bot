@@ -29,7 +29,7 @@ public static class CommandCatalog
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
         "register", "status", "backup", "snapshots", "restore", "grant-item", "grant-currency", "grant-magic",
-        "store-add", "my-purchases", "db-backup",
+        "grant-log", "revoke-grant", "store-add", "my-purchases", "db-backup",
         "look", "notice", "fortune", "signin",
         "quests", "quest-claim", "gacha", "gacha-ten", "gacha-material", "gacha-ten-material", "bag",
         "use", "salvage", "salvage-quality", "exchange", "use-magic-card", "craft-magic-pack", "search",
@@ -217,6 +217,42 @@ public static class CommandCatalog
             description: $"给玩家发指定品质的魔法卡（管理员，单次 ≤ {AdminService.MaxGrantPerCall} 张）",
             group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
             handler: context => GrantMagicAsync(deps, context)),
+
+        "grant-log" => new DelegateCommand(
+            key: "grant-log", name: "发放记录", aliases: ["发放历史", "发放日志"],
+            usage: "/发放记录 [p页码] [给 <UID|昵称>]",
+            description: "查看最近的发放记录，撤销时用这里的记录号（管理员）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                (string[] head, string? target) = SplitGrantArgs(context);
+                int page = 1;
+                foreach (string token in head)
+                {
+                    string value = token.TrimStart('p', 'P', '#');
+                    if (int.TryParse(value, out int parsed) && parsed > 0) { page = parsed; break; }
+                }
+                return CommandReplies.FromResult(await deps.Admin.ListGrantsAsync(
+                    context.UserId, target, page, context.CancellationToken));
+            }),
+
+        "revoke-grant" => new DelegateCommand(
+            key: "revoke-grant", name: "撤销发放", aliases: ["撤回发放", "收回物品", "撤销发放记录"],
+            usage: "/撤销发放 <记录号> [理由]",
+            description: "按记录号收回误发的物品 / 魔法卡 / 货币（管理员；同一笔只能撤一次）",
+            group: CommandGroups.System, requiredRole: BotRole.Admin, audit: true, prefixMatch: true,
+            handler: async context =>
+            {
+                (string[] head, string? _) = SplitGrantArgs(context);   // 理由里可以写「给」，先切掉
+                if (head.Length == 0 || !long.TryParse(head[0].TrimStart('#'), out long grantId) || grantId <= 0)
+                {
+                    return CommandReplies.Error("没写记录号", "没有收回任何东西",
+                        "先 /发放记录 看编号，再 /撤销发放 12 发错了", "/发放记录");
+                }
+                string note = head.Length > 1 ? string.Join(' ', head.Skip(1)) : "";
+                return CommandReplies.FromResult(await deps.Admin.RevokeGrantAsync(
+                    context.UserId, grantId, note, context.CancellationToken));
+            }),
 
         "db-backup" => new DelegateCommand(
             key: "db-backup", name: "备份数据库", aliases: ["数据库备份", "备份库"],

@@ -39,6 +39,7 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
     public DbSet<Trade> Trades => Set<Trade>();
     public DbSet<TradeItem> TradeItems => Set<TradeItem>();
 
+    public DbSet<AdminGrant> AdminGrants => Set<AdminGrant>();
     public DbSet<ProcessedEvent> ProcessedEvents => Set<ProcessedEvent>();
     public DbSet<GatewaySession> GatewaySessions => Set<GatewaySession>();
     public DbSet<SimulationRun> SimulationRuns => Set<SimulationRun>();
@@ -163,6 +164,17 @@ public sealed class BotDbContext(DbContextOptions<BotDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.Status, x.CreatedAtUtc });
+        });
+
+        // 管理员发放记录：撤销靠它定位，列表按「给谁 + 时间」倒序查。
+        modelBuilder.Entity<AdminGrant>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasMaxLength(16);
+            entity.Property(x => x.Name).HasMaxLength(64);
+            entity.Property(x => x.CatalogId).HasMaxLength(32);
+            entity.HasIndex(x => new { x.TargetUserId, x.CreatedAtUtc });
+            entity.HasIndex(x => x.CreatedAtUtc);
         });
         modelBuilder.Entity<UserSession>().HasKey(x => x.UserId);
 

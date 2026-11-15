@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(164, registry.All.Count);
+        Assert.Equal(166, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -286,9 +286,46 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
-    public async Task Router_ExploreCommandsAreReachable()
+    public async Task Router_GrantLogAndRevokeAreReachable()
     {
         using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");     // 建档，否则背包没主人
+
+        string item = OshimaBot.Game.Services.FunGameService.AllItems
+            .First(x => x.ItemType == FunGame.Core.Library.Constant.ItemType.Weapon).Name;
+
+        // 发放：参数解析（x 数量）+ 落记录
+        string granted = await RouteAsAdminAsync(router, $"/发放物品 {item} x3");
+        Assert.Contains("物品已发放", granted);
+
+        string log = await RouteAsAdminAsync(router, "/发放记录");
+        Assert.Contains("发放记录", log);
+        Assert.Contains(item, log);
+        Assert.Contains("撤销用", log);
+
+        // 记下记录号再撤销（指令层要把 #编号 解析成 long）
+        long grantId = System.Text.RegularExpressions.Regex.Match(log, @"#(\d+)") is { Success: true } match
+            ? long.Parse(match.Groups[1].Value)
+            : 0;
+        Assert.True(grantId > 0, "发放记录里应该带编号");
+
+        string revoked = await RouteAsAdminAsync(router, $"/撤销发放 #{grantId} 发错人了");
+        Assert.Contains("已撤销发放", revoked);
+        Assert.Contains("发错人了", revoked);
+
+        // 再撤一次要被拦
+        Assert.Contains("已经撤销过", await RouteAsAdminAsync(router, $"/撤销发放 {grantId}"));
+
+        // 非管理员打不到
+        Assert.Contains("权限不足", await RouteAsync(router, $"/撤销发放 {grantId}"));
+    }
+
+    [Fact]
+    public async Task Router_ExploreCommandsAreReachable()
+    {
+        // 本地 03:00：不在午餐（11–14）与晚餐（17–20）时段，探索许可就是基础 60，不会凭空 +30。
+        using GameplayCommandDatabase db = new(new FakeClock(new DateTime(2026, 11, 14, 19, 0, 0, DateTimeKind.Utc)));
         CommandRouter router = db.CreateRouter();
 
         await RouteAsync(router, "/我的角色");          // 先建档，探索需要角色
@@ -417,7 +454,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(164, registry.All.Count);
+        Assert.Equal(166, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;
@@ -467,6 +504,18 @@ public sealed class GameplayCommandTests
         return reply!.Markdown?.Content ?? reply.Text ?? "";
     }
 
+    /// <summary>以管理员身份发命令（<c>requiredRole: BotRole.Admin</c> 的命令要用它）。</summary>
+    private static async Task<string> RouteAsAdminAsync(CommandRouter router, string command)
+    {
+        ThirdPartyMessage message = Message(command);
+        message.Principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, BotRole.Admin.ToString())],
+            "test"));
+        BotReply? reply = await router.RouteAsync(message, new OtherData());
+        Assert.NotNull(reply);
+        return reply!.Markdown?.Content ?? reply.Text ?? "";
+    }
+
     private static ThirdPartyMessage Message(string detail, long userId = UserId)
         => new()
         {
@@ -480,7 +529,11 @@ public sealed class GameplayCommandTests
         public ServiceProvider Provider { get; }
         public CommandDependencies Dependencies { get; }
 
-        public GameplayCommandDatabase()
+        /// <param name="clock">
+        /// 需要稳定日期/钟点的用例传假时钟（默认走系统时间）。
+        /// 例：探索许可在午/晚餐时段有 +30 的加成，用真时钟会让「剩余 55」这类断言在 11–14、17–20 点随机失败。
+        /// </param>
+        public GameplayCommandDatabase(IGameClock? clock = null)
         {
             FunGameRuntime.EnsureInitialized();
             Connection = new SqliteConnection("Data Source=:memory:");
@@ -493,7 +546,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton(Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }));
             services.AddSingleton<IUserDirectory, UserDirectory>();
             services.AddSingleton<IUserSessionService, UserSessionService>();
-            services.AddGameplayRuntime();
+            services.AddGameplayRuntime(clock: clock);
             services.AddSingleton<IPlayerService, PlayerService>();
             services.AddSingleton<IEconomyService, EconomyService>();
             services.AddSingleton<IRoomService, RoomService>();
@@ -504,6 +557,7 @@ public sealed class GameplayCommandTests
             services.AddSingleton<IQuestBoardService, QuestBoardService>();
             services.AddSingleton<IForgeService, ForgeService>();
             services.AddSingleton<ISnapshotService, SnapshotService>();
+            services.AddSingleton<IAdminService, AdminService>();
             services.AddSingleton<ISimulationStatisticsStore, EfSimulationStatisticsStore>();
             services.AddSingleton<FunGameQueryService>();
             Provider = services.BuildServiceProvider();
@@ -523,8 +577,8 @@ public sealed class GameplayCommandTests
                 Provider.GetRequiredService<IQuestBoardService>(),
                 Provider.GetRequiredService<IForgeService>(),
                 Provider.GetRequiredService<ISnapshotService>(),
-                null!,
-                null!,
+                Provider.GetRequiredService<IAdminService>(),
+                null!,                       // 备份：这组用例不碰，留空
                 NullLogger.Instance);
         }
 

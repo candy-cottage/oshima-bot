@@ -26,11 +26,20 @@ public interface IAdminService
     Task<ActionResult> GrantMagicCardAsync(long adminId, string? target, string magic,
         int qualityTier, int str, int agi, int intelligence, int quantity,
         CancellationToken cancellationToken = default);
+
+    /// <summary>最近的发放记录（管理员）。撤销要靠这里的记录号定位。</summary>
+    Task<ActionResult> ListGrantsAsync(long adminId, string? target, int page,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>撤销一笔发放：按记录号收回物品/魔法卡/货币，并标记该记录。</summary>
+    Task<ActionResult> RevokeGrantAsync(long adminId, long grantId, string? note,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AdminService(
     IServiceScopeFactory scopeFactory,
     IRandomSource random,
+    IGameClock clock,
     ILogger<AdminService> logger) : IAdminService
 {
     /// <summary>
@@ -74,8 +83,9 @@ public sealed class AdminService(
 
             int tier = GameplayRules.QualityTierOf(entry.QualityType);
             PlayerAccount account = await PlayerService.EnsureAsync(db, who.Value.TargetId, ct);
-            await ItemStore.AddAsync(db, who.Value.TargetId, entry.Name, tier, quantity, ct,
-                entry.Id.ToString(CultureInfo.InvariantCulture));
+            string catalogId = entry.Id.ToString(CultureInfo.InvariantCulture);
+            await ItemStore.AddAsync(db, who.Value.TargetId, entry.Name, tier, quantity, ct, catalogId);
+            Record(db, adminId, who.Value.TargetId, GrantKinds.Item, entry.Name, quantity, 0, catalogId);
 
             return ActionResult.Success("🎁 物品已发放",
                 $"{entry.Name} ×{quantity} → {who.Value.TargetName}",
@@ -119,6 +129,7 @@ public sealed class AdminService(
                 adminId.ToString(CultureInfo.InvariantCulture));
             double after = code == "diamonds" ? account.Materials : account.Credits;
             string unit = code == "diamonds" ? "钻石" : "金币";
+            Record(db, adminId, who.Value.TargetId, code, "", 0, amount, "");
 
             return ActionResult.Success($"💰 {unit}已发放",
                 $"{GameplayRules.Money(amount)} {unit} → {who.Value.TargetName}",
@@ -175,6 +186,9 @@ public sealed class AdminService(
                 ItemStore.AddSnapshot(db, who.Value.TargetId, card, skill.Id.ToString(CultureInfo.InvariantCulture));
                 names.Add(card.Name);
             }
+            // 魔法卡每张名字不同，但同批卡的 CatalogId（技能 Id）相同 —— 撤销按它匹配。
+            Record(db, adminId, who.Value.TargetId, GrantKinds.Magic, skill.Name, quantity, 0,
+                skill.Id.ToString(CultureInfo.InvariantCulture));
 
             List<string> lines =
             [
@@ -196,7 +210,187 @@ public sealed class AdminService(
                 $"{skill.Name} ×{quantity} → {who.Value.TargetName}", lines, ["/背包", "/发放魔法卡"]);
         }, cancellationToken);
 
+    public Task<ActionResult> ListGrantsAsync(long adminId, string? target, int page,
+        CancellationToken cancellationToken = default)
+        => ReadAsync(adminId, async (db, ct) =>
+        {
+            const int pageSize = 20;
+            int current = Math.Max(1, page);
+
+            IQueryable<AdminGrant> query = db.AdminGrants.AsNoTracking();
+            string scope = "全部玩家";
+            if (!string.IsNullOrWhiteSpace(target))
+            {
+                (long TargetId, string TargetName)? who = await ResolveTargetAsync(db, adminId, target, ct);
+                if (who is null) return NoTarget(target);
+                query = query.Where(x => x.TargetUserId == who.Value.TargetId);
+                scope = who.Value.TargetName;
+            }
+
+            int total = await query.CountAsync(ct);
+            if (total == 0)
+            {
+                return ActionResult.Success("📋 还没有发放记录", scope,
+                    ["- 发放物品 / 货币 / 魔法卡之后才会留下记录", "- 撤销要靠这里的记录号"], ["/发放物品", "/撤销发放"]);
+            }
+
+            int pages = (total + pageSize - 1) / pageSize;
+            if (current > pages) current = pages;
+            List<AdminGrant> rows = await query
+                .OrderByDescending(x => x.Id)
+                .Skip((current - 1) * pageSize).Take(pageSize)
+                .ToListAsync(ct);
+
+            Dictionary<long, string> displays = await DisplaysAsync(db, [.. rows.Select(x => x.TargetUserId)], ct);
+            List<string> lines = [];
+            foreach (AdminGrant row in rows)
+            {
+                string who = displays.GetValueOrDefault(row.TargetUserId, $"旅人{row.TargetUserId}");
+                string what = GrantKinds.IsCurrency(row.Kind)
+                    ? $"{GrantKinds.Display(row.Kind)} {GameplayRules.Money(row.Amount)}"
+                    : $"{GrantKinds.Display(row.Kind)} {row.Name} ×{row.Quantity}";
+                string state = row.RevokedAtUtc is DateTime revokedAt
+                    ? $"（已撤销 {revokedAt.ToLocalTime():MM-dd HH:mm}）"
+                    : "";
+                lines.Add($"- #{row.Id}　{row.CreatedAtUtc.ToLocalTime():MM-dd HH:mm}　给 {who}：{what}{state}");
+            }
+            lines.Add($"- 第 {current}/{pages} 页，共 {total} 条；撤销用 /撤销发放 <记录号>");
+
+            return ActionResult.Success($"📋 发放记录 · {scope}", $"第 {current}/{pages} 页（共 {total} 条）",
+                lines, ["/撤销发放", "/发放记录"]);
+        }, cancellationToken);
+
+    public Task<ActionResult> RevokeGrantAsync(long adminId, long grantId, string? note,
+        CancellationToken cancellationToken = default)
+        => MutateAsync(adminId, async (db, ct) =>
+        {
+            if (grantId <= 0)
+            {
+                return ActionResult.Fail("记录号不合法", "没有收回任何东西",
+                    "先 /发放记录 看编号，再 /撤销发放 <编号>", "/发放记录");
+            }
+
+            AdminGrant? grant = await db.AdminGrants.FirstOrDefaultAsync(x => x.Id == grantId, ct);
+            if (grant is null)
+            {
+                return ActionResult.Fail($"没有 #{grantId} 这条发放记录", "没有收回任何东西",
+                    "编号从 /发放记录 里取（按时间倒序）", "/发放记录");
+            }
+            if (grant.RevokedAtUtc is DateTime already)
+            {
+                return ActionResult.Fail($"#{grantId} 已经撤销过", "没有重复收回",
+                    $"时间：{already.ToLocalTime():MM-dd HH:mm}，操作者 {grant.RevokedBy}；同一笔只能撤一次",
+                    "/发放记录");
+            }
+
+            string whoName = await DisplayAsync(db, grant.TargetUserId, ct);
+            string kindName = GrantKinds.Display(grant.Kind);
+            List<string> lines = [$"- 记录：#{grant.Id}　{grant.CreatedAtUtc.ToLocalTime():MM-dd HH:mm} → {whoName}"];
+            string outcome;
+
+            if (GrantKinds.IsCurrency(grant.Kind))
+            {
+                PlayerAccount account = await PlayerService.EnsureAsync(db, grant.TargetUserId, ct);
+                bool diamonds = grant.Kind == GrantKinds.Diamonds;
+                double balance = diamonds ? account.Materials : account.Credits;
+                double taken = Math.Min(grant.Amount, Math.Max(0, balance));
+                if (taken <= 0)
+                {
+                    return ActionResult.Fail($"{whoName} 已经没剩多少{kindName}", "没有收回，记录仍待处理",
+                        $"应收回 {GameplayRules.Money(grant.Amount)}，当前余额 {GameplayRules.Money(balance)}；"
+                        + "钱已经花掉了，只能从余额里扣或手工处理", "/发放记录");
+                }
+
+                PlayerService.ApplyCurrency(db, account, -taken, grant.Kind, "admin_revoke", "admin_grant",
+                    grant.Id.ToString(CultureInfo.InvariantCulture));
+                double after = diamonds ? account.Materials : account.Credits;
+                double shortfall = grant.Amount - taken;
+                outcome = $"收回 {GameplayRules.Money(taken)} / {GameplayRules.Money(grant.Amount)} {kindName}";
+                lines.Add($"- 余额：{GameplayRules.Money(balance)} → {GameplayRules.Money(after)}");
+                if (shortfall > 0)
+                {
+                    lines.Add($"- 差 {GameplayRules.Money(shortfall)} {kindName} 已经花掉了，只收回能收的部分");
+                }
+            }
+            else
+            {
+                List<PlayerItem> items = await ItemStore.ListAsync(db, grant.TargetUserId, ct);
+                List<PlayerItem> matches = [.. items
+                    .Where(x => grant.CatalogId.Length > 0
+                        ? string.Equals(x.CatalogId, grant.CatalogId, StringComparison.Ordinal)
+                        : string.Equals(x.Name, grant.Name, StringComparison.Ordinal))
+                    .OrderByDescending(x => x.Id)];
+                int available = matches.Sum(x => x.Quantity);
+                int want = Math.Max(1, grant.Quantity);
+                if (available <= 0)
+                {
+                    return ActionResult.Fail($"{whoName} 背包里已经没有「{grant.Name}」", "没有收回，记录仍待处理",
+                        "已经用掉 / 装备 / 分解 / 卖掉的东西收不回来；需要的话用 /发放物品 反向调账", "/发放记录");
+                }
+
+                int taken = Math.Min(want, available);
+                int remaining = taken;
+                foreach (PlayerItem item in matches)
+                {
+                    if (remaining <= 0) break;
+                    int take = Math.Min(remaining, item.Quantity);
+                    if (item.Quantity <= take) ItemStore.Remove(db, item);
+                    else { item.Quantity -= take; ItemStore.Sync(item); }
+                    remaining -= take;
+                }
+                outcome = $"收回「{grant.Name}」×{taken} / {want}";
+                lines.Add($"- 回收后背包里还有 {available - taken} 件同名同源物品");
+                if (taken < want)
+                {
+                    lines.Add($"- 差 {want - taken} 件已不在背包（用掉 / 装备 / 分解 / 卖掉），收不回来");
+                }
+            }
+
+            grant.RevokedAtUtc = clock.UtcNow;
+            grant.RevokedBy = adminId;
+            grant.RevokeNote = string.IsNullOrWhiteSpace(note) ? outcome : $"{outcome}；理由：{note.Trim()}";
+
+            lines.Add($"- 记录 #{grant.Id} 已标记撤销（操作者 {adminId}）");
+            if (!string.IsNullOrWhiteSpace(note)) lines.Add($"- 理由：{note.Trim()}");
+            return ActionResult.Success($"↩️ 已撤销发放 #{grant.Id}", $"{outcome} ← {whoName}",
+                lines, ["/发放记录", "/状态"]);
+        }, cancellationToken);
+
     // ---------------- 内部 ----------------
+
+    /// <summary>写一条发放记录（与发放本身同一个事务，不会出现「发了但没记」）。</summary>
+    private void Record(BotDbContext db, long adminId, long targetUserId, string kind,
+        string name, int quantity, double amount, string catalogId)
+        => db.AdminGrants.Add(new AdminGrant
+        {
+            AdminId = adminId,
+            TargetUserId = targetUserId,
+            Kind = kind,
+            Name = name,
+            Quantity = quantity,
+            Amount = amount,
+            CatalogId = catalogId,
+            CreatedAtUtc = clock.UtcNow
+        });
+
+    /// <summary>只读查询：不开事务，也不需要回滚。</summary>
+    private async Task<ActionResult> ReadAsync(long adminId,
+        Func<BotDbContext, CancellationToken, Task<ActionResult>> body, CancellationToken ct)
+    {
+        if (adminId <= 0) return PlayerService.NoIdentity;
+        using IServiceScope scope = scopeFactory.CreateScope();
+        BotDbContext db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+        return await body(db, ct);
+    }
+
+    /// <summary>批量取显示名，列表里避免逐行查库。</summary>
+    private static async Task<Dictionary<long, string>> DisplaysAsync(
+        BotDbContext db, IReadOnlyCollection<long> userIds, CancellationToken ct)
+    {
+        if (userIds.Count == 0) return [];
+        List<User> users = await db.Users.AsNoTracking().Where(x => userIds.Contains(x.Id)).ToListAsync(ct);
+        return users.ToDictionary(x => x.Id, Display);
+    }
 
     private static ActionResult BadQuantity(int quantity)
         => ActionResult.Fail("数量不合法", "没有发放任何东西",

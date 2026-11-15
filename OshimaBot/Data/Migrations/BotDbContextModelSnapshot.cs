@@ -218,6 +218,61 @@ namespace OshimaBot.Data.Migrations
                     b.ToTable("ActivityProgress");
                 });
 
+            modelBuilder.Entity("OshimaBot.Data.Entities.AdminGrant", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AdminId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Amount")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("CatalogId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RevokeNote")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("RevokedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("TargetUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("TargetUserId", "CreatedAtUtc");
+
+                    b.ToTable("AdminGrants");
+                });
+
             modelBuilder.Entity("OshimaBot.Data.Entities.ApiKey", b =>
                 {
                     b.Property<long>("Id")
