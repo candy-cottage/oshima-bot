@@ -166,6 +166,7 @@ public sealed class IdentityTests
             db.Provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = false }),
             Options.Create(new ServerOptions { ApiKey = "bootstrap-secret" }),
+            new DatabaseReadiness(),
             NullLogger<DatabaseInitializer>.Instance);
 
         await initializer.InitializeAsync(CancellationToken.None);

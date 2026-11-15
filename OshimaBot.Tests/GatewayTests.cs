@@ -190,7 +190,9 @@ public sealed class GatewayInfrastructureTests
             await scope.ServiceProvider.GetRequiredService<BotDbContext>().Database.EnsureCreatedAsync();
         }
 
-        GatewaySessionStore store = new(provider.GetRequiredService<IServiceScopeFactory>());
+        GatewaySessionStore store = new(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<GatewaySessionStore>.Instance);
         Assert.Null(await store.LoadAsync("APP1"));
         await store.SaveAsync("APP1", "session-1", 42);
         GatewaySessionState? loaded = await store.LoadAsync("APP1");
@@ -228,14 +230,66 @@ public sealed class GatewayInfrastructureTests
             Content = new StringContent(GatewayJson, Encoding.UTF8, "application/json")
         });
         GatewayApiClient api = CreateApiClient(handler, new QQBotOptions { Enabled = false });
+        DatabaseReadiness readiness = new();
+        readiness.MarkReady();
         QQBotGatewayClient client = new(
             Options.Create(new QQBotOptions { Enabled = false, Mode = QQBotMode.WebSocket }),
             api, new StubQQBotService(), new NoopDispatcher(), new InMemorySessionStore(),
-            new GatewayStatus(), NullLogger<QQBotGatewayClient>.Instance);
+            new GatewayStatus(), readiness, NullLogger<QQBotGatewayClient>.Instance);
 
         await client.StartAsync(CancellationToken.None);
         await client.StopAsync(CancellationToken.None);
         Assert.Empty(handler.Requests);
+    }
+
+    /// <summary>
+    /// 首次启动的现场（2026-11-16 线上日志）：迁移还没建表，网关就去读 gateway_sessions，
+    /// 老实现直接抛 no such table → 未处理异常 → StopHost，进程闪退；第二次启动表有了就正常。
+    /// 这里锁「读不到就当没有会话」，不再往外抛。
+    /// </summary>
+    [Fact]
+    public async Task SessionStore_FirstStartWithoutTablesDegradesInsteadOfThrowing()
+    {
+        using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        ServiceCollection services = new();
+        services.AddDbContext<BotDbContext>(options => options.UseSqlite(connection));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        // 故意不 EnsureCreated / 不迁移：模拟「迁移还没跑完」的库
+
+        GatewaySessionStore store = new(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<GatewaySessionStore>.Instance);
+
+        Assert.Null(await store.LoadAsync("APP1"));
+        await store.SaveAsync("APP1", "session-1", 1);   // 不抛
+        await store.ClearAsync("APP1");                  // 不抛
+    }
+
+    /// <summary>迁移没跑完之前，网关不该去取 token、连 WS —— 否则连接会带着「表不存在」的异常反复重连。</summary>
+    [Fact]
+    public async Task GatewayClient_WaitsForTheDatabaseBeforeConnecting()
+    {
+        StubHttpHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(GatewayJson, Encoding.UTF8, "application/json")
+        });
+        QQBotOptions options = new() { Enabled = true, AppId = "1", Secret = "s", Mode = QQBotMode.WebSocket };
+        GatewayApiClient api = CreateApiClient(handler, options);
+        DatabaseReadiness readiness = new();
+        QQBotGatewayClient client = new(
+            Options.Create(options), api, new StubQQBotService(), new NoopDispatcher(),
+            new InMemorySessionStore(), new GatewayStatus(), readiness, NullLogger<QQBotGatewayClient>.Instance);
+
+        await client.StartAsync(CancellationToken.None);
+        await Task.Delay(200);
+        Assert.Empty(handler.Requests);        // 还没就绪：连 token 都不该去拿
+
+        readiness.MarkReady();
+        await Task.Delay(400);
+        Assert.NotEmpty(handler.Requests);     // 就绪后才开始要网关地址
+
+        await client.StopAsync(CancellationToken.None);
     }
 
     private static GatewayApiClient CreateApiClient(StubHttpHandler handler, QQBotOptions options)

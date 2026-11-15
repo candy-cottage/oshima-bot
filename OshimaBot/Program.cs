@@ -42,6 +42,7 @@ builder.Services.AddOptions<DatabaseOptions>()
     .Validate(options => !string.IsNullOrWhiteSpace(options.ConnectionString), "Database:ConnectionString 不能为空。")
     .ValidateOnStart();
 
+builder.Services.AddSingleton<DatabaseReadiness>();
 builder.Services.AddSingleton<WebhookSignatureVerifier>();
 builder.Services.AddAuthentication(ApiKeyDefaults.Scheme)
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyDefaults.Scheme, null);

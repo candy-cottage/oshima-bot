@@ -18,9 +18,27 @@ public sealed class DatabaseInitializer(
     IServiceScopeFactory scopeFactory,
     IOptions<DatabaseOptions> options,
     IOptions<ServerOptions> serverOptions,
+    DatabaseReadiness readiness,
     ILogger<DatabaseInitializer> logger) : BackgroundService
 {
-    protected override Task ExecuteAsync(CancellationToken stoppingToken) => InitializeAsync(stoppingToken);
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await InitializeAsync(stoppingToken);
+            readiness.MarkReady();
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // 迁移失败就别让等着的后台任务一直挂着：把异常传下去，宿主该停就停。
+            readiness.MarkFailed(exception);
+            throw;
+        }
+    }
 
     /// <summary>公开以便集成测试直接等待完成（BackgroundService.StartAsync 不会等待 ExecuteAsync）。</summary>
     public async Task InitializeAsync(CancellationToken cancellationToken)

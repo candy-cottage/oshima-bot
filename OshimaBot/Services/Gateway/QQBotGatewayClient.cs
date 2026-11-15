@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OshimaBot.Data;
 using OshimaBot.Models;
 
 namespace OshimaBot.Services.Gateway;
@@ -18,6 +19,7 @@ public sealed class QQBotGatewayClient(
     IQQEventDispatcher dispatcher,
     IGatewaySessionStore sessions,
     IGatewayStatus status,
+    DatabaseReadiness readiness,
     ILogger<QQBotGatewayClient> logger) : BackgroundService
 {
     private readonly QQBotOptions _options = options.Value;
@@ -34,6 +36,18 @@ public sealed class QQBotGatewayClient(
         {
             logger.LogInformation("QQ WebSocket 未启用（Enabled={Enabled}, Mode={Mode}），网关客户端不启动。",
                 _options.Enabled, _options.Mode);
+            return;
+        }
+
+        // 首次启动时迁移还没建表，这里先去读 gateway_sessions 会抛 no such table，
+        // 而 BackgroundService 的未处理异常会把宿主停掉（表现为「第一次启动闪退」）。
+        // 所以先等数据库就绪——迁移失败时 WaitAsync 会把异常抛出来，宿主照样停，但原因清楚。
+        try
+        {
+            await readiness.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
             return;
         }
 

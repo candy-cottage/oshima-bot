@@ -1,6 +1,10 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OshimaBot.Data;
+using OshimaBot.Models;
 using Xunit;
 
 namespace OshimaBot.Tests;
@@ -31,6 +35,37 @@ public sealed class DatabaseMigrationTests
         Assert.Contains("CorePlayers", TableNames(connection));
         Assert.Contains("LedgerEntries", TableNames(connection));
         Assert.Contains("RenameRequests", TableNames(connection));
+    }
+
+    /// <summary>
+    /// 迁移完成要打「就绪」信号：网关等它，否则首次启动会抢在建表之前查 gateway_sessions。
+    /// 这里连 InitializeAsync 与 readiness 一起跑，防止有人把 MarkReady 挪走或漏掉。
+    /// </summary>
+    [Fact]
+    public async Task Initializer_MarksReadinessOnlyAfterMigrating()
+    {
+        using SqliteConnection connection = new("Data Source=:memory:");
+        connection.Open();
+
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddDbContext<BotDbContext>(options => options.UseSqlite(connection));
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        DatabaseReadiness readiness = new();
+        Assert.False(readiness.Ready.IsCompleted);
+
+        DatabaseInitializer initializer = new(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new DatabaseOptions { ApplyMigrationsOnStartup = true }),
+            Options.Create(new ServerOptions()),
+            readiness,
+            NullLogger<DatabaseInitializer>.Instance);
+
+        await initializer.StartAsync(CancellationToken.None);   // ExecuteAsync 里迁移完才 MarkReady
+
+        await readiness.Ready.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("GatewaySessions", TableNames(connection));
     }
 
     private static List<string> TableNames(SqliteConnection connection)
