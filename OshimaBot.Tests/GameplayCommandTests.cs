@@ -304,7 +304,7 @@ public sealed class GameplayCommandTests
     }
 
     /// <summary>
-    /// 角色列表：**提示行照旧保留**，但里面的指令做成可点的链接（点一下填「/设主战 @」，编号自己补）；
+    /// 角色列表：**提示行照旧保留**，但里面的指令做成可点的链接（点一下填「/设主战」，编号自己补）；
     /// 底部只有 /状态 /背包 这类通用入口才做成按钮。
     /// </summary>
     [Fact]
@@ -318,8 +318,10 @@ public sealed class GameplayCommandTests
         string text = list.Markdown!.Content!;
 
         Assert.Contains("qqbot-cmd-input", text);                                  // 提示里是链接
-        Assert.Contains(Uri.EscapeDataString("/设主战 @"), text);                   // 点一下填到「@」，编号留给玩家
-        Assert.Contains("/设主战 @编号", MarkdownText.Decode(text));                          // 显示的仍是完整用法
+        // 点一下只填命令本身：text 里绝不能带 @（客户端自动补空格会把「@ 1」拆成两个 token，RefIndex 解析失败）。
+        Assert.Contains("/设主战", MarkdownText.Inserts(text));
+        Assert.DoesNotContain("/设主战 @", MarkdownText.Inserts(text));
+        Assert.Contains("/设主战 @编号", MarkdownText.Decode(text));                 // 显示的仍是完整用法
 
         Assert.NotNull(list.Keyboard);
         List<string> data = [.. list.Keyboard!.Content!.Rows

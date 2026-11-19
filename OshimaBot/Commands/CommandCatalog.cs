@@ -18,11 +18,12 @@ namespace OshimaBot.Commands;
 public static class CommandCatalog
 {
     /// <summary>
-    /// 提示行里的指令：**显示**仍是「/设主战 @编号」这样的完整用法，**点击**却只填入「/设主战 @」——
-    /// 前面的字不用手打，编号仍然由玩家自己填。这就是「提示带链接」，而不是把说明换成按钮。
+    /// 提示行里的指令：**显示**仍是「/设主战 @编号」这样的完整用法，**点击**只填入命令本身。
+    /// <para>不要在 text 里放 @ —— 客户端会自动补一个尾空格，玩家再打编号就成「@ 1」，
+    /// 而 RefIndex 只认「@1」或「1」，分开就解析失败。@ 只留在 show 里做占位教学。</para>
     /// </summary>
     private static string Tip(string command, string suffix = "")
-        => QQCmdTag.CmdInput($"{command} @", $"{command} @编号{suffix}");
+        => QQCmdTag.CmdInput(command, $"{command} @编号{suffix}");
 
     /// <summary>同上，但命令本身带前置参数（例如「/社团设置 任命 @」）。</summary>
     private static string TipRaw(string insert, string show) => QQCmdTag.CmdInput(insert, show);
@@ -1997,8 +1998,10 @@ public static class CommandCatalog
                 KeyboardBuilder.CmdButton("状态", "/状态"),
                 KeyboardBuilder.CmdButton("角色列表", "/我的角色"),
                 KeyboardBuilder.CmdButton("帮助", "/帮助"));
+            // 不显示 Promotion：core 的晋升点数（默认 100 = E 档），原版 GetInfo 也不展示，
+            // 裸数字对玩家没有意义，只会让人以为是评分 bug。
             string status = $"Lv.{detail.Level} · 突破 {GameplayRules.BreakProgress(detail.BreakLevel)}"
-                + $" · 评级 {detail.Promotion}" + (detail.IsMain ? " · ⭐主战" : "");
+                + (detail.IsMain ? " · ⭐主战" : "");
             return CommandReplies.Paginated($"👤 {detail.Name}", detail.FullInfo,
                 context.Page, $"/我的角色 @{index}", status, generic, tips);
         }
@@ -2491,7 +2494,7 @@ public static class CommandCatalog
         List<string> lines = [.. members.Select((member, i) =>
             $"- @{i + 1} {member.Display}　{RoleName(member.Role)}"
             + $"　入团 {member.JoinedOn}　捐献 {GameplayRules.Money(member.Contribution)}")];
-        lines.Add($"- 社长/管理：{Tip("/社团踢出")} · {Tip("/社团转让")} · {TipRaw("/社团设置 任命 @", "/社团设置 任命 @编号")}");
+        lines.Add($"- 社长/管理：{Tip("/社团踢出")} · {Tip("/社团转让")} · {TipRaw("/社团设置 任命", "/社团设置 任命 @编号")}");
         return CommandReplies.ListPage("👥 社团成员", $"{members.Count}/{ClubService.MaxMembers} 人",
             lines, context.Page, "/查看社团成员", ["/我的社团", "/查看社团管理"]);
     }
@@ -2813,7 +2816,7 @@ public static class CommandCatalog
             $"- @{listing.Index} {GameplayRules.QualityName(listing.Quality)} · {listing.ItemName}"
             + $"　{GameplayRules.Money(listing.Price)} 金币　卖家 {listing.SellerHandle}{(listing.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 市场暂时空着，用 /上架 @编号 <价格> 挂出第一件物品");
-        lines.Add($"- {TipRaw("/上架 @", "/上架 @编号 <价格>")} · {Tip("/购买市场")} · {Tip("/下架")}");
+        lines.Add($"- {TipRaw("/上架", "/上架 @编号 <价格>")} · {Tip("/购买市场")} · {Tip("/下架")}");
         return CommandReplies.ListPage("🏷️ 旅人市场", $"{listings.Count} 件在售", lines,
             context.Page, "/市场", ["/背包", "/状态"]);
     }
@@ -2826,7 +2829,7 @@ public static class CommandCatalog
             $"- @{offer.Index} {offer.ItemName}　{GameplayRules.Money(offer.Price)} 金币"
             + $"　发起 {offer.SellerHandle}{(offer.IsMine ? "（我的）" : "")}").ToList();
         if (lines.Count == 0) lines.Add("- 暂无报价单，用 /报价 @编号 <价格> 发布");
-        lines.Add($"- {TipRaw("/报价 @", "/报价 @编号 <价格>")} · {Tip("/接受报价")} · {Tip("/撤回报价")}");
+        lines.Add($"- {TipRaw("/报价", "/报价 @编号 <价格>")} · {Tip("/接受报价")} · {Tip("/撤回报价")}");
         return CommandReplies.ListPage("📝 公开报价", $"{offers.Count} 份报价", lines,
             context.Page, "/报价列表", ["/市场", "/背包"]);
     }
