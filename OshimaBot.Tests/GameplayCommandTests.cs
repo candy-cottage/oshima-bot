@@ -341,6 +341,9 @@ public sealed class GameplayCommandTests
         BotReply detail = await RouteReplyAsync(router, "/我的角色 @1");
         string text = detail.Markdown!.Content!;
 
+        // 正文是 core 完整档案，不是手搓的 4 行属性 —— 信息量对齐原版。
+        Assert.Contains("== 普通攻击 ==", text);
+        // 带参数的动作仍是正文外的可点链接。
         Assert.Contains(Uri.EscapeDataString("/设主战 1"), text);
         Assert.Contains(Uri.EscapeDataString("/练级 1 "), text);
 

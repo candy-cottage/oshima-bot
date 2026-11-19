@@ -37,7 +37,12 @@ public sealed record TrainingInfo(
 public sealed record CharacterDetail(
     int Index, string Name, int Level, double Exp, string ExpToNext,
     int BreakLevel, int Promotion, bool IsMain,
-    IReadOnlyList<string> Stats, IReadOnlyList<string> Slots, IReadOnlyList<string> Skills);
+    IReadOnlyList<string> Stats, IReadOnlyList<string> Slots, IReadOnlyList<string> Skills,
+    /// <summary>
+    /// core.GetInfo(showEXP: true) 的完整正文：全套属性 + 普攻 + 每个技能全文 + 六槽 + 背包 + 状态栏。
+    /// 面板正文以它为准，Stats/Slots/Skills 仅留作分页/兜底与测试锚点。
+    /// </summary>
+    string FullInfo);
 
 /// <summary>
 /// 带完整战报的战斗结果：<see cref="Result"/> 是摘要（复用四段式渲染），

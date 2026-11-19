@@ -1984,24 +1984,9 @@ public static class CommandCatalog
                 return CommandReplies.Error($"没有 @{index} 号角色", "没有显示角色详情",
                     "编号见 /我的角色 列表（从 1 开始）", "/我的角色");
             }
-            List<string> body =
-            [
-                $"- 等级 Lv.{detail.Level}　经验 {GameplayRules.Money(detail.Exp)}"
-                    + $"（距下一级 {detail.ExpToNext}）",
-                $"- 突破 {GameplayRules.BreakProgress(detail.BreakLevel)}　评级 {detail.Promotion}"
-                    + (detail.IsMain ? "　⭐主战" : ""),
-                "",
-                "**属性**",
-                .. detail.Stats,
-                "",
-                "**装备**",
-                .. detail.Slots,
-                "",
-                detail.Skills.Count == 0
-                    ? "**技能**：（无）"
-                    : $"**技能**：{string.Join("、", detail.Skills)}"
-            ];
-            // 详情页知道编号，所以链接直接写全（点一下就是「/设主战 1」，不用再补数字）。
+            // 正文直接用 core 的完整档案（属性/普攻/技能全文/装备/背包/状态栏），
+            // 不再手搓 4 行精简属性 + 一串技能名 —— 那是「信息量不如原版」的根因。
+            // 需要参数的动作（/设主战 1 等）走正文外的可点链接；可直接发的通用入口走按钮。
             string tips = string.Join(" · ",
                 QQCmdTag.CmdInput($"/设主战 {index}"),
                 QQCmdTag.CmdInput($"/升级 {index}"),
@@ -2012,8 +1997,10 @@ public static class CommandCatalog
                 KeyboardBuilder.CmdButton("状态", "/状态"),
                 KeyboardBuilder.CmdButton("角色列表", "/我的角色"),
                 KeyboardBuilder.CmdButton("帮助", "/帮助"));
-            return CommandReplies.Compose($"👤 {detail.Name}", null,
-                ["```", string.Join("\n", body), "```", tips], null, generic.Build());
+            string status = $"Lv.{detail.Level} · 突破 {GameplayRules.BreakProgress(detail.BreakLevel)}"
+                + $" · 评级 {detail.Promotion}" + (detail.IsMain ? " · ⭐主战" : "");
+            return CommandReplies.Paginated($"👤 {detail.Name}", detail.FullInfo,
+                context.Page, $"/我的角色 @{index}", status, generic, tips);
         }
 
         IReadOnlyList<CharacterEntry> characters = await deps.Players.GetCharactersAsync(

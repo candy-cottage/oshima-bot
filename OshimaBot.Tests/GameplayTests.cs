@@ -228,6 +228,26 @@ public sealed class GameplayTests
     }
 
     /// <summary>
+    /// 信息量对齐原版：详情正文必须是 core.GetInfo() 的完整档案，
+    /// 而非手搓的 4 行属性 + 技能名。普攻/技能全文这两段是原版「信息量足」的标志。
+    /// </summary>
+    [Fact]
+    public async Task CharacterDetail_CarriesCoreFullInfo()
+    {
+        using GameplayDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.RegisterAsync(UserId);
+
+        CharacterDetail? detail = await players.GetCharacterDetailAsync(UserId, 1);
+
+        Assert.NotNull(detail);
+        Assert.Contains("== 普通攻击 ==", detail!.FullInfo);   // 人人都有普攻
+        Assert.Contains("等级：", detail.FullInfo);            // showEXP=true 带来的等级/经验
+        Assert.True(detail.FullInfo.Length > detail.Stats.Count * 40,
+            $"core 全文应远长于手搓属性，实际 {detail.FullInfo.Length} 字符");
+    }
+
+    /// <summary>
     /// 旧版「练级信息」：随时能看已经练了多久、还能拿多少。新版挂在 /练级 无参上。
     /// 用假时钟推进，验「已练/剩余/累计」三个数随时间是变的，而不是一次性算死。
     /// </summary>

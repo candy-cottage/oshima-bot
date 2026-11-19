@@ -189,8 +189,13 @@ public static class CommandReplies
         if (piece.Length > 0) yield return piece.ToString().TrimEnd();
     }
 
-    /// <summary>按 3000 字符切分，附 pN/M 与翻页指令/按钮。</summary>
-    public static BotReply Paginated(string title, string body, int page, string command, string? status = null)
+    /// <summary>
+    /// 按 3000 字符切分，附 pN/M 与翻页指令/按钮。
+    /// <para><paramref name="footer"/> 是代码块外的可点指令（如详情页的 /设主战 @编号），
+    /// 放在正文之后、行动区之前 —— 代码块里的 qqbot 标签不会被客户端渲染。</para>
+    /// </summary>
+    public static BotReply Paginated(string title, string body, int page, string command, string? status = null,
+        KeyboardBuilder? keyboard = null, string? footer = null)
     {
         // 预留标题/状态/行动指令的字符，避免整条 content 超出保守上限。
         IReadOnlyList<string> parts = QQMarkdown.Split(body, QQMarkdown.DefaultMaxLength - 300);
@@ -199,16 +204,14 @@ public static class CommandReplies
         string pageStatus = $"第 {current}/{total} 页{(string.IsNullOrWhiteSpace(status) ? "" : " · " + status)}";
 
         List<string> lines = ["```", parts[current - 1].Replace("```", "``", StringComparison.Ordinal), "```"];
+        if (!string.IsNullOrWhiteSpace(footer)) lines.Add(footer);
         List<string> actions = [];
         if (current > 1) actions.Add($"{command} p{current - 1}");
         if (current < total) actions.Add($"{command} p{current + 1}");
 
-        KeyboardMessage? keyboard = null;
-        if (total > 1)
-        {
-            keyboard = new KeyboardBuilder().AddPagination(command, current, total).Build();
-        }
-        return Compose(title, pageStatus, lines, actions, keyboard);
+        KeyboardBuilder builder = keyboard ?? new KeyboardBuilder();
+        if (total > 1) builder.AddPagination(command, current, total);
+        return Compose(title, pageStatus, lines, actions, builder.IsEmpty ? null : builder.Build());
     }
 
     /// <summary>玩法仓储结果统一渲染：成功走 4 段式，失败走错误三段式。</summary>

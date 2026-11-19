@@ -214,7 +214,10 @@ public sealed class PlayerService(
                     SlotName("accessory2", slot.Accessory2),
                     SlotName("magiccardpack", slot.MagicCardPack)
                 ],
-                [.. core.Skills.Select(x => x.Name).OrderBy(x => x, StringComparer.Ordinal)]);
+                [.. core.Skills.Select(x => x.Name).OrderBy(x => x, StringComparer.Ordinal)],
+                // 原版「我角色 <序号>」的信息量就在这一个调用里：技能全文/普攻/状态栏都不用手搓。
+                // showEXP=true 补上等级上限与经验进度，showGrowth 默认 true 带成长值。
+                core.GetInfo(showUser: false, showEXP: true).Trim());
         }, cancellationToken);
 
     public Task<IReadOnlyList<CharacterEntry>> GetCharactersAsync(long userId, CancellationToken cancellationToken = default)
