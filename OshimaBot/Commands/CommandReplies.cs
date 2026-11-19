@@ -24,7 +24,8 @@ public static class CommandReplies
         builder.AppendLine(QQMarkdown.Heading(title, 2));
         if (!string.IsNullOrWhiteSpace(status))
         {
-            builder.AppendLine(QQMarkdown.Bold(status)).AppendLine();
+            // 引用块状态条：QQ 渲染成左侧竖线的强调块，比裸加粗更有「卡片头」层次。
+            builder.AppendLine(QQMarkdown.StatusBar(status)).AppendLine();
         }
         if (lines is not null)
         {
@@ -49,7 +50,8 @@ public static class CommandReplies
 
         if (links.Count > 0)
         {
-            builder.AppendLine();
+            // 正文与「可执行」之间加细分割线，四段式的最后一段不再糊在列表末尾。
+            builder.AppendLine().AppendLine(QQMarkdown.Divider());
             foreach (string action in links) builder.AppendLine(QQCmdTag.CmdInput(action));
         }
         return BotReply.FromMarkdown(builder.ToString().TrimEnd(), keyboard);

@@ -1721,14 +1721,17 @@ public static class CommandCatalog
     {
         PlayerSnapshot? snapshot = await deps.Players.GetSnapshotAsync(context.UserId, context.CancellationToken);
         if (snapshot is null) return NoIdentity();
+        // 排版：状态条只放「等级 · 主战 · 签到」，资产/编队拆成加粗键值行，
+        // 玩家一眼能扫到数字，不再是一整串全角空格拼出来的密文。
         return CommandReplies.Compose("📍 铎京 · 旅人档案",
-            $"主战 Lv.{snapshot.MainLevel}　金币 {GameplayRules.Money(snapshot.Credits)}　钻石 {GameplayRules.Money(snapshot.Materials)}　经验 {snapshot.MainExp:0.##}",
+            $"Lv.{snapshot.MainLevel} · 主战 {snapshot.MainCharacter ?? "（无）"} · 连续签到 {snapshot.SignInStreak} 天",
             [
                 "潮湿的石板路延伸到雾里，铁匠铺的锤声隔着两条街传来。",
                 "",
-                $"- 主战角色：{snapshot.MainCharacter ?? "（无）"}　角色 {snapshot.CharacterCount} 名",
-                $"- 背包 {snapshot.ItemCount} 格　小队 {snapshot.SquadCount}/{GameplayRules.SquadSize} 人　练级中 {snapshot.PendingTrainings} 场",
-                $"- 连续签到 {snapshot.SignInStreak} 天　最近签到：{(string.IsNullOrEmpty(snapshot.SignedOn) ? "尚未" : snapshot.SignedOn)}"
+                QQMarkdown.Field("资产", $"金币 {GameplayRules.Money(snapshot.Credits)} · 钻石 {GameplayRules.Money(snapshot.Materials)} · 经验 {snapshot.MainExp:0.##}"),
+                QQMarkdown.Field("角色", $"{snapshot.CharacterCount} 名"),
+                QQMarkdown.Field("编队", $"背包 {snapshot.ItemCount} 格 · 小队 {snapshot.SquadCount}/{GameplayRules.SquadSize} 人 · 练级中 {snapshot.PendingTrainings} 场"),
+                QQMarkdown.Field("签到", string.IsNullOrEmpty(snapshot.SignedOn) ? "尚未" : snapshot.SignedOn)
             ],
             ["/签到", "/每日任务", "/背包", "/我的角色", "/抽卡"]);
     }

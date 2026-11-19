@@ -50,6 +50,21 @@ public static class QQMarkdown
     public static string Strike(string text) => $"~~{Escape(text)}~~";
     public static string Quote(string text) => $"> {Escape(text)}";
     public static string Divider() => "***";
+
+    /// <summary>
+    /// 状态条：引用块 + 加粗。QQ 会把 <c>&gt; </c> 渲染成左侧竖线的强调块，
+    /// 比裸加粗更像「卡片状态栏」。内部只保留 ** 包裹，既有的 "**HP" 断言仍成立。
+    /// </summary>
+    public static string StatusBar(string text) => $"> **{Escape(text)}**";
+
+    /// <summary>
+    /// 键值行：加粗标签 + 值。key 来自代码（安全），value 可能是玩家数据 → 转义。
+    /// 用于把「金币 12,480 · 钻石 85」这类挤在状态条里的字段拆成可扫读的行。
+    /// </summary>
+    public static string Field(string label, string value) => $"- **{Escape(label)}**：{Escape(value)}";
+
+    /// <summary>品质/状态徽标，QQ 无颜色，用方括号文字区分：如 [金] [紫] [进行中]。</summary>
+    public static string Badge(string text) => $"[{Escape(text)}]";
     public static string Link(string label, string url) => $"[{Escape(label)}]({url})";
     public static string Image(string url, string? alt = null, string? size = null)
         => $"![{Escape(alt) ?? ""}{size ?? ""}]({url})";

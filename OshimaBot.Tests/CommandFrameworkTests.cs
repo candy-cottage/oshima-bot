@@ -204,6 +204,31 @@ public sealed class CommandFrameworkTests
         Assert.Contains("/设主战 1", MarkdownText.Inserts(reply.Markdown!.Content!));
     }
 
+    /// <summary>排版升级：状态条走引用块（保留 ** 加粗），行动区前有分割线，按钮/链接分流不变。</summary>
+    [Fact]
+    public void Compose_UsesStatusBarAndDivider()
+    {
+        BotReply reply = CommandReplies.Compose("🧪 测试", "Lv.1 · 金币 100", ["- 正文"], ["/状态", "/设主战 1"]);
+        string content = reply.Markdown!.Content!;
+
+        string lf = content.Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.StartsWith("## 🧪 测试", content);
+        Assert.Contains("> **Lv.1", content);          // 状态条是引用块 + 加粗
+        Assert.Contains("\n***\n", lf);                // 正文与行动区之间有分割线
+        Assert.Contains("/状态", MarkdownText.Buttons(reply));
+        Assert.Contains("/设主战 1", MarkdownText.Inserts(content));
+    }
+
+    /// <summary>排版 helper：Field 转义玩家可控的 value，Badge  escap 后仍是方括号。</summary>
+    [Fact]
+    public void MarkdownLayoutHelpers_EscapeValues()
+    {
+        Assert.Equal("- **金币**：100", QQMarkdown.Field("金币", "100"));
+        Assert.Equal("- **名**：a\\*b", QQMarkdown.Field("名", "a*b"));
+        Assert.Equal("[进行中]", QQMarkdown.Badge("进行中"));
+        Assert.Equal("> **HP 100**", QQMarkdown.StatusBar("HP 100"));
+    }
+
     /// <summary>正文链接化不能误伤：分隔符、分数、网址都不该变成标签。</summary>
     [Fact]
     public void LinkCommands_LeavesNonCommandsAlone()
