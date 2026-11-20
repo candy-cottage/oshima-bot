@@ -29,7 +29,7 @@ public sealed class EconomyCommandTests
         using EconomyCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(166, registry.All.Count);
+        Assert.Equal(172, registry.All.Count);
         Assert.Equal("shop", registry.Resolve("/商店")!.Command.Key);
         Assert.Equal("buy", registry.Resolve("/购买 @1 x2")!.Command.Key);
         Assert.Equal(new[] { "@1", "x2" }, registry.Resolve("/购买 @1 x2")!.Args);
@@ -126,15 +126,13 @@ public sealed class EconomyCommandTests
         Assert.Contains("补给站", look);
         Assert.Contains("交易摊", look);
 
-        int lastPage = (CommandCatalog.Keys.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
-        string help = await RouteAsync(router, $"/帮助 p{lastPage}");
-        Assert.Contains($"{lastPage}/{lastPage}", help);
-        Assert.Contains("经济战斗", help);
+        string menu = MarkdownText.Decode(await RouteAsync(router, "/帮助"));
+        Assert.Contains("商店帮助", menu);          // 照抄旧版：主菜单 8 分类入口
+        Assert.Contains("core-v3", menu);
 
-        string legacy = await RouteAsync(router, "/玩法帮助");
-        Assert.Contains("P0", legacy);
-        Assert.Contains("P1", legacy);
-        Assert.Contains("P2", legacy);
+        string shop = MarkdownText.Decode(await RouteAsync(router, "/商店帮助"));
+        Assert.Contains("商店帮助指令", shop);
+        Assert.Contains("/市场", shop);             // P2 指令在商店类里
     }
 
     /// <summary>

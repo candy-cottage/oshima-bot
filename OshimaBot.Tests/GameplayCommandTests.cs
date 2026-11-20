@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(166, registry.All.Count);
+        Assert.Equal(172, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -136,19 +136,21 @@ public sealed class GameplayCommandTests
     }
 
     [Fact]
-    public async Task Help_LastPageContainsP2Group()
+    public async Task Help_ShopCategoryContainsP2Commands()
     {
         using GameplayCommandDatabase db = new();
         CommandRouter router = db.CreateRouter();
-        int lastPage = (CommandCatalog.Keys.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
 
-        string content = await RouteAsync(router, $"/帮助 p{lastPage}");
-
-        Assert.Contains($"{lastPage}/{lastPage}", content);
-        Assert.Contains($"共 {CommandCatalog.Keys.Count} 条指令", content);
-        bool hasP2 = content.Contains("/排行榜", StringComparison.Ordinal)
-                     || content.Contains("经济战斗", StringComparison.Ordinal);
-        Assert.True(hasP2, content);
+        // 照抄旧版分类后，P2 指令分散在「商店帮助」（市场/交易）与「战斗帮助」（排行榜）两类。
+        string allShop = "";
+        for (int page = 1; page <= 2; page++)   // 商店类 30 条 → 2 页
+            allShop += MarkdownText.Decode(await RouteAsync(router, $"/商店帮助 p{page}"));
+        Assert.Contains("/市场", allShop);
+        Assert.Contains("/报价", allShop);
+        string allBattle = "";
+        for (int page = 1; page <= 3; page++)
+            allBattle += MarkdownText.Decode(await RouteAsync(router, $"/战斗帮助 p{page}"));
+        Assert.Contains("/排行榜", allBattle);
     }
 
     [Fact]
@@ -511,8 +513,10 @@ public sealed class GameplayCommandTests
         string legacy = await RouteAsync(router, "/玩法帮助");
 
         Assert.Contains("中央广场", look);
-        Assert.Contains("P1", legacy);
-        Assert.Contains("商店", legacy);
+        Assert.Contains("玩法帮助指令", legacy);     // 照抄旧版：分类帮助页
+        Assert.Contains("/签到", MarkdownText.Decode(legacy));  // P1 指令在玩法类里
+        string menu = await RouteAsync(router, "/帮助");
+        Assert.Contains("core-v3", menu);           // 版本信息移到主菜单
     }
 
     /// <summary>
@@ -526,7 +530,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(166, registry.All.Count);
+        Assert.Equal(172, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

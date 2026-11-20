@@ -107,28 +107,58 @@ public sealed class CommandFrameworkTests
     }
 
     [Fact]
-    public async Task Help_IsGeneratedFromRegistryAndUsesFourSections()
+    public async Task Help_MenuHasEightLegacyCategories()
     {
-        (CommandRouter router, CommandRegistry registry, _, _) = CreateRouter();
+        (CommandRouter router, _, _, _) = CreateRouter();
 
         BotReply? reply = await router.RouteAsync(Message("/帮助"), new OtherData());
 
         Assert.NotNull(reply);
         string content = reply!.Markdown!.Content!;
         Assert.StartsWith("## ", content);
-        Assert.Contains("第 1/", content);
-        Assert.Contains("qqbot-cmd-input", content);
+        // 照抄旧版：主菜单列 8 个分类入口，每条都是 cmd-input。
+        foreach (string category in CommandCategories.Order)
+        {
+            Assert.Contains(category, MarkdownText.Decode(content));
+            Assert.Contains(category, MarkdownText.Inserts(content).Select(x => x.Trim()));
+        }
         Assert.NotNull(reply.Keyboard);
-        Assert.Equal(5, reply.Keyboard!.Content!.Rows[0].Buttons.Count);
-        Assert.Equal(2, reply.Keyboard.Content.Rows.Count); // 常用指令行 + 分页行
+        Assert.Equal(4, reply.Keyboard!.Content!.Rows[0].Buttons.Count);
+    }
 
-        // 帮助与注册表同源：翻完所有页应覆盖每一条 Usage。
-        int pages = (registry.All.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
-        string allHelp = MarkdownText.Decode(string.Concat(Enumerable.Range(1, pages)
-            .Select(page => CommandReplies.Help(registry, page).Markdown!.Content)));
+    /// <summary>照抄旧版：分类指令后直接加数字跳页（存档帮助2），不必写 p2。</summary>
+    [Fact]
+    public async Task Help_CategoryAcceptsBarePageNumber()
+    {
+        (CommandRouter router, _, _, _) = CreateRouter();
+
+        BotReply bare = (await router.RouteAsync(Message("/角色帮助 2"), new OtherData()))!;
+        BotReply pform = (await router.RouteAsync(Message("/角色帮助 p2"), new OtherData()))!;
+
+        Assert.Contains("第 2/", bare.Markdown!.Content!);
+        Assert.Equal(pform.Markdown!.Content!, bare.Markdown.Content);
+    }
+
+    [Fact]
+    public async Task Help_CategoriesTogetherCoverEveryCommand()
+    {
+        (CommandRouter router, CommandRegistry registry, _, _) = CreateRouter();
+
+        // 帮助与注册表同源：翻完 8 个分类的所有页，应覆盖每一条指令名。
+        string allHelp = "";
+        foreach (string category in CommandCategories.Order)
+        {
+            IReadOnlyList<ICommand> inCategory = [.. registry.All.Where(c => CommandCategories.CategoryOf(c) == category)];
+            int pages = Math.Max(1, (inCategory.Count + CommandCategories.HelpPageSize - 1) / CommandCategories.HelpPageSize);
+            for (int page = 1; page <= pages; page++)
+            {
+                BotReply? reply = await router.RouteAsync(Message($"/{category} p{page}"), new OtherData());
+                Assert.NotNull(reply);
+                allHelp += MarkdownText.Decode(reply!.Markdown!.Content!);
+            }
+        }
         foreach (ICommand command in registry.All)
         {
-            // Usage 经 Markdown 转义（< > 等），名称本身是安全锚点。
             Assert.Contains(command.Name, allHelp, StringComparison.Ordinal);
         }
     }
@@ -154,23 +184,28 @@ public sealed class CommandFrameworkTests
         Assert.Contains("qqbot-cmd-input", content);
     }
 
-    /// <summary>帮助正文里的用法就是链接：显示「/我的角色 [@编号|页码]」，点一下填「/我的角色 」。</summary>
+    /// <summary>分类帮助里的用法就是链接：显示 usage 原文，点一下填入命令本身（空格由客户端补）。</summary>
     [Fact]
     public void Help_TurnsEveryUsageIntoALink()
     {
         (_, CommandRegistry registry, _, _) = CreateRouter();
 
-        BotReply first = CommandReplies.Help(registry, 1);
-        Assert.Contains("/帮助 ", MarkdownText.Inserts(first.Markdown!.Content!));
+        List<string> inserts = [];
+        foreach (string category in CommandCategories.Order)
+        {
+            IReadOnlyList<ICommand> inCategory = [.. registry.All.Where(c => CommandCategories.CategoryOf(c) == category)];
+            int pages = Math.Max(1, (inCategory.Count + CommandCategories.HelpPageSize - 1) / CommandCategories.HelpPageSize);
+            for (int page = 1; page <= pages; page++)
+            {
+                inserts.AddRange(MarkdownText.Inserts(
+                    CommandReplies.HelpCategory(registry, category, page).Markdown!.Content!));
+            }
+        }
 
-        // 翻完所有页，每条指令都要有一个「点一下填入」的标签
-        int pages = (registry.All.Count + CommandReplies.HelpPageSize - 1) / CommandReplies.HelpPageSize;
-        List<string> inserts = [.. Enumerable.Range(1, pages)
-            .SelectMany(page => MarkdownText.Inserts(CommandReplies.Help(registry, page).Markdown!.Content!))];
-
+        // text 里只有命令本身，不带 @ —— 客户端自动补空格，玩家直接填参数即可。
         foreach (ICommand command in registry.All)
         {
-            Assert.Contains("/" + command.Name + " ", inserts);
+            Assert.Contains("/" + command.Name, inserts);
         }
     }
 
@@ -183,11 +218,12 @@ public sealed class CommandFrameworkTests
         BotReply reply = (await router.RouteAsync(Message("/战斗帮助"), new OtherData()))!;
         string decoded = MarkdownText.Decode(reply.Markdown!.Content!);
 
-        Assert.Contains("/查角色", decoded);            // 正文里的指令成了链接（显示仍是原文）
-        Assert.Contains("<编号或名称>", decoded);        // 参数说明保持纯文本
-        Assert.Contains(MarkdownText.Inserts(reply.Markdown!.Content!), item => item == "/查角色 ");
+        Assert.Contains("《筽祀牻》战斗帮助指令", decoded);          // 照抄旧版标题格式
+        Assert.Contains("/查角色", decoded);                        // 正文里的指令成了链接
+        Assert.Contains("<编号或名称>", decoded);                   // usage 参数说明保持纯文本
+        Assert.Contains("/查角色", MarkdownText.Inserts(reply.Markdown!.Content!));
 
-        Assert.Contains("/帮助", MarkdownText.Buttons(reply));   // 底部改按钮
+        Assert.Contains("/帮助", MarkdownText.Buttons(reply));      // 底部通用入口是按钮
         Assert.Contains("/状态", MarkdownText.Buttons(reply));
     }
 

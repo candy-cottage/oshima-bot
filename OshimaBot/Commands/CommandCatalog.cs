@@ -31,6 +31,7 @@ public static class CommandCatalog
     public static readonly IReadOnlyList<string> Keys =
     [
         "help", "battle-help", "cancel", "bind", "uptime", "legacy-help",
+        "help-archive", "help-character", "help-item", "help-club", "help-activity", "help-shop",
         "world-map", "region-info", "home-city", "explore", "explore-info", "explore-claim",
         "quest-board", "quest-do", "quest-info", "quest-settle",
         "magic-card", "magic-card-pack",
@@ -82,25 +83,13 @@ public static class CommandCatalog
         "help" => new DelegateCommand(
             key: "help", name: "帮助", aliases: ["help", "?"], usage: "/帮助 [p2]",
             description: "列出全部指令（分页）", group: CommandGroups.System,
-            handler: context => Task.FromResult(CommandReplies.Help(context.Registry, context.Page))),
+            handler: context => Task.FromResult(CommandReplies.Help(context.Registry, CommandCategories.HelpPage(context)))),
 
         "battle-help" => new DelegateCommand(
-            key: "battle-help", name: "战斗帮助", aliases: ["角色帮助", "物品帮助", "battlehelp"],
-            usage: "/战斗帮助", description: "战斗与资料查询说明", group: CommandGroups.System,
-            handler: _ => Task.FromResult(CommandReplies.Compose("⚔️ 战斗与资料指令", "旧版指令仍可直接使用",
-            new[]
-            {
-                "- /查角色 <编号或名称>　满级角色资料",
-                "- /查技能 <编号或名称>　1/2 级与满级技能",
-                "- /查物品 <编号或名称>　物品属性",
-                "- /混战模拟 [复活次数]　个人混战",
-                "- /FunGame模拟　无复活混战",
-                "- /FunGame团队模拟　团队模拟",
-                "- /个人地图模拟 · /团队地图模拟 · /团队调试模拟",
-                "- /查数据 · /查团队数据　累计统计",
-                "- /查个人胜率 · /查团队胜率 · /查个人评分 · /查团队评分",
-                "- /上次的日志 · /上次的完整日志"
-            }.Select(QQCmdTag.LinkCommands), ["/帮助", "/状态", "/FunGame模拟"]))),
+            key: "battle-help", name: "战斗帮助", aliases: ["battlehelp"],
+            usage: "/战斗帮助 [页码]", description: "战斗/资料/排行分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Battle, CommandCategories.HelpPage(context)))),
 
         "cancel" => new DelegateCommand(
             key: "cancel", name: "取消", aliases: ["重置状态", "cancel", "reset"], usage: "/取消",
@@ -147,16 +136,47 @@ public static class CommandCatalog
                 ], ["/帮助"]))),
 
         "legacy-help" => new DelegateCommand(
-            key: "legacy-help", name: "玩法帮助", aliases: ["存档帮助", "社团帮助", "活动帮助", "商店帮助", "legacy"],
-            usage: "/玩法帮助", description: "查看当前开放的玩法范围", group: CommandGroups.Legacy,
-            handler: _ => Task.FromResult(CommandReplies.Compose("🧭 OshimaBot 版本状态",
-                "P0 至 P2 玩法已全部开放",
-                [
-                    "- P0　角色/技能/物品查询、战斗模拟与统计排行",
-                    "- P1　存档、背包、签到、抽卡、练级、每日任务",
-                    "- P2　商店、市场、报价交易、锻造、秘境、决斗、Boss、排行榜",
-                    "- P3（社团/赛马/赛事预测）按计划不在本轮范围"
-                ], ["/帮助", "/状态", "/商店"]))),
+            key: "legacy-help", name: "玩法帮助", aliases: ["legacy"],
+            usage: "/玩法帮助 [页码]", description: "签到/抽卡/探索/房间分类帮助", group: CommandGroups.Legacy,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Play, CommandCategories.HelpPage(context)))),
+
+        // 旧版帮助的另外 6 个分类入口：照抄 FunGameOrderList 的 8 类，数据源仍是注册表。
+        "help-archive" => new DelegateCommand(
+            key: "help-archive", name: "存档帮助", aliases: [],
+            usage: "/存档帮助 [页码]", description: "建档/备份/还原分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Archive, CommandCategories.HelpPage(context)))),
+
+        "help-character" => new DelegateCommand(
+            key: "help-character", name: "角色帮助", aliases: [],
+            usage: "/角色帮助 [页码]", description: "角色养成/装备/小队分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Character, CommandCategories.HelpPage(context)))),
+
+        "help-item" => new DelegateCommand(
+            key: "help-item", name: "物品帮助", aliases: [],
+            usage: "/物品帮助 [页码]", description: "背包/物品使用分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Item, CommandCategories.HelpPage(context)))),
+
+        "help-club" => new DelegateCommand(
+            key: "help-club", name: "社团帮助", aliases: [],
+            usage: "/社团帮助 [页码]", description: "社团/成员/任务分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Club, CommandCategories.HelpPage(context)))),
+
+        "help-activity" => new DelegateCommand(
+            key: "help-activity", name: "活动帮助", aliases: [],
+            usage: "/活动帮助 [页码]", description: "活动/任务板/赛马分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Activity, CommandCategories.HelpPage(context)))),
+
+        "help-shop" => new DelegateCommand(
+            key: "help-shop", name: "商店帮助", aliases: [],
+            usage: "/商店帮助 [页码]", description: "商店/市场/交易分类帮助", group: CommandGroups.System,
+            handler: context => Task.FromResult(
+                CommandReplies.HelpCategory(context.Registry, CommandCategories.Shop, CommandCategories.HelpPage(context)))),
 
         // ---- P1：旅人存档（全部由显式 switch 注册）----
         "register" => new DelegateCommand(

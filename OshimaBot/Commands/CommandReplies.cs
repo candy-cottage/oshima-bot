@@ -11,7 +11,8 @@ namespace OshimaBot.Commands;
 /// </summary>
 public static class CommandReplies
 {
-    public const int HelpPageSize = 6;
+    /// <summary>分类帮助每页条数，与旧版 SendHelp 的 pageSize=15 对齐。</summary>
+    public const int HelpPageSize = CommandCategories.HelpPageSize;
 
     public static BotReply Compose(
         string title,
@@ -275,40 +276,71 @@ public static class CommandReplies
     }
 
     /// <summary>帮助完全由注册表生成，保证「文档与实现同源」。</summary>
+    /// <summary>
+    /// 帮助主菜单：照抄旧版 RainBOTService 的 8 分类入口，欢迎语 + 版本 + 8 条 cmd-input。
+    /// 每条入口显示「N、分类名」，点击填入「分类名 」；分类页见 <see cref="HelpCategory"/>。
+    /// </summary>
     public static BotReply Help(CommandRegistry registry, int page)
     {
-        IReadOnlyList<ICommand> commands = registry.All;
+        List<string> lines =
+        [
+            "欢迎使用《筽祀牻》游戏指令帮助系统！",
+            $"核心库版本：{GameplayRules.CatalogVersion}",
+            "《筽祀牻》是一款奇幻冒险回合制角色扮演游戏。",
+            "指令按游戏模块分类，输入对应指令查看该类帮助：",
+            ""
+        ];
+        for (int i = 0; i < CommandCategories.Order.Count; i++)
+        {
+            string category = CommandCategories.Order[i];
+            lines.Add($"{i + 1}、{QQCmdTag.CmdInput(category + " ", category)}　{CommandCategories.Description(category)}");
+        }
+        lines.Add("");
+        lines.Add("在分类指令后面加数字即可跳到指定页，如 /角色帮助 2。");
+
+        KeyboardBuilder keyboardBuilder = new KeyboardBuilder()
+            .AddButtons(4,
+                KeyboardBuilder.CmdButton("角色帮助", "/角色帮助"),
+                KeyboardBuilder.CmdButton("物品帮助", "/物品帮助"),
+                KeyboardBuilder.CmdButton("战斗帮助", "/战斗帮助"),
+                KeyboardBuilder.CmdButton("玩法帮助", "/玩法帮助"));
+        return Compose("📖 筽祀牻 · 指令帮助", $"共 {registry.All.Count} 条指令 · / 可省略", lines, null,
+            keyboardBuilder.Build());
+    }
+
+    /// <summary>
+    /// 单个分类的帮助：照抄旧版 SendHelp 的格式「《筽祀牻》X帮助指令（第 a/b 页）」+
+    /// 「序号. 指令：说明」+ 分页按钮。数据源是注册表（同源），分类由 <see cref="CommandCategories"/> 显式判定。
+    /// </summary>
+    public static BotReply HelpCategory(CommandRegistry registry, string category, int page)
+    {
+        IReadOnlyList<ICommand> commands = [.. registry.All.Where(c => CommandCategories.CategoryOf(c) == category)];
         int total = Math.Max(1, (commands.Count + HelpPageSize - 1) / HelpPageSize);
         int current = Math.Clamp(page, 1, total);
 
-        List<string> lines = [];
-        string? lastGroup = null;
-        foreach (ICommand command in commands.Skip((current - 1) * HelpPageSize).Take(HelpPageSize))
-        {
-            if (lastGroup != command.Group)
-            {
-                lines.Add(QQMarkdown.Bold($"【{command.Group}】"));
-                lastGroup = command.Group;
-            }
-            // 用法整条做成链接：显示「/我的角色 [@编号|页码]」，点一下填入「/我的角色 」。
-            lines.Add($"- {QQCmdTag.CmdInput("/" + command.Name + " ", command.Usage)}　{command.Description}");
-        }
+        List<string> lines = commands.Count == 0
+            ? [$"- （本轮 {category} 暂无开放指令）"]
+            : commands.Skip((current - 1) * HelpPageSize).Take(HelpPageSize)
+                .Select((command, offset) =>
+                {
+                    int index = (current - 1) * HelpPageSize + offset + 1;
+                    // 用法整条做成链接：显示 usage 原文，点击填入命令本身（空格由客户端补）。
+                    string link = QQCmdTag.CmdInput("/" + command.Name, command.Usage);
+                    return $"{index}. {link}{(string.IsNullOrWhiteSpace(command.Description) ? "" : "：" + command.Description)}";
+                }).ToList();
 
         List<string> actions = [];
-        if (total > 1) actions.Add($"/帮助 p{(current < total ? current + 1 : 1)}");
+        if (total > 1) actions.Add($"/{category} p{(current < total ? current + 1 : 1)}");
 
-        KeyboardBuilder keyboardBuilder = new KeyboardBuilder()
-            .AddButtons(5,
-                KeyboardBuilder.CmdButton("战斗帮助", "/战斗帮助"),
-                KeyboardBuilder.CmdButton("状态", "/状态"),
-                KeyboardBuilder.CmdButton("背包", "/背包"),
-                KeyboardBuilder.CmdButton("抽卡", "/抽卡"),
-                KeyboardBuilder.CmdButton("取消", "/取消"));
-        if (total > 1) keyboardBuilder.AddPagination("/帮助", current, total);
+        KeyboardBuilder keyboardBuilder = new KeyboardBuilder();
+        if (total > 1) keyboardBuilder.AddPagination("/" + category, current, total);
+        keyboardBuilder.AddButtons(4,
+            KeyboardBuilder.CmdButton("帮助主菜单", "/帮助"),
+            KeyboardBuilder.CmdButton("状态", "/状态"),
+            KeyboardBuilder.CmdButton("背包", "/背包"),
+            KeyboardBuilder.CmdButton("返回", "/帮助"));
 
-        return Compose("📖 OshimaBot 指令", $"第 {current}/{total} 页 · 共 {commands.Count} 条指令 · / 可省略",
-            lines,
-            actions,
-            keyboardBuilder.Build());
+        return Compose($"《筽祀牻》{category}指令", $"第 {current}/{total} 页 · 本类 {commands.Count} 条",
+            lines, actions, keyboardBuilder.Build());
     }
 }
