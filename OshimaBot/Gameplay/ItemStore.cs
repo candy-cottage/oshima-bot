@@ -288,12 +288,13 @@ public static class ItemStore
     }
 
     /// <summary>
-    /// 从快照还原物品。
-    /// <para><c>ItemConverter.NewInstance()</c> 写死 <c>new Item()</c>，直接反序列化得到基类 Item，
-    /// 具体子类的 OnItemUsed 覆写与 Gifts 全部丢失 —— 存档翻译在这一步确实出错。</para>
-    /// <para>修法限定在**礼包**：<c>Copy()</c> 经 Factory 重建具体类并触发 AfterCopy 还原 Gifts/品质/张数。
-    /// 只对 GiftBox 做，因为 Copy 会走 SetPropertyToItemModuleNew 重建技能——
-    /// 魔法卡/装备有真实技能等级，重建会重置存档数值（实测失败）；礼包的技能只是展示用的礼包技能，重建无损。</para>
+    /// 从快照还原物品。旧版 <c>FunGameService.GetUser</c> 用
+    /// <c>Copy(true,true,true,true, AllItems, AllSkills)</c> 翻译全部物品；这里只对**礼包**这么做。
+    /// <para><c>ItemConverter.NewInstance()</c> 写死 <c>new Item()</c>，反序列化只得到基类壳，
+    /// 具体类的 OnItemUsed/Gifts 全丢。Copy 内部走 Factory.GetInstance 按 Id 重建具体类 + AfterCopy 还原 Gifts。</para>
+    /// <para>为什么不全类型照抄：Copy 会按 Id 从 AllSkills 重建技能，覆盖本作新增的派生技能名
+    /// （合成魔法卡包的「+1」标记）—— 实测全量 Copy 会让该断言失败。魔法卡/装备的存档数值以快照为权威，
+    /// 保持基类还原；礼包技能只是展示用，Copy 无损。</para>
     /// </summary>
     private static Item? Restore(CoreItemRecord row)
     {
@@ -302,8 +303,7 @@ public static class ItemStore
             Item? restored = JsonSerializer.Deserialize<Item>(row.SnapshotJson, Options);
             if (restored is null) return null;
             if (restored.ItemType != FunGame.Core.Library.Constant.ItemType.GiftBox) return restored;
-            Item concrete = restored.Copy(copyGuid: true, copyLevel: true);
-            return concrete.GetType() == typeof(Item) ? restored : concrete;
+            return restored.Copy(true, true, true, true, FunGameService.AllItems, FunGameService.AllSkills);
         }
         catch (JsonException)
         {
