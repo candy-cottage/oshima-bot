@@ -91,6 +91,38 @@ public sealed class GameplayCommandTests
     }
 
     /// <summary>
+    /// 礼包使用（旧版 UseItemCustom）：Core 的 OnItemUsed 对礼包是空实现，
+    /// 玩法层按 CatalogId 回内容包读 Gifts 发奖。验证金币/材料入账、礼包被消耗。
+    /// </summary>
+    [Fact]
+    public async Task Router_GiftBoxOpeningGrantsRewards()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await RouteAsync(router, "/我的角色");     // 建档
+
+        // 发一个「圣诞礼包」：金币 10000 + 材料 100 + 圣诞限定袜子 1。
+        string granted = await RouteAsAdminAsync(router, "/发放物品 圣诞礼包 x1");
+        Assert.Contains("物品已发放", granted);
+
+        IPlayerService players = db.Provider.GetRequiredService<IPlayerService>();
+        double creditsBefore = (await players.GetSnapshotAsync(UserId))!.Credits;
+
+        string bagBefore = await RouteAsync(router, "/背包");
+        Assert.Contains("圣诞礼包", bagBefore);
+
+        string used = await RouteAsync(router, "/使用 @1");
+        Assert.Contains("打开礼包", used);
+        Assert.Contains("金币", used);
+
+        double creditsAfter = (await players.GetSnapshotAsync(UserId))!.Credits;
+        Assert.True(creditsAfter > creditsBefore,
+            $"礼包金币应入账：{creditsBefore} → {creditsAfter}");
+        string bagAfter = await RouteAsync(router, "/背包");
+        Assert.DoesNotContain("圣诞礼包", bagAfter);  // 礼包已消耗
+    }
+
+    /// <summary>
     /// 背包物品详情：列表挂「详情」链接，点开是 core.ToStringInventory(true) 全文，
     /// 不再是只有一行名字。编号与 /背包 的 @编号 一致。
     /// </summary>

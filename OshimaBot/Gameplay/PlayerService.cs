@@ -576,6 +576,65 @@ public sealed class PlayerService(
 
     private static string Locked(Item item) => item.IsLock ? "（已锁定）" : "";
 
+    /// <summary>
+    /// 发放一个礼包的全部奖励（旧版 UseItemCustom）。金币/钻石走 ledger，
+    /// 普通物品按内容包模板入包，魔法卡按品质随机生成，魔法卡礼包按品质建一个可再开的礼包。
+    /// </summary>
+    private async Task<List<string>> OpenGiftBoxAsync(
+        BotDbContext db, PlayerAccount state, string catalogId, int times, CancellationToken ct)
+    {
+        IReadOnlyList<GiftBoxUse.Reward> rewards = GiftBoxUse.ReadRewards(catalogId) ?? [];
+        List<string> lines = [];
+        foreach (GiftBoxUse.Reward reward in rewards)
+        {
+            int count = reward.Count * times;
+            switch (reward.Kind)
+            {
+                case "credits":
+                    ApplyCurrency(db, state, count, "credits", "giftbox", "item", catalogId);
+                    lines.Add($"- 金币 +{GameplayRules.Money(count)}");
+                    break;
+                case "diamonds":
+                    ApplyCurrency(db, state, count, "diamonds", "giftbox", "item", catalogId);
+                    lines.Add($"- 钻石 +{GameplayRules.Money(count)}");
+                    break;
+                case "item":
+                {
+                    // 按名字回内容包找模板，拿 Id 作 CatalogId、品质档位作 Quality。
+                    Item? template = FunGameService.AllItems.FirstOrDefault(x => x.Name == reward.Name);
+                    int quality = template is null ? 1 : GameplayRules.QualityTierOf(template.QualityType);
+                    await AddItemAsync(db, state.UserId, reward.Name, quality, count, ct,
+                        template?.Id.ToString(CultureInfo.InvariantCulture) ?? "giftbox");
+                    lines.Add($"- {reward.Name} ×{count}");
+                    break;
+                }
+                case "magic-card":
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        Item card = FunGameService.GenerateMagicCard(new RandomSourceAdapter(random), reward.Quality);
+                        ItemStore.AddSnapshot(db, state.UserId, card, card.Id.ToString(CultureInfo.InvariantCulture));
+                    }
+                    lines.Add($"- {reward.Name} ×{count}");
+                    break;
+                }
+                case "magic-card-pack":
+                {
+                    // 生成一个可再次打开的魔法卡礼包（按名字对应的品质）。
+                    Item? packTemplate = FunGameService.AllItems.FirstOrDefault(x => x.Name == reward.Name);
+                    if (packTemplate is not null)
+                    {
+                        Item pack = packTemplate.Copy();
+                        ItemStore.AddSnapshot(db, state.UserId, pack, packTemplate.Id.ToString(CultureInfo.InvariantCulture));
+                        lines.Add($"- {reward.Name} ×{count}");
+                    }
+                    break;
+                }
+            }
+        }
+        return lines;
+    }
+
     public Task<ActionResult> UseAsync(long userId, int index, int quantity, CancellationToken cancellationToken = default)
         => MutateAsync(userId, async (db, state, ct) =>
         {
@@ -593,12 +652,23 @@ public sealed class PlayerService(
             PlayerCharacter? main = await MainCharacterAsync(db, userId, ct);
             List<PlayerCharacter> targets = main is null ? [] : [main];
 
-            // 物品行为由内容包定义（经验书 / 回复药 / 礼包），这里只是装配 Core 的 User 并调用 UseItem。
+            // 物品行为由内容包定义（经验书 / 回复药），装配临时 Core.User 调用 UseItem。
             ItemUsage.Result used = ItemUsage.Use(state, item, amount, targets);
             if (!used.Used)
             {
-                return ActionResult.Fail("使用失败", "没有消耗物品",
-                    string.IsNullOrWhiteSpace(used.Message) ? $"{name} 无法使用" : used.Message, "/背包");
+                // 旧版 FunGameService.UseItem 的兜底：Core 的 OnItemUsed 对礼包是空实现，
+                // 这里按 CatalogId 回内容包找模板 Gifts，自己发奖（详见 GiftBoxUse）。
+                IReadOnlyList<GiftBoxUse.Reward>? gifts = GiftBoxUse.ReadRewards(item.CatalogId);
+                if (gifts is null || gifts.Count == 0)
+                {
+                    return ActionResult.Fail("使用失败", "没有消耗物品",
+                        string.IsNullOrWhiteSpace(used.Message) ? $"{name} 无法使用" : used.Message, "/背包");
+                }
+                List<string> giftLines = await OpenGiftBoxAsync(db, state, item.CatalogId, amount, ct);
+                Consume(db, item, amount);
+                giftLines.Add($"- 礼包：{name} ×{amount} 已开启");
+                return ActionResult.Success("🎁 打开礼包", $"{name} ×{amount} · 获得 {gifts.Count} 类奖励",
+                    giftLines, ["/背包", "/状态"]);
             }
 
             string itemRef = item.Id.ToString(CultureInfo.InvariantCulture);
