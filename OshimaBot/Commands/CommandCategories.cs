@@ -72,7 +72,7 @@ public static class CommandCategories
             or "notice" or "set-notice" => Character,
 
         // 物品
-        "bag" or "search" or "use" or "salvage" or "salvage-quality" or "exchange"
+        "bag" or "bag-item" or "search" or "use" or "salvage" or "salvage-quality" or "exchange"
             or "use-magic-card" or "craft-magic-pack" or "lock" or "unlock" or "equip"
             or "unequip" or "magic-card" or "magic-card-pack" => Item,
 

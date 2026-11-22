@@ -28,7 +28,7 @@ public sealed class GameplayCommandTests
         using GameplayCommandDatabase db = new();
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
 
-        Assert.Equal(172, registry.All.Count);
+        Assert.Equal(173, registry.All.Count);
         Assert.Equal("status", registry.Resolve("/状态")!.Command.Key);
         Assert.Equal("status", registry.Resolve("存档")!.Command.Key);
         Assert.Equal("gacha-ten", registry.Resolve("/十连抽卡")!.Command.Key);
@@ -78,6 +78,28 @@ public sealed class GameplayCommandTests
         Assert.Contains("锁定或绑定", await RouteAsync(router, "/分解 @1"));
         Assert.Contains("物品已解锁", await RouteAsync(router, "/解锁 @1"));
         Assert.Contains("分解完成", await RouteAsync(router, "/分解 @1"));
+    }
+
+    /// <summary>
+    /// 背包物品详情：列表挂「详情」链接，点开是 core.ToStringInventory(true) 全文，
+    /// 不再是只有一行名字。编号与 /背包 的 @编号 一致。
+    /// </summary>
+    [Fact]
+    public async Task Router_BagItemDetailUsesCoreFullText()
+    {
+        using GameplayCommandDatabase db = new();
+        CommandRouter router = db.CreateRouter();
+        await TestItems.SeedAsync(db.Provider, UserId, 3);
+
+        string bag = await RouteAsync(router, "/背包");
+        Assert.Contains("/查库存物品 1", MarkdownText.Inserts(bag).Select(x => x.Trim()));
+
+        BotReply detail = await RouteReplyAsync(router, "/查库存物品 @1");
+        string text = MarkdownText.Decode(detail.Markdown!.Content!);
+        Assert.Contains("库存 @1", text);
+        Assert.Contains("数量：", text);
+        Assert.Contains("品质：", text);
+        Assert.True(text.Length > 60, $"物品详情应是 core 全文，实际 {text.Length} 字符");
     }
 
     /// <summary>
@@ -530,7 +552,7 @@ public sealed class GameplayCommandTests
         CommandRegistry registry = CommandCatalog.Build(db.Dependencies);
         CommandRouter router = db.CreateRouter();
 
-        Assert.Equal(172, registry.All.Count);
+        Assert.Equal(173, registry.All.Count);
 
         List<string> failures = [];
         int checkedCommands = 0;

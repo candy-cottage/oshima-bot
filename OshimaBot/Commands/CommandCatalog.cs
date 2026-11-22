@@ -40,6 +40,7 @@ public static class CommandCatalog
         "log", "log-full",
         "sim-debug", "sim-team-map", "sim-team", "sim-map", "sim-mix", "sim",
         // ---- P1：旅人存档 ----
+        "bag-item",
         "register", "status", "backup", "snapshots", "restore", "grant-item", "grant-currency", "grant-magic",
         "grant-log", "revoke-grant", "store-add", "my-purchases", "db-backup",
         "look", "notice", "fortune", "signin",
@@ -466,6 +467,24 @@ public static class CommandCatalog
             key: "bag", name: "背包", aliases: ["查看库存", "bag", "inventory"], usage: "/背包 [p2]",
             description: "查看背包，@编号 用于其它指令", group: CommandGroups.Player,
             handler: context => BagAsync(deps, context)),
+
+        "bag-item" => new DelegateCommand(
+            key: "bag-item", name: "查库存物品", aliases: ["查物品详情"], usage: "/查库存物品 @编号",
+            description: "查看背包里某件物品的完整属性（旧版查库存物品）", group: CommandGroups.Player,
+            handler: async context =>
+            {
+                int index = RefIndex(context);
+                if (index <= 0)
+                {
+                    return CommandReplies.Error("缺少物品编号", "没有显示任何物品",
+                        "用 /背包 看 @编号，再发 /查库存物品 @1", "/背包");
+                }
+                string? detail = await deps.Players.GetBagItemDetailAsync(context.UserId, index, context.CancellationToken);
+                return detail is null
+                    ? CommandReplies.Error($"没有 @{index} 号物品", "没有显示任何物品",
+                        "编号见 /背包（从 1 开始）", "/背包")
+                    : CommandReplies.Detail($"🎒 库存 @{index}", detail, actions: ["/背包", "/库存搜索"]);
+            }),
 
         "search" => new DelegateCommand(
             key: "search", name: "库存搜索", aliases: ["库存查询", "search"], usage: "/库存搜索 <关键词> [p2]",
@@ -1956,7 +1975,8 @@ public static class CommandCatalog
         IReadOnlyList<BagEntry> items = await deps.Players.GetBagAsync(context.UserId, context.CancellationToken);
         List<string> lines = items.Select(item =>
             $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · {item.Name} ×{item.Quantity}"
-            + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")).ToList();
+            + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")
+            + "　" + QQCmdTag.CmdInput($"/查库存物品 {item.Index}", "详情")).ToList();
         if (lines.Count == 0) lines.Add("- 背包空空如也，先 /抽卡 或 /签到");
         lines.Add($"- {Tip("/使用")} · {Tip("/分解")} · /品质分解 <0-6> · {Tip("/锁定")}");
         lines.Add("- /库存搜索 <关键词> · /兑换金币 <钻石> · /合成魔法卡 @1 @2 @3");
@@ -1977,7 +1997,8 @@ public static class CommandCatalog
         List<string> lines = hits.Select(hit =>
             $"- @{hit.Index} {GameplayRules.QualityName(hit.Quality)} · {hit.Name} ×{hit.Quantity}"
             + (hit.Locked ? " 🔒" : "")
-            + (string.IsNullOrWhiteSpace(hit.Description) ? "" : $"　{hit.Description}")).ToList();
+            + (string.IsNullOrWhiteSpace(hit.Description) ? "" : $"　{hit.Description}")
+            + "　" + QQCmdTag.CmdInput($"/查库存物品 {hit.Index}", "详情")).ToList();
         if (lines.Count == 0)
         {
             lines.Add($"- 背包里没有名称或描述包含「{keyword}」的物品");

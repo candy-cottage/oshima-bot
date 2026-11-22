@@ -23,6 +23,12 @@ public interface IPlayerService
     Task<ActionResult> GachaAsync(long userId, int count, bool useMaterial, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BagEntry>> GetBagAsync(long userId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 单个库存物品的完整档案（旧版「查库存物品」）：item.ToStringInventory(true) 全文，
+    /// 含物品属性、描述、标签、装备于谁。编号与 /背包 的 @编号一致。
+    /// </summary>
+    Task<string?> GetBagItemDetailAsync(long userId, int index, CancellationToken cancellationToken = default);
+
     /// <summary>库存搜索：按名称或描述匹配关键词，返回结果保留 /背包 的 @编号。</summary>
     Task<IReadOnlyList<BagSearchEntry>> SearchBagAsync(long userId, string keyword,
         CancellationToken cancellationToken = default);
@@ -154,6 +160,22 @@ public sealed class PlayerService(
             return (IReadOnlyList<BagEntry>)items.Select((item, i) => new BagEntry(
                 i + 1, item.Id, ReadName(item), item.CatalogId, item.Quantity,
                 item.Quality, item.Locked, item.Bound, false)).ToArray();
+        }, cancellationToken);
+
+    public Task<string?> GetBagItemDetailAsync(long userId, int index, CancellationToken cancellationToken = default)
+        => userId <= 0 || index <= 0 ? Task.FromResult<string?>(null) : ReadAsync(async (db, ct) =>
+        {
+            await PlayerService.EnsureAsync(db, userId, ct);
+            List<PlayerItem> items = await ItemStore.ListAsync(db, userId, ct);
+            if (index > items.Count) return null;
+            PlayerItem playerItem = items[index - 1];
+            // showAll=true 与旧版 GetItemInfoFromInventory 一致：ToString() 全文 + 装备者。
+            // 再补玩法层的数量/品质/锁定状态，这些是 core 快照之外的库存信息。
+            return string.Join("\r\n",
+                playerItem.Item.ToStringInventory(true).Trim(),
+                $"数量：{playerItem.Quantity}",
+                $"品质：{GameplayRules.QualityName(playerItem.Quality)}",
+                playerItem.Locked ? "状态：已锁定" : "状态：正常");
         }, cancellationToken);
 
     public Task<IReadOnlyList<BagSearchEntry>> SearchBagAsync(long userId, string keyword,
