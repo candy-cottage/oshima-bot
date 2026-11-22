@@ -6,8 +6,11 @@ using Microsoft.Extensions.Options;
 using OshimaBot.Data;
 using OshimaBot.Data.Core;
 using OshimaBot.Data.Entities;
+using OshimaBot.Content.Items;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
+using FunGame.Core.Entity;
+using FunGame.Core.Library.Constant;
 using OshimaBot.Models;
 using OshimaBot.Security;
 using Xunit;
@@ -247,6 +250,32 @@ public sealed class GameplayTests
         Assert.Contains("等级：", detail.FullInfo);            // showEXP=true 带来的等级/经验
         Assert.True(detail.FullInfo.Length > detail.Stats.Count * 40,
             $"core 全文应远长于手搓属性，实际 {detail.FullInfo.Length} 字符");
+    }
+
+    /// <summary>
+    /// 礼包模板经 Factory 构造（原版 GetInstance 路径）；魔法卡礼包的品质/张数从存档物品的 Others 覆盖，
+    /// 否则橙品×5 会被默认白品×1 模板开错。
+    /// </summary>
+    [Fact]
+    public void GiftBox_UsesFactoryAndSavedQuality()
+    {
+        // Factory 按 GiftBoxID 构造的是具体类，而不是基类 Item。
+        Item template = FunGame.Core.Api.Factory.OpenFactory.GetInstance<Item>((long)GiftBoxID.圣诞礼包, "", []);
+        Assert.True(template is 礼包.GiftBox, "Factory 应还原具体礼包类型");
+
+        IReadOnlyList<GiftBoxUse.Reward>? gifts = GiftBoxUse.ReadRewards(((long)GiftBoxID.圣诞礼包).ToString());
+        Assert.NotNull(gifts);
+        Assert.Contains(gifts, x => x.Kind == "credits" && x.Count == 10000);
+
+        // 存档还原出的魔法卡礼包是基类 Item，品质/张数只在 Others 里。
+        Item saved = new() { ItemType = ItemType.GiftBox };
+        saved.Others["QualityType"] = (int)QualityType.Orange;
+        saved.Others["Count"] = 5;
+        IReadOnlyList<GiftBoxUse.Reward>? cards = GiftBoxUse.ReadRewards(((long)GiftBoxID.魔法卡礼包).ToString(), saved);
+        Assert.NotNull(cards);
+        Assert.Single(cards);
+        Assert.Equal(QualityType.Orange, cards[0].Quality);
+        Assert.Equal(5, cards[0].Count);
     }
 
     /// <summary>

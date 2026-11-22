@@ -1,7 +1,8 @@
+using System.Text.Json;
+using FunGame.Core.Api;
 using FunGame.Core.Entity;
 using FunGame.Core.Library.Constant;
 using OshimaBot.Content.Items;
-using OshimaBot.Game.Services;
 
 namespace OshimaBot.Gameplay;
 
@@ -18,13 +19,41 @@ public static class GiftBoxUse
     public sealed record Reward(string Kind, string Name, int Count, QualityType Quality = QualityType.White);
 
     /// <summary>
-    /// 从 CatalogId 找内容包模板并读出礼包内容。非礼包或找不到返回 null。
+    /// 用 Factory 按 CatalogId 构造模板（与原版 <c>Factory.GetInstance</c> 同路径），读出礼包内容。
+    /// <para><paramref name="saved"/> 是存档里还原出的基类 Item：魔法卡礼包的品质/张数存在它的 Others 里，
+    /// Factory 构造出的默认模板是白品×1，必须用存档值覆盖 —— 否则橙品×5 会被开成白品×1。</para>
     /// </summary>
-    public static IReadOnlyList<Reward>? ReadRewards(string catalogId)
+    public static IReadOnlyList<Reward>? ReadRewards(string catalogId, Item? saved = null)
     {
         if (!long.TryParse(catalogId, out long id)) return null;
-        Item? template = FunGameService.AllItems.FirstOrDefault(x => x.Id == id);
+        Item template = Factory.OpenFactory.GetInstance<Item>(id, saved?.Name ?? "", []);
+        if (template.ItemType != ItemType.GiftBox) return null;
+
+        if (template is 魔法卡礼包 cardBox)
+        {
+            int count = cardBox.Count;
+            QualityType quality = cardBox.QualityType;
+            if (saved is not null)
+            {
+                if (ReadInt(saved, "Count") is int savedCount) count = savedCount;
+                if (ReadInt(saved, "QualityType") is int savedQuality) quality = (QualityType)savedQuality;
+            }
+            return [new Reward("magic-card", $"魔法卡（{ItemSet.GetQualityTypeName(quality)}）", count, quality)];
+        }
         return ReadRewards(template);
+    }
+
+    /// <summary>从 Others 读整数：兼容 int / long / JsonElement（反序列化后的形态）。</summary>
+    private static int? ReadInt(Item item, string key)
+    {
+        if (!item.Others.TryGetValue(key, out object? value)) return null;
+        return value switch
+        {
+            int i => i,
+            long l => (int)l,
+            JsonElement e when e.TryGetInt32(out int v) => v,
+            _ => int.TryParse(value.ToString(), out int n) ? n : null
+        };
     }
 
     /// <summary>从模板对象读礼包内容（测试可直接传具体礼包类）。</summary>

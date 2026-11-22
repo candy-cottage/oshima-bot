@@ -581,9 +581,9 @@ public sealed class PlayerService(
     /// 普通物品按内容包模板入包，魔法卡按品质随机生成，魔法卡礼包按品质建一个可再开的礼包。
     /// </summary>
     private async Task<List<string>> OpenGiftBoxAsync(
-        BotDbContext db, PlayerAccount state, string catalogId, int times, CancellationToken ct)
+        BotDbContext db, PlayerAccount state, string catalogId, Item saved, int times, CancellationToken ct)
     {
-        IReadOnlyList<GiftBoxUse.Reward> rewards = GiftBoxUse.ReadRewards(catalogId) ?? [];
+        IReadOnlyList<GiftBoxUse.Reward> rewards = GiftBoxUse.ReadRewards(catalogId, saved) ?? [];
         List<string> lines = [];
         foreach (GiftBoxUse.Reward reward in rewards)
         {
@@ -658,13 +658,13 @@ public sealed class PlayerService(
             {
                 // 旧版 FunGameService.UseItem 的兜底：Core 的 OnItemUsed 对礼包是空实现，
                 // 这里按 CatalogId 回内容包找模板 Gifts，自己发奖（详见 GiftBoxUse）。
-                IReadOnlyList<GiftBoxUse.Reward>? gifts = GiftBoxUse.ReadRewards(item.CatalogId);
+                IReadOnlyList<GiftBoxUse.Reward>? gifts = GiftBoxUse.ReadRewards(item.CatalogId, item.Item);
                 if (gifts is null || gifts.Count == 0)
                 {
                     return ActionResult.Fail("使用失败", "没有消耗物品",
                         string.IsNullOrWhiteSpace(used.Message) ? $"{name} 无法使用" : used.Message, "/背包");
                 }
-                List<string> giftLines = await OpenGiftBoxAsync(db, state, item.CatalogId, amount, ct);
+                List<string> giftLines = await OpenGiftBoxAsync(db, state, item.CatalogId, item.Item, amount, ct);
                 Consume(db, item, amount);
                 giftLines.Add($"- 礼包：{name} ×{amount} 已开启");
                 return ActionResult.Success("🎁 打开礼包", $"{name} ×{amount} · 获得 {gifts.Count} 类奖励",
