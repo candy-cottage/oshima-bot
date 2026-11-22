@@ -1974,12 +1974,13 @@ public static class CommandCatalog
     {
         IReadOnlyList<BagEntry> items = await deps.Players.GetBagAsync(context.UserId, context.CancellationToken);
         List<string> lines = items.Select(item =>
-            $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · {item.Name} ×{item.Quantity}"
+            $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · "
+            + $"{GameplayRules.ItemTypeName(item.ItemType)} · {item.Name} ×{item.Quantity}"
             + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")
             + "　" + QQCmdTag.CmdInput($"/查库存物品 {item.Index}", "详情")).ToList();
         if (lines.Count == 0) lines.Add("- 背包空空如也，先 /抽卡 或 /签到");
-        lines.Add($"- {Tip("/使用")} · {Tip("/分解")} · /品质分解 <0-6> · {Tip("/锁定")}");
-        lines.Add("- /库存搜索 <关键词> · /兑换金币 <钻石> · /合成魔法卡 @1 @2 @3");
+        lines.Add($"- {Tip("/使用")} · {Tip("/分解")} · {TipRaw("/品质分解", "/品质分解 <0-6>")} · {Tip("/锁定")}");
+        lines.Add($"- {TipRaw("/库存搜索", "/库存搜索 <关键词>")} · {TipRaw("/兑换金币", "/兑换金币 <钻石>")} · {TipRaw("/合成魔法卡", "/合成魔法卡 @1 @2 @3")}");
         return CommandReplies.ListPage("🎒 背包", $"{items.Count} 格", lines, context.Page,
             "/背包", ["/抽卡", "/状态"]);
     }

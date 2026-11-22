@@ -426,6 +426,9 @@ public static class GameplayRules
     /// <summary>品质名一律取 Core 的 <c>ItemSet.GetQualityTypeName</c>，不再硬编码。</summary>
     public static string QualityName(int quality) => ItemSet.GetQualityTypeName(QualityTypeOf(quality));
 
+    /// <summary>物品类型名一律取 Core 的 <c>ItemSet.GetItemTypeName</c>，背包行品质后面显示。</summary>
+    public static string ItemTypeName(int itemType) => ItemSet.GetItemTypeName((ItemType)itemType);
+
     /// <summary>同一用户同一天的运势稳定不变（服务端确定性哈希，不用 Random.Shared）。</summary>
     public static string Fortune(long userId, string date)
     {

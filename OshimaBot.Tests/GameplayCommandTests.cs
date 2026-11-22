@@ -74,6 +74,14 @@ public sealed class GameplayCommandTests
         Assert.Contains("抽卡", await RouteAsync(router, "/抽卡 3"));
         string bag = await RouteAsync(router, "/背包");
         Assert.Contains("@1", bag);
+        // 物品行品质后带类型名（如「普通 · 武器 · 高穴」），提示行都是可点链接。
+        Assert.Matches(@"@1 普通 · [^·]+ · ", bag);
+        List<string> bagInserts = MarkdownText.Inserts(bag);
+        Assert.Contains("/品质分解", bagInserts);
+        Assert.Contains("/库存搜索", bagInserts);
+        Assert.Contains("/兑换金币", bagInserts);
+        Assert.Contains("/合成魔法卡", bagInserts);
+        Assert.DoesNotContain(bagInserts, x => x.Contains('@') || x.Contains('<'));
         Assert.Contains("物品已锁定", await RouteAsync(router, "/锁定 @1"));
         Assert.Contains("锁定或绑定", await RouteAsync(router, "/分解 @1"));
         Assert.Contains("物品已解锁", await RouteAsync(router, "/解锁 @1"));
