@@ -294,7 +294,7 @@ public static class ItemStore
     /// 具体类的 OnItemUsed/Gifts 全丢。Copy 内部走 Factory.GetInstance 按 Id 重建具体类 + AfterCopy 还原 Gifts。</para>
     /// <para>为什么不全类型照抄：Copy 会按 Id 从 AllSkills 重建技能，覆盖本作新增的派生技能名
     /// （合成魔法卡包的「+1」标记）—— 实测全量 Copy 会让该断言失败。魔法卡/装备的存档数值以快照为权威，
-    /// 保持基类还原；礼包技能只是展示用，Copy 无损。</para>
+    /// 保持基类还原，但技能单独经工厂重建（见 RebuildSkillGroup）。</para>
     /// </summary>
     private static Item? Restore(CoreItemRecord row)
     {
@@ -302,6 +302,16 @@ public static class ItemStore
         {
             Item? restored = JsonSerializer.Deserialize<Item>(row.SnapshotJson, Options);
             if (restored is null) return null;
+
+            // EffectConverter.NewInstance() 写死 new Effect()、技能特效类也没进 EffectFactory，
+            // 直接还原只会得到基类特效：描述空、AddPassiveEffectToCharacter 返回空（卡包装备无加成）。
+            // 正解同原版 GetUser 的 CharacterBuilder：用 Skill.Copy 经**技能工厂**重建具体技能，
+            // 具体技能构造函数重新 new 出自己的特效类（纯数值回复生命等），行为与描述一并恢复。
+            // 只对魔法卡包重建技能：卡包的魔法技能描述/被动属性必须靠具体类才能生效。
+            // 其它物品（武器/饰品/消耗品）保持基类技能，避免动摇模拟的确定性数值。
+            if (restored.ItemType == FunGame.Core.Library.Constant.ItemType.MagicCardPack)
+                restored.Skills = RebuildSkillGroup(restored.Skills);
+
             if (restored.ItemType != FunGame.Core.Library.Constant.ItemType.GiftBox) return restored;
             return restored.Copy(true, true, true, true, FunGameService.AllItems, FunGameService.AllSkills);
         }
@@ -309,5 +319,30 @@ public static class ItemStore
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// 用技能工厂重建整组技能：每个 Skill.Copy() 走 Factory.GetInstance&lt;Skill&gt;，
+    /// 具体技能类的构造函数会重新创建自己的特效实例。工厂造不出来的（动态/未知技能）保留原技能。
+    /// </summary>
+    private static SkillGroup RebuildSkillGroup(SkillGroup source)
+    {
+        SkillGroup result = new();
+        if (source.Active is not null) result.Active = RebuildSkill(source.Active);
+        result.Passives = [.. source.Passives.Select(RebuildSkill)];
+        result.Magics = [.. source.Magics.Select(RebuildSkill)];
+        return result;
+    }
+
+    private static Skill RebuildSkill(Skill skill)
+    {
+        Skill concrete = skill.Copy();
+        if (concrete.GetType() == typeof(Skill)) return skill;   // 工厂不认，保留原技能
+        // 具体技能类的名字/描述可能是派生展示值（合成卡包的「火之矢 +1」），
+        // Copy 用 AllSkills 模板覆盖了它们 —— 以存档快照为准恢复。
+        concrete.Name = skill.Name;
+        concrete.Description = skill.Description;
+        concrete.Level = skill.Level;
+        return concrete;
     }
 }

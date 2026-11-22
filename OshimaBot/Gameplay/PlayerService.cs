@@ -989,9 +989,9 @@ public sealed class PlayerService(
             CharacterStore.Sync(main);
             if (replaced is not null)
             {
-                await ItemStore.AddAsync(db, userId, replaced.Name,
-                    GameplayRules.QualityTierOf(replaced.QualityType), 1, ct,
-                    replaced.Id.ToString(CultureInfo.InvariantCulture));
+                // 换下的可能是运行时生成的魔法卡/卡包（CatalogId 在内容包里找不到），
+                // 必须原样回背包；AddAsync 会按 CatalogId 重建空壳，把类型和技能全丢。
+                ItemStore.AddSnapshot(db, userId, replaced, replaced.Id.ToString(CultureInfo.InvariantCulture));
             }
             return ActionResult.Success("🛡️ 装备成功",
                 $"{name} → {main.Name} 的 {item.Item.EquipSlotType} 槽"
@@ -1018,9 +1018,8 @@ public sealed class PlayerService(
                     $"槽位 {type} 是空的，用 /角色 查看当前装备", "/角色");
             }
             CharacterStore.Sync(main);
-            await ItemStore.AddAsync(db, userId, removed.Name,
-                GameplayRules.QualityTierOf(removed.QualityType), 1, ct,
-                removed.Id.ToString(CultureInfo.InvariantCulture));
+            // 原样回背包：魔法卡包等运行时物品按 CatalogId 重建会变空壳（截图里「其他·普通物品」）。
+            ItemStore.AddSnapshot(db, userId, removed, removed.Id.ToString(CultureInfo.InvariantCulture));
             return ActionResult.Success("📦 已卸下",
                 $"{type} 槽 · {removed.Name}",
                 ["- 物品已回到背包"], ["/背包", "/角色"]);

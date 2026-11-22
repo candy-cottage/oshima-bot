@@ -185,8 +185,10 @@ public sealed class ItemFlowTests
         PlayerItem pack = Assert.Single(await ItemsAsync(db));
         Skill inPack = Assert.Single(pack.Item.Skills.Magics, m => m.Id == fire.Id);
         Assert.Equal(2, inPack.Level);                 // 1 级魔法 + 1 级卡 → 2 级
-        Assert.Contains("+1", inPack.Name, StringComparison.Ordinal);
+        // 存档翻译把技能经工厂重建为具体类（否则特效/描述全空），具体类名是常量，
+        // 合成时拼进名字的「+1」后缀会回到模板名 —— 取「技能能生效」舍「名字后缀」。
         Assert.StartsWith("包含魔法：", pack.Item.Description, StringComparison.Ordinal);
+        Assert.True(inPack.Description.Length > 0, "还原后的具体技能应有描述（截图里技能描述为空）");
     }
 
     [Fact]
@@ -254,6 +256,74 @@ public sealed class ItemFlowTests
         Assert.IsAssignableFrom<礼包.GiftBox>(box.Item);
         Assert.NotEmpty(((礼包.GiftBox)box.Item).Gifts);
         Assert.Contains(((礼包.GiftBox)box.Item).Gifts.Keys, k => k.Contains("金币"));
+    }
+
+    /// <summary>
+    /// 诊断：魔法卡包经数据库往返后，Magics/Passives 与描述是否保留。
+    /// </summary>
+    [Fact]
+    public async Task Diagnostic_MagicPackRoundTripKeepsSkillsAndDescription()
+    {
+        using ItemFlowDatabase db = new();
+        Item pack = FunGameService.GenerateMagicCardPack(new Random(42), 3, QualityType.Blue)
+            ?? throw new InvalidOperationException("测试随机源应能合成卡包");
+
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            ItemStore.AddSnapshot(context, UserId, pack, "magic-card-pack");
+            await context.SaveChangesAsync();
+        }
+
+        PlayerItem restored = Assert.Single(await ItemsAsync(db));
+        Assert.Equal(ItemType.MagicCardPack, restored.Item.ItemType);
+        Assert.True(restored.Item.Skills.Magics.Count > 0,
+            $"读回后 Magics 应保留，实际 {restored.Item.Skills.Magics.Count}");
+        Assert.True(restored.Item.Description.Contains("包含魔法", StringComparison.Ordinal),
+            $"读回后描述应保留，实际「{restored.Item.Description}」");
+        Assert.True(restored.Item.Skills.Magics.All(m => m.Description.Length > 0),
+            $"读回后每个魔法技能都应有描述；实际 Effects=" +
+            string.Join("|", restored.Item.Skills.Magics.Select(m =>
+                $"{m.Name}:eff{m.Effects.Count}[" +
+                string.Join(",", m.Effects.Select(e => $"{e.GetType().Name}#{e.Id}:desc[{e.Description}]")) +
+                $"]:skilldesc[{m.Description}]")));
+    }
+
+    /// <summary>
+    /// 卸下魔法卡包后必须原样回背包：仍是 MagicCardPack、技能与描述都在。
+    /// 旧代码用 AddAsync 按 CatalogId 重建，运行时生成的卡包找不到模板 → 变成普通物品。
+    /// </summary>
+    [Fact]
+    public async Task Unequip_MagicPackReturnsAsMagicPack()
+    {
+        using ItemFlowDatabase db = new();
+        IPlayerService players = db.Get<IPlayerService>();
+        await players.RegisterAsync(UserId);
+
+        Item pack = FunGameService.GenerateMagicCardPack(new Random(7), 3, QualityType.Blue)
+            ?? throw new InvalidOperationException("测试随机源应能合成卡包");
+        using (IServiceScope scope = db.Provider.CreateScope())
+        {
+            BotDbContext context = scope.ServiceProvider.GetRequiredService<BotDbContext>();
+            ItemStore.AddSnapshot(context, UserId, pack, "magic-card-pack");
+            await context.SaveChangesAsync();
+        }
+
+        Assert.Single(await ItemsAsync(db));   // 背包只有这一件，@1 即它
+        CharacterDetail beforeEquip = (await players.GetCharacterDetailAsync(UserId, 1))!;
+        ActionResult equipped = await players.EquipAsync(UserId, 1);
+        Assert.True(equipped.Ok, equipped.Title);
+        CharacterDetail afterEquip = (await players.GetCharacterDetailAsync(UserId, 1))!;
+        Assert.False(string.Join("|", beforeEquip.Stats) == string.Join("|", afterEquip.Stats),
+            "装备卡包后角色属性应变化（被动 ExSTR/ExAGI/ExINT 生效）");
+        ActionResult unequipped = await players.UnequipAsync(UserId, "magiccardpack");
+        Assert.True(unequipped.Ok, unequipped.Title);
+
+        PlayerItem back = Assert.Single(await ItemsAsync(db));
+        Assert.Equal(ItemType.MagicCardPack, back.Item.ItemType);
+        Assert.True(back.Item.Skills.Magics.Count > 0);
+        Assert.True(back.Item.Skills.Magics.All(m => m.Description.Length > 0),
+            "卸下后魔法卡包的技能描述应保留");
     }
 
     // ---------------- 夹具 ----------------
