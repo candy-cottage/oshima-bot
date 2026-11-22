@@ -120,6 +120,8 @@ public sealed class GameplayTests
         IReadOnlyList<BagEntry> bag = await players.GetBagAsync(UserId);
         Assert.Equal(3, bag.Count);
         Assert.Equal(1, bag[0].Index);
+        // 信息量对齐旧版：每件物品带 core.ToStringInventory(false) 的描述/标签段，不再是空占位。
+        Assert.False(string.IsNullOrWhiteSpace(bag[0].Detail));
 
         Assert.True((await players.SetLockAsync(UserId, 1, true)).Ok);
         Assert.False((await players.SalvageAsync(UserId, 1, 1)).Ok);

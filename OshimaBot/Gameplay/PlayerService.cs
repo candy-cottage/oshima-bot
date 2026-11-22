@@ -159,7 +159,8 @@ public sealed class PlayerService(
             // 装备直接进角色快照（6 槽），背包里只剩下未装备的物品。
             return (IReadOnlyList<BagEntry>)items.Select((item, i) => new BagEntry(
                 i + 1, item.Id, ReadName(item), item.CatalogId, item.Quantity,
-                item.Quality, item.Locked, item.Bound, false, (int)item.Item.ItemType)).ToArray();
+                item.Quality, item.Locked, item.Bound, false, (int)item.Item.ItemType,
+                item.Item.ToStringInventory(false).Trim())).ToArray();
         }, cancellationToken);
 
     public Task<string?> GetBagItemDetailAsync(long userId, int index, CancellationToken cancellationToken = default)

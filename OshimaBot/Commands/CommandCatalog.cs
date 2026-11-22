@@ -1973,11 +1973,23 @@ public static class CommandCatalog
     private static async Task<BotReply> BagAsync(CommandDependencies deps, CommandContext context)
     {
         IReadOnlyList<BagEntry> items = await deps.Players.GetBagAsync(context.UserId, context.CancellationToken);
-        List<string> lines = items.Select(item =>
-            $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · "
-            + $"{GameplayRules.ItemTypeName(item.ItemType)} · {item.Name} ×{item.Quantity}"
-            + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")
-            + "　" + QQCmdTag.CmdInput($"/查库存物品 {item.Index}", "详情")).ToList();
+        // 照抄旧版 GetInventoryInfo2：每件物品两行 —— 名字 + ToStringInventory(false) 的描述/标签/交易限制。
+        List<string> lines = [.. items.SelectMany(item =>
+        {
+            List<string> pair = [
+                $"- @{item.Index} {GameplayRules.QualityName(item.Quality)} · "
+                + $"{GameplayRules.ItemTypeName(item.ItemType)} · {item.Name} ×{item.Quantity}"
+                + (item.Locked ? " 🔒" : "") + (item.Equipped ? " ⚔️" : "") + (item.Bound ? " 绑定" : "")
+                + "　" + QQCmdTag.CmdInput($"/查库存物品 {item.Index}", "详情")
+            ];
+            if (string.IsNullOrWhiteSpace(item.Detail)) return pair;
+            // 描述压成一行、截断，避免撑爆列表页；完整内容进 /查库存物品 详情。
+            string detail = item.Detail.Replace("\r\n", " · ", StringComparison.Ordinal)
+                .Replace("\n", " · ", StringComparison.Ordinal).Trim();
+            if (detail.Length > 90) detail = detail[..90] + "…";
+            pair.Add($"  └ {detail}");
+            return pair;
+        })];
         if (lines.Count == 0) lines.Add("- 背包空空如也，先 /抽卡 或 /签到");
         lines.Add($"- {Tip("/使用")} · {Tip("/分解")} · {TipRaw("/品质分解", "/品质分解 <0-6>")} · {Tip("/锁定")}");
         lines.Add($"- {TipRaw("/库存搜索", "/库存搜索 <关键词>")} · {TipRaw("/兑换金币", "/兑换金币 <钻石>")} · {TipRaw("/合成魔法卡", "/合成魔法卡 @1 @2 @3")}");

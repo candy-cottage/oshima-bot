@@ -76,6 +76,8 @@ public sealed class GameplayCommandTests
         Assert.Contains("@1", bag);
         // 物品行品质后带类型名（如「普通 · 武器 · 高穴」），提示行都是可点链接。
         Assert.Matches(@"@1 普通 · [^·]+ · ", bag);
+        // 照抄旧版 GetInventoryInfo2：每件物品第二行是 core 的描述/标签段。
+        Assert.Contains("  └ ", bag);
         List<string> bagInserts = MarkdownText.Inserts(bag);
         Assert.Contains("/品质分解", bagInserts);
         Assert.Contains("/库存搜索", bagInserts);

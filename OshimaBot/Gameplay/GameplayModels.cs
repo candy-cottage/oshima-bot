@@ -9,7 +9,12 @@ public sealed record PlayerSnapshot(
 
 public sealed record BagEntry(
     int Index, long Id, string Name, string CatalogId, int Quantity,
-    int Quality, bool Locked, bool Bound, bool Equipped, int ItemType);
+    int Quality, bool Locked, bool Bound, bool Equipped, int ItemType,
+    /// <summary>
+    /// core.ToStringInventory(false) 的整段：描述 / 标签 / 不可交易 / 可出售时间 / 装备于谁。
+    /// 旧版背包每件物品都是「名字 + 这段」两行，新版不再丢掉。
+    /// </summary>
+    string Detail);
 
 /// <summary>库存搜索结果：<see cref="Index"/> 与 /背包 的 @编号一致，可直接用于其它指令。</summary>
 public sealed record BagSearchEntry(
