@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using OshimaBot.Data;
 using OshimaBot.Data.Core;
+using OshimaBot.Content.Items;
 using OshimaBot.Game.Services;
 using OshimaBot.Gameplay;
 using OshimaBot.Models;
@@ -235,6 +236,24 @@ public sealed class ItemFlowTests
         {
             Assert.Equal(GameplayRules.MagicCardPackMaxMagics, item.Item.Skills.Magics.Count);
         }
+    }
+
+    /// <summary>
+    /// 存档翻译：礼包经数据库往返后必须是具体 GiftBox 类型（带 Gifts），
+    /// 而不是 ItemConverter.NewInstance() 的基类 Item —— 这是礼包 OnItemUsed 能生效的前提。
+    /// 同时验证魔法卡不被 Copy 重建、技能等级保持。
+    /// </summary>
+    [Fact]
+    public async Task Restore_GiftBoxKeepsConcreteType()
+    {
+        using ItemFlowDatabase db = new();
+        await SeedAsync(db, new 圣诞礼包(), new 大经验书());
+
+        List<PlayerItem> bag = await ItemsAsync(db);
+        PlayerItem box = Assert.Single(bag, x => x.Item.ItemType == ItemType.GiftBox);
+        Assert.IsAssignableFrom<礼包.GiftBox>(box.Item);
+        Assert.NotEmpty(((礼包.GiftBox)box.Item).Gifts);
+        Assert.Contains(((礼包.GiftBox)box.Item).Gifts.Keys, k => k.Contains("金币"));
     }
 
     // ---------------- 夹具 ----------------
